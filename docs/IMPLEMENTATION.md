@@ -175,6 +175,50 @@ The P2 ring classifier was not copied, because it imports VisualHull. The conseq
 9. **Live performance** — no latency or quality claims are made until measured with live providers.
 10. **Uploaded reference URL lifetime** — fal storage URLs are reused when a failed refinement slot is retried later. If fal expires them, the retry fails with a provider error, and a new refinement re-uploads.
 
+## 8a. UI parity with Pipeline 2 (second iteration, 2026-09-29)
+
+At the product owner's request, the customer UI was rebuilt to look like P2. The P3 logic above is unchanged.
+
+- **Visual system:** copied from `index-p2.html` — Tailwind CDN, Inter/Cinzel, the `btn-gold`/`btn-black`/`btn-outline` system, contrast fixes, and tap-target sizing. The nav, footer, and marketing imagery (`Angel.JPG`, `Ink.JPG`, `ISO.png`, `PrintHead.png`, favicons) were copied into `web/images/`.
+- **Pages ported:** Home, Inspiration, Materials (now grouped Fashion / Luxury and driven by the catalog), Technology, FAQ, About XJet, Shipping & Returns, Terms, Privacy, Contact.
+- **Design screen:** follows P2's studio — "Hello, Designer." landing, gold-bordered composer with reference upload, prompt bubble, typing-dots generating state, the My Designs sidebar with search, and the fullscreen zoom/pan preview. P3 differences:
+  - a 3×2 grid of six cards (2 columns on phones);
+  - a square-cornered black selection border with a "Selected" tag;
+  - "Select This Design" inside the preview;
+  - batch tabs (Original / Refinement n);
+  - three actions (Start a New Design · Refine Selected · Customize Your Ring);
+  - once a design exists, the composer refines the selected image, and reference upload is offered only for new designs.
+- **Customize screen:** follows P2's review panel — left preview (P3: Image / 360° Movie toggle with the Minimax video instead of the scrub canvas), the Metal Type list, the 44 px size buttons with P2's size-guide modal (limited to P3's US 4–12), configuration summary, price, quantity, "In Your Bag", and Back. P3 differences:
+  - metals are grouped into expandable **Fashion Jewelry** rows and a **Luxury** gold grid marked "Preview only";
+  - the price shows "Price unavailable" for Luxury or unconfigured pricing;
+  - the Add to Bag label explains why it is blocked;
+  - there is no measurement progress, `open_ring`, or per-piece size list (separate bag lines are used instead).
+- **Bag:** P2's "My Bag" step layout, showing server bag lines. It has no shipping, payment, coupon, or reservation steps; "Checkout Unavailable" is shown disabled.
+- **Product names:** P2's deterministic naming (`generateProductName`) is ported to `p3/naming.py`, so saved titles read like "The Laurel Ring".
+- **Mode indicator:** amber Mock banner + chip, or a green Live AI chip, driven by `/api/health` `mode`. The developer page shows the same.
+
+**Copy changed from P2** (P2 statements that are not true of P3, or were unverifiable):
+- "Preview your design in 3D" / "approve a full 3D model" → "choose from six designs… preview it in a 360° movie"
+- "Estimated prices… may change once your ring has been measured" → removed
+- "each 360° preview uses one generation" → removed
+- "Secure Checkout / protected payment" trust tile and FAQ → replaced; there is no checkout
+- Terms "Orders" → states that ordering is not yet available
+- Privacy → references access tokens instead of email registration
+- The **Customer Reviews section** (three named five-star testimonials) was **not carried over**, because it presents testimonials as genuine and they could not be verified. Restore it only with real, attributable reviews.
+- `SUPPORT_EMAIL` stays `atelier@xjet3d.com`, which P2 marks "TODO confirm".
+
+**Not ported** (not relevant to P3 or requiring separate decisions):
+- choice/signature collections, AI-configure and debug steps, and the dev picker shortcuts
+- Visual Hull / measurement UI and the Hitem3D customer screens (mesh stays on `/dev`)
+- email registration and verification, quota coin, favourite/delete in My Designs
+- shipping/payment/reservation checkout
+
+**Live-mode hardening found during this iteration:**
+- Uploads now declare the stored image's real MIME type. Live outputs may be JPEG/WebP; everything was previously declared `image/png`.
+- A fal request that completes with an error string (e.g. `content_policy_violation`) is now classified. It was previously a generic `provider_error`.
+- An HTTP 402 is now recognised as billing.
+- A startup warning appears when `P3_DATA_DIR` is long enough that asset paths could exceed the Windows 260-character limit. This actually happened during verification with a deep temp directory.
+
 ## 9. Verification evidence
 
 **Automated** (`pytest`, 50 tests; **all provider calls mocked** by `p3/providers/mock.py`; no network):
@@ -214,6 +258,15 @@ The P2 ring classifier was not copied, because it imports VisualHull. The conseq
 - developer endpoints via curl (403 without or with a wrong key; native STL download)
 
 Late in the session the preview pane stopped painting (`requestAnimationFrame` never fired), so the final bag screen was confirmed through the page state rather than a screenshot.
+
+**Live adapter wiring** (`tests/test_fal_adapter.py`): runs the real `FalProvider` through the whole app with only fal's network client object faked. It checks:
+- the exact arguments sent to all four endpoints
+- queued/in-progress/completed status mapping
+- 503 and connection errors retried on the same request without resubmission
+- completed-with-error → per-slot `content_policy` failure
+- 402 → billing, 422 → permanent
+
+The fal client's queue URLs for the three nested endpoints were also resolved offline and are correct (`queue.fal.run/{owner}/{app}/requests/{id}`).
 
 **Not exercised:** no live fal.ai call of any kind was made. Live compatibility, output quality, latency, and cost remain unverified. Live validation needs a Pipeline 3 test key with a spending limit and an explicit test budget.
 

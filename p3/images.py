@@ -17,6 +17,7 @@ import secrets
 from p3 import assets
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
+from p3.naming import ProductName
 from p3.providers import endpoints
 from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
 
@@ -33,12 +34,6 @@ def ValidateText(Text: str, What: str) -> str:
     if len(Text) > MaxTextLength:
         raise HttpError(400, "text_too_long", f"The {What} is too long (max {MaxTextLength} characters).")
     return Text
-
-
-def TitleFromPrompt(Prompt: str) -> str:
-    Words = Prompt.split()
-    Title = " ".join(Words[:6])
-    return (Title + "…") if len(Words) > 6 else Title
 
 
 def _NewSeed() -> int:
@@ -81,7 +76,7 @@ class ImageService:
             T = Now()
             Conn.execute("INSERT INTO designs (id, token, title, prompt, client_request_id, created_at, updated_at) "
                          "VALUES (?,?,?,?,?,?,?)",
-                         (DesignId, Token, TitleFromPrompt(Prompt), Prompt, ClientRequestId, T, T))
+                         (DesignId, Token, ProductName(Prompt), Prompt, ClientRequestId, T, T))
             self._InsertBatch(Conn, BatchId, DesignId, "initial", None, Prompt, RefPath, None)
         self._StartBatch(BatchId, Token)
         return self.GetBatch(BatchId)
@@ -219,7 +214,7 @@ class ImageService:
             except (OSError, assets.AssetError) as E:
                 from p3.providers.base import ProviderError
                 raise ProviderError("The reference image could not be loaded.", "reference_unavailable") from E
-            Url = await self.Ctx.Provider.Upload(Data, "image/png")
+            Url = await self.Ctx.Provider.Upload(Data, assets.ImageContentType(Batch["reference_asset"]))
             self.Ctx.Db.Execute("UPDATE batches SET reference_upload_url = ? WHERE id = ?", (Url, Batch["id"]))
             return Url
 

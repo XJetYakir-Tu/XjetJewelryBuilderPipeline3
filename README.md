@@ -39,9 +39,30 @@ Then issue yourself an access token and start the server:
 
 Open http://localhost:8310 and enter the token. Developer mesh tools are at http://localhost:8310/dev (they require `P3_ADMIN_KEY`).
 
-## Live provider (paid)
+## Mock vs. live mode
 
-Set `P3_PROVIDER=fal` and `FAL_KEY` to a **Pipeline 3 test key with a spending limit**. Each image batch or refinement is six Nano Banana Pro requests (about $0.90 at published rates). Each Proceed on a new candidate is one Minimax request (price not published). See docs/IMPLEMENTATION.md §4 before running live.
+The site always shows which mode it is in:
+
+- **Mock** (default): an amber "Mock mode" banner plus a **Mock** chip in the nav. Images, movies and meshes are simulated placeholders, nothing is sent to any AI provider, and nothing is charged.
+- **Live**: a green **Live AI** chip in the nav. Requests go to fal.ai and are billed.
+
+`GET /api/health` reports `"mode": "mock" | "live"`.
+
+## Going live (paid)
+
+1. In `.env`, set `P3_PROVIDER=fal` and `FAL_KEY=<key>`. Ideally use a **Pipeline 3 key with a spending limit**, not the one Pipeline 2 uses.
+2. Check the key without running any model. This makes a free 1×1 storage upload:
+   ```bash
+   .venv/Scripts/python -m p3.cli check-provider
+   ```
+3. Restart the server (it does not auto-reload), then confirm the nav shows **Live AI**.
+
+Costs at published fal.ai rates:
+- Each image batch or refinement is six Nano Banana Pro requests, about $0.90.
+- Each Proceed on a new candidate is one Minimax request (price not published).
+- Each developer mesh is about $2.10.
+
+See docs/IMPLEMENTATION.md §4 before running live.
 
 ## Tests
 

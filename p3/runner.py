@@ -11,7 +11,7 @@ import asyncio
 import logging
 import time
 
-from p3.providers.base import Provider, ProviderError, TransientProviderError
+from p3.providers.base import ClassifyErrorMessage, Provider, ProviderError, TransientProviderError
 
 Logger = logging.getLogger("p3.runner")
 
@@ -87,7 +87,7 @@ async def PollUntilDone(ProviderObj: Provider, Endpoint: str, RequestId: str, Ti
             continue
         if Status.State == "completed":
             if Status.Error:
-                raise ProviderError(Status.Error)
+                raise ProviderError(*ClassifyErrorMessage(Status.Error))
             return await _WithTransientRetry(lambda: ProviderObj.Result(Endpoint, RequestId),
                                              MaxTransient, IntervalS)
         await asyncio.sleep(IntervalS)

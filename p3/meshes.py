@@ -85,7 +85,7 @@ class MeshService:
             if not RequestId:
                 Cand = Db.One("SELECT asset_path FROM candidates WHERE id = ?", (Mesh["candidate_id"],))
                 ImagePath = assets.Resolve(S.AssetsDir, Cand["asset_path"])
-                ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), "image/png")
+                ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), assets.ImageContentType(Cand["asset_path"]))
                 RequestId = await Ctx.Provider.Submit(Mesh["endpoint"], {"image_url": ImageUrl, **Settings_})
                 Db.Update("meshes", MeshId, status="running", provider_request_id=RequestId)
             Result = await PollUntilDone(Ctx.Provider, Mesh["endpoint"], RequestId, Ctx.Gen.Mesh.RequestTimeoutS,

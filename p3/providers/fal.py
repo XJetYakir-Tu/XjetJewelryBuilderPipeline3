@@ -15,7 +15,7 @@ def _Wrap(E: Exception) -> Exception:
     if isinstance(E, fal_client.FalClientHTTPError):
         if E.status_code in _TransientHttp:
             return TransientProviderError(f"HTTP {E.status_code}: {E}")
-        Message, Code = ClassifyErrorMessage(str(E))
+        Message, Code = ClassifyErrorMessage(f"HTTP {E.status_code}: {E}")
         return ProviderError(Message, Code)
     Message, Code = ClassifyErrorMessage(str(E))
     return ProviderError(Message, Code)

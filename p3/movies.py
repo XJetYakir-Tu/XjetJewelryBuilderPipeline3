@@ -69,7 +69,7 @@ class MovieService:
                 if not ImagePath.is_file():
                     from p3.providers.base import ProviderError
                     raise ProviderError("The selected image could not be loaded.", "reference_unavailable")
-                ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), "image/png")
+                ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), assets.ImageContentType(Cand["asset_path"]))
                 Arguments = {"image_url": ImageUrl, **Ctx.Gen.Movie.Params}
                 RequestId = await Ctx.Provider.Submit(Movie["endpoint"], Arguments)
                 Db.Update("movies", MovieId, status="running", provider_request_id=RequestId)

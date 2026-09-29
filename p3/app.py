@@ -4,6 +4,7 @@ Run:  .venv/Scripts/python -m uvicorn p3.app:App --port 8310
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import Body, FastAPI, File, Form, Header, Request, UploadFile
@@ -52,6 +53,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
     S = SettingsObj or LoadSettings()
     S.AssetsDir.mkdir(parents=True, exist_ok=True)
     S.DevDir.mkdir(parents=True, exist_ok=True)
+    # Asset paths add ~130 characters (designs/<id>/candidates/<id>.png); Windows fails past 260.
+    if os.name == "nt" and len(str(S.AssetsDir)) > 120:
+        Logger.warning("P3_DATA_DIR is %d characters long; generated asset paths may exceed the Windows "
+                       "260-character limit and fail to save. Use a shorter data directory.", len(str(S.AssetsDir)))
     Catalog = LoadCatalog()
     Ctx = Context(Settings=S, Db=Database(S.DbPath), Provider=ProviderObj or BuildProvider(S),
                   Gen=LoadGenerationConfig(), Catalog=Catalog,
@@ -93,6 +98,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
     @App_.get("/api/health")
     async def Health():
         return {"ok": True, "provider": Ctx.Provider.Name,
+                "mode": "live" if Ctx.Provider.Name == "fal" else "mock",
                 "pricing_profile": Ctx.Pricing.ProfileVersion,
                 "pricing_profile_approved": bool(Ctx.Pricing.Profile and Ctx.Pricing.Profile["approved"]),
                 "unapproved_pricing_allowed": S.AllowUnapprovedPricing,

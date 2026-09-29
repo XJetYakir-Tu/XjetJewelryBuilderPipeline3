@@ -48,6 +48,12 @@ def Sha256(Data: bytes) -> str:
     return hashlib.sha256(Data).hexdigest()
 
 
+def ImageContentType(RelPath: str) -> str:
+    """MIME type for a stored image, from the extension ValidateImage chose when it was written."""
+    Ext = RelPath.rsplit(".", 1)[-1].lower()
+    return {"png": "image/png", "jpeg": "image/jpeg", "jpg": "image/jpeg", "webp": "image/webp"}.get(Ext, "image/png")
+
+
 def ValidateImage(Data: bytes) -> str:
     """Return the image extension ('png'|'jpeg'|'webp') or raise AssetError."""
     if not Data:

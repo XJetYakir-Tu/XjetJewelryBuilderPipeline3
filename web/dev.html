@@ -19,6 +19,10 @@
 <body x-data="devApp()" x-init="init()">
 <header class="top"><div class="brand">XJET ATELIER<small>Pipeline 3 · developer mesh tools</small></div></header>
 <main class="stack">
+  <div class="notice" x-show="mode" x-cloak :class="mode === 'mock' ? 'warn' : ''">
+    <strong x-text="mode === 'mock' ? 'MOCK MODE' : 'LIVE AI MODE'"></strong> —
+    <span x-text="mode === 'mock' ? 'meshes are simulated placeholder tori; no provider is called.' : 'requests go to fal.ai and are billed.'"></span>
+  </div>
   <div class="notice warn">
     Developer-only. Generates a mesh from ONE selected candidate image with
     <code>hitem3d/hi3d/v3.0/image-to-3d</code>. Each request is a paid provider call in live mode.
@@ -83,10 +87,11 @@
 <script>
 function devApp() {
   return {
-    key: '', keyInput: '', ok: false, error: '', busy: false,
+    key: '', keyInput: '', ok: false, error: '', busy: false, mode: null,
     candidates: [], selected: null, meshes: [], _poll: null,
     settings: { export_format: 'stl', resolution: '2048quality', face_count: 2000000 },
     async init() {
+      try { this.mode = (await (await fetch('/api/health')).json()).mode; } catch {}
       try { this.key = sessionStorage.getItem('p3_dev_key') || ''; } catch {}
       if (this.key) await this.connect(this.key);
     },
