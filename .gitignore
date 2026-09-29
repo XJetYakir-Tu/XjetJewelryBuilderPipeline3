@@ -1,0 +1,20 @@
+# Runtime data — Pipeline 3 only, never committed
+var/
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# Secrets / local config
+.env
+*.priv
+*.key
+config/pricing_profile.local.json
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,45 @@
+{
+  "_comment": "Provider request settings. Endpoint ids are fixed in code (p3/providers/endpoints.py); only parameters live here. Every section's content hash becomes its config_version, so editing a section invalidates movie/mesh reuse automatically. Schemas verified against fal.ai OpenAPI on 2026-09-29 (see docs/IMPLEMENTATION.md, Provider verification).",
+  "images": {
+    "candidates_per_batch": 6,
+    "max_concurrent_requests": 6,
+    "request_timeout_s": 300,
+    "max_duplicate_retries_per_slot": 1,
+    "params": {
+      "aspect_ratio": "1:1",
+      "resolution": "1K",
+      "output_format": "png",
+      "limit_generations": true,
+      "num_images": 1
+    },
+    "generate_system_prompt_file": "prompts/image_generate_system.txt",
+    "edit_system_prompt_file": "prompts/image_edit_system.txt",
+    "prompt_suffix_file": "prompts/image_suffix.txt"
+  },
+  "movie": {
+    "request_timeout_s": 900,
+    "params": {
+      "prompt": "The ring in the reference is rigid and frozen. Preserve every element exactly. Pure white seamless studio background. Only the camera moves, orbiting smoothly around the ring at a constant speed.",
+      "prompt_expansion_mode": "disabled",
+      "duration": 6,
+      "resolution": "768P",
+      "camera_trajectory": [
+        { "time": 0.0,  "azimuth": 0,   "elevation": 10, "distance": 1.0 },
+        { "time": 0.25, "azimuth": 90,  "elevation": 10, "distance": 1.0 },
+        { "time": 0.5,  "azimuth": 180, "elevation": 10, "distance": 1.0 },
+        { "time": 0.75, "azimuth": 270, "elevation": 10, "distance": 1.0 },
+        { "time": 1.0,  "azimuth": 360, "elevation": 10, "distance": 1.0 }
+      ]
+    }
+  },
+  "mesh": {
+    "request_timeout_s": 1800,
+    "params": {
+      "resolution": "2048quality",
+      "face_count": 2000000,
+      "export_format": "stl",
+      "enable_texture": false,
+      "enable_pbr": false
+    }
+  }
+}

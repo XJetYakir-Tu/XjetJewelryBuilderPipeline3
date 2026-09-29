@@ -1,0 +1,12 @@
+{
+  "_comment": "SHIPPED DEFAULT: no approved fashion prices exist yet. Every fashion material is 'unconfigured', so the API returns pricing_status=unavailable and Add to Bag stays disabled. This is intentional (spec section 6): fixed 1 cm3 volume is confirmed, but the CPP formula also needs reference bounding-box dimensions, and no reference dimensions or fixed price table have been approved. Replace this file (or point P3_PRICING_PROFILE elsewhere) with an approved profile. See docs/PRICING.md.",
+  "version": "unconfigured-2026-09-29",
+  "approved": false,
+  "currency": "USD",
+  "assumed_volume_cm3": 1.0,
+  "materials": {
+    "stainless_steel": { "method": "unconfigured" },
+    "silver":          { "method": "unconfigured" },
+    "vermeil":         { "method": "unconfigured" }
+  }
+}

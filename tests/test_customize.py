@@ -1,0 +1,190 @@
+"""Customize: static preview, Minimax movie, material groups, size-invariant price, bag enforcement."""
+
+import pytest
+
+from p3.providers import endpoints
+
+
+async def _Ready(Hx, Prompt="Twisted rope band"):
+    Batch = await Hx.NewDesign(Prompt)
+    return Batch["design_id"], Batch["candidates"][4]
+
+
+async def test_proceed_shows_selected_image_immediately_and_starts_one_movie(H):
+    DesignId, Cand = await _Ready(H)
+    Cus = await H.Proceed(DesignId, Cand["id"])
+    assert Cus["image_url"] == Cand["image_url"]
+    assert Cus["candidate_id"] == Cand["id"]
+    assert Cus["material_id"] == "silver" and Cus["ring_size"] is None
+    assert Cus["movie"]["status"] in ("queued", "running")
+    assert (await H.Design(DesignId))["selected_candidate_id"] == Cand["id"]
+    await H.Idle()
+
+    Subs = H.Provider.SubmissionsFor(endpoints.Movie)
+    assert len(Subs) == 1
+    Args = Subs[0][1]
+    assert H.Provider.Uploads[Args["image_url"]] == H.AssetBytes(Cand["image_url"])
+    assert Args["prompt_expansion_mode"] in ("disabled", "balanced", "quality")
+    assert 2 <= len(Args["camera_trajectory"]) <= 12 and 3 <= Args["duration"] <= 15
+    assert Args["resolution"] in ("480P", "768P", "1080P")
+    # Nothing Veo-specific, no hull/measurement/mesh on the customer path.
+    assert not {"aspect_ratio", "negative_prompt", "generate_audio"} & set(Args)
+    assert H.Provider.SubmissionsFor(endpoints.Mesh) == []
+
+    Cus = (await H.Client.get(f"/api/customizations/{Cus['id']}")).json()
+    assert Cus["movie"]["status"] == "ready" and Cus["movie"]["movie_url"].endswith(".mp4")
+    assert Cus["image_url"] == Cand["image_url"]          # static image stays available
+
+
+async def test_repeated_proceed_reuses_the_same_movie(H):
+    DesignId, Cand = await _Ready(H)
+    First = await H.Proceed(DesignId, Cand["id"])
+    Second = await H.Proceed(DesignId, Cand["id"])
+    assert First["id"] == Second["id"] and First["movie"]["id"] == Second["movie"]["id"]
+    await H.Idle()
+    await H.Proceed(DesignId, Cand["id"])
+    R = await H.Client.post(f"/api/candidates/{Cand['id']}/movie")
+    assert R.json()["status"] == "ready"
+    assert len(H.Provider.SubmissionsFor(endpoints.Movie)) == 1
+
+
+async def test_movie_failure_keeps_image_and_price_and_retries_only_movie(HDevPricing):
+    H = HDevPricing
+    DesignId, Cand = await _Ready(H)
+    H.Provider.Script(endpoints.Movie, "fail")
+    Cus = await H.Proceed(DesignId, Cand["id"])
+    await H.Idle()
+    Cus = (await H.Client.get(f"/api/customizations/{Cus['id']}")).json()
+    assert Cus["movie"]["status"] == "failed" and Cus["movie"]["retryable"]
+    assert Cus["image_url"] == Cand["image_url"] and Cus["quote"]["pricing_status"] == "available"
+    ImageSubs = len(H.Provider.SubmissionsFor(endpoints.ImageGenerate))
+
+    R = await H.Client.post(f"/api/candidates/{Cand['id']}/movie")
+    assert R.status_code == 200 and R.json()["id"] != Cus["movie"]["id"]
+    await H.Idle()
+    Cus = (await H.Client.get(f"/api/customizations/{Cus['id']}")).json()
+    assert Cus["movie"]["status"] == "ready"
+    assert len(H.Provider.SubmissionsFor(endpoints.ImageGenerate)) == ImageSubs
+    assert len(H.Provider.SubmissionsFor(endpoints.Movie)) == 2
+
+
+async def test_different_candidate_gets_its_own_customization_and_movie(H):
+    Batch = await H.NewDesign("Band")
+    A = await H.Proceed(Batch["design_id"], Batch["candidates"][0]["id"])
+    B = await H.Proceed(Batch["design_id"], Batch["candidates"][1]["id"])
+    assert A["id"] != B["id"] and A["movie"]["id"] != B["movie"]["id"]
+
+
+async def test_catalog_groups_and_default():
+    from p3.config import LoadCatalog
+    Cat = LoadCatalog().ToJson()
+    assert Cat["default_material_id"] == "silver"
+    Groups = {G["id"]: G for G in Cat["groups"]}
+    assert [M["label"] for M in Groups["fashion"]["materials"]] == ["Stainless Steel", "Silver", "Vermeil"]
+    assert Groups["fashion"]["purchasable"] and not Groups["luxury"]["purchasable"]
+    assert all("Gold" in M["label"] for M in Groups["luxury"]["materials"])
+
+
+async def test_size_changes_never_change_unit_price_and_are_preserved(HDevPricing):
+    H = HDevPricing
+    DesignId, Cand = await _Ready(H)
+    Cus = await H.Proceed(DesignId, Cand["id"])
+    Prices = set()
+    for Size in (4, 6.5, 9, 12):
+        R = await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": Size})
+        assert R.status_code == 200 and R.json()["ring_size"] == Size
+        Prices.add(R.json()["quote"]["unit_price"])
+    assert len(Prices) == 1 and Prices.pop() > 0
+    Q1 = (await H.Client.get("/api/quote", params={"material_id": "silver", "ring_size": 5})).json()
+    Q2 = (await H.Client.get("/api/quote", params={"material_id": "silver", "ring_size": 11})).json()
+    assert Q1["unit_price"] == Q2["unit_price"] and Q1["assumed_volume_cm3"] == 1.0
+    R = await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 7.25})
+    assert R.status_code == 400 and R.json()["error"]["code"] == "invalid_ring_size"
+
+
+async def test_quantity_changes_line_total_not_unit_price(HDevPricing):
+    H = HDevPricing
+    DesignId, Cand = await _Ready(H)
+    Cus = await H.Proceed(DesignId, Cand["id"])
+    R = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"quantity": 3})).json()
+    assert R["quote"]["unit_price"] == Cus["quote"]["unit_price"]
+    assert R["line_total"] == pytest.approx(3 * Cus["quote"]["unit_price"])
+
+
+async def test_luxury_clears_price_and_blocks_bag_then_fashion_restores(HDevPricing):
+    H = HDevPricing
+    DesignId, Cand = await _Ready(H)
+    Cus = await H.Proceed(DesignId, Cand["id"])
+    Cus = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 7})).json()
+    SilverPrice = Cus["quote"]["unit_price"]
+    assert Cus["can_add_to_bag"]
+
+    Lux = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"material_id": "gold_14k_yellow"})).json()
+    assert Lux["quote"]["pricing_status"] == "unavailable" and Lux["quote"]["unit_price"] is None
+    assert Lux["line_total"] is None and not Lux["can_add_to_bag"]
+    assert Lux["add_to_bag_blocked_reason"] == "luxury_preview_only"
+    R = await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})
+    assert R.status_code == 409 and R.json()["error"]["code"] == "luxury_preview_only"
+    assert (await H.Client.get("/api/bag")).json()["lines"] == []
+
+    Back = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"material_id": "silver"})).json()
+    assert Back["quote"]["unit_price"] == SilverPrice and Back["can_add_to_bag"]
+
+
+async def test_bag_enforces_size_and_quote_server_side(HDevPricing):
+    H = HDevPricing
+    DesignId, Cand = await _Ready(H)
+    Cus = await H.Proceed(DesignId, Cand["id"])
+    R = await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})
+    assert R.status_code == 409 and R.json()["error"]["code"] == "ring_size_required"
+
+    await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 8, "quantity": 2})
+    R = await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})
+    assert R.status_code == 200
+    Bag = R.json()
+    assert len(Bag["lines"]) == 1 and not Bag["checkout_available"]
+    Line = Bag["lines"][0]
+    assert Line["ring_size"] == 8 and Line["quantity"] == 2 and Line["candidate_id"] == Cand["id"]
+    assert Line["quote"]["assumed_volume_cm3"] == 1.0
+    assert Bag["totals"]["USD"] == pytest.approx(2 * Line["unit_price"])
+
+    await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 10, "quantity": 1})
+    Bag = (await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})).json()
+    assert {L["ring_size"] for L in Bag["lines"]} == {8, 10}
+    assert len({L["unit_price"] for L in Bag["lines"]}) == 1      # every size, same unit price
+
+    R = await H.Client.delete(f"/api/bag/{Bag['lines'][0]['id']}")
+    assert len(R.json()["lines"]) == 1
+
+
+async def test_bag_rejects_fashion_when_pricing_unavailable(H):
+    DesignId, Cand = await _Ready(H)
+    Cus = await H.Proceed(DesignId, Cand["id"])
+    Cus = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 7})).json()
+    assert Cus["quote"]["pricing_status"] == "unavailable" and not Cus["can_add_to_bag"]
+    R = await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})
+    assert R.status_code == 409 and R.json()["error"]["code"] == "price_unavailable"
+
+
+async def test_customizations_are_owner_scoped(H):
+    from p3.auth import CreateToken
+    DesignId, Cand = await _Ready(H)
+    Cus = await H.Proceed(DesignId, Cand["id"])
+    Other = {"X-Access-Token": CreateToken(H.Ctx, "other")}
+    assert (await H.Client.get(f"/api/customizations/{Cus['id']}", headers=Other)).status_code == 404
+    assert (await H.Client.get(f"/api/designs/{DesignId}", headers=Other)).status_code == 404
+    assert (await H.Client.post("/api/bag", json={"customization_id": Cus["id"]}, headers=Other)).status_code == 404
+
+
+async def test_reload_recovers_design_state_without_new_requests(H):
+    DesignId, Cand = await _Ready(H)
+    await H.Proceed(DesignId, Cand["id"])
+    await H.Idle()
+    Before = len(H.Provider.Submissions)
+    D = await H.Design(DesignId)
+    assert D["selected_candidate_id"] == Cand["id"]
+    assert D["customization"]["movie"]["status"] == "ready"
+    assert len(D["batches"]) == 1 and len(D["batches"][0]["candidates"]) == 6
+    assert len(H.Provider.Submissions) == Before
+    Listed = (await H.Client.get("/api/designs")).json()["designs"]
+    assert Listed[0]["id"] == DesignId and Listed[0]["thumbnail_url"] == Cand["image_url"]

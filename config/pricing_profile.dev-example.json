@@ -1,0 +1,21 @@
+{
+  "_comment": "DEVELOPMENT EXAMPLE ONLY — NOT APPROVED PRICES. Lets the fashion quote/bag flow be exercised locally. The server only honours an unapproved profile when P3_ALLOW_UNAPPROVED_PRICING=true, and the UI then labels every price as an unapproved estimate. reference_dims_mm is an ILLUSTRATIVE placeholder chosen by the implementer, not a product decision: the CPP tray-packing and print-time terms depend on it. Vermeil plating is not costed (plating_cost_usd=null). See docs/PRICING.md.",
+  "version": "dev-example-cpp-2026-09-29",
+  "approved": false,
+  "currency": "USD",
+  "assumed_volume_cm3": 1.0,
+  "defaults": {
+    "reference_dims_mm": { "x": 22.0, "y": 22.0, "z": 8.0 },
+    "reference_dims_note": "Illustrative only; roughly a US 7 band footprint. Requires product-owner approval before any production use.",
+    "cpp_shop_parameters": {
+      "electricity_usd_per_kwh": 0.10, "labor_usd_per_hr": 35.0, "overhead_factor": 0.15,
+      "machine_cost_usd": 728000.0, "smart_price_usd": 0.0,
+      "dep_years_machine": 5.0, "dep_years_furnace": 7.0, "service_rate": 0.05
+    }
+  },
+  "materials": {
+    "stainless_steel": { "method": "cpp_reference" },
+    "silver":          { "method": "cpp_reference" },
+    "vermeil":         { "method": "cpp_reference", "plating_cost_usd": null }
+  }
+}

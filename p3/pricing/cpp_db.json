@@ -1,0 +1,455 @@
+{
+  "_provenance": {
+    "source": "Pipeline 2 (read-only reference) app/static/js/vendor/XjetCostPerPartCalculator/constants.js deep-merged with app/static/js/cpp-overrides.js, plus app/static/js/metal-map.js",
+    "source_revision": "1e871734bb9ac0f824bdb8950d62fbf6a35083bb",
+    "overrides_dated": "2026-09-14 (per cpp-overrides.js / metal-map.js headers)",
+    "snapshot_date": "2026-09-29",
+    "note": "Independent copy for Pipeline 3. Only the CPP material rows needed by the Pipeline 3 catalog are kept. This is manufacturing-cost reference data, not an approved price list."
+  },
+  "materials": {
+    "SS316L": {
+      "type": "Metal",
+      "price": 270,
+      "density": 8.0,
+      "shrinkage": 0.129,
+      "layerThickness": 7.9,
+      "densityPct": 0.975,
+      "powderInk": 0.47,
+      "yield": 0.8,
+      "debinding": 1,
+      "defectRate": 0.2
+    },
+    "Silver": {
+      "type": "Silver",
+      "price": 1782,
+      "density": 10.36,
+      "shrinkage": 0.115,
+      "layerThickness": 4,
+      "densityPct": 0.985,
+      "powderInk": 0.5,
+      "yield": 0.8,
+      "debinding": 0,
+      "defectRate": 0.05
+    },
+    "Gold": {
+      "type": "Gold",
+      "price": 62269,
+      "density": 19.3,
+      "shrinkage": 0.115,
+      "layerThickness": 4,
+      "densityPct": 0.985,
+      "powderInk": 0.425,
+      "yield": 0.8,
+      "debinding": 0,
+      "defectRate": 0.05
+    },
+    "Gold 18K": {
+      "type": "Gold",
+      "price": 56818,
+      "density": 15.3,
+      "shrinkage": 0.115,
+      "layerThickness": 4,
+      "densityPct": 0.985,
+      "powderInk": 0.5,
+      "yield": 0.8,
+      "debinding": 0,
+      "defectRate": 0.05
+    },
+    "Gold 14K": {
+      "type": "Gold",
+      "price": 45968,
+      "density": 13.7,
+      "shrinkage": 0.115,
+      "layerThickness": 4,
+      "densityPct": 0.985,
+      "powderInk": 0.5,
+      "yield": 0.8,
+      "debinding": 0,
+      "defectRate": 0.05
+    }
+  },
+  "support": {
+    "SS316L": {
+      "price": 120,
+      "inkDensity": 1.6,
+      "supportDensity": 1.05,
+      "consumptionVol": 1,
+      "consumptionWeight": 0.65625,
+      "buildUsed": 0.1
+    },
+    "Silver": {
+      "price": 120,
+      "inkDensity": 1.54,
+      "supportDensity": 1.05,
+      "consumptionVol": 1,
+      "consumptionWeight": 0.65625,
+      "buildUsed": 0.1
+    },
+    "Gold": {
+      "price": 120,
+      "inkDensity": 1.54,
+      "supportDensity": 1.05,
+      "consumptionVol": 1,
+      "consumptionWeight": 0.65625,
+      "buildUsed": 0.1
+    },
+    "Gold 18K": {
+      "price": 120,
+      "inkDensity": 1.54,
+      "supportDensity": 1.05,
+      "consumptionVol": 1,
+      "consumptionWeight": 0.65625,
+      "buildUsed": 0.1
+    },
+    "Gold 14K": {
+      "price": 120,
+      "inkDensity": 1.54,
+      "supportDensity": 1.05,
+      "consumptionVol": 1,
+      "consumptionWeight": 0.65625,
+      "buildUsed": 0.1
+    }
+  },
+  "tray": {
+    "SS316L": {
+      "Single": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 60,
+        "layerTime": 20.314
+      },
+      "Stacked": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 60,
+        "layerTime": 20.314
+      }
+    },
+    "Silver": {
+      "Single": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 30,
+        "layerTime": 27
+      },
+      "Stacked": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 30,
+        "layerTime": 27
+      }
+    },
+    "Gold": {
+      "Single": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 30,
+        "layerTime": 27
+      },
+      "Stacked": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 30,
+        "layerTime": 27
+      }
+    },
+    "Gold 18K": {
+      "Single": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 30,
+        "layerTime": 27
+      },
+      "Stacked": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 30,
+        "layerTime": 27
+      }
+    },
+    "Gold 14K": {
+      "Single": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 30,
+        "layerTime": 27
+      },
+      "Stacked": {
+        "maxX": 500,
+        "maxY": 131.98,
+        "maxZ": 30,
+        "layerTime": 27
+      }
+    }
+  },
+  "cleaning": {
+    "SS316L": {
+      "waterCons": 300,
+      "waterCost": 0.04,
+      "workTime": 12,
+      "power": 0.3
+    },
+    "Silver": {
+      "waterCons": 300,
+      "waterCost": 0.04,
+      "workTime": 12,
+      "power": 0.3
+    },
+    "Gold": {
+      "waterCons": 300,
+      "waterCost": 0.04,
+      "workTime": 12,
+      "power": 0.3
+    },
+    "Gold 18K": {
+      "waterCons": 300,
+      "waterCost": 0.04,
+      "workTime": 12,
+      "power": 0.3
+    },
+    "Gold 14K": {
+      "waterCons": 300,
+      "waterCost": 0.04,
+      "workTime": 12,
+      "power": 0.3
+    }
+  },
+  "sintering": {
+    "SS316L": {
+      "gasCons": 300,
+      "gasCost": 1,
+      "time": 35,
+      "power": 45
+    },
+    "Silver": {
+      "gasCons": 300,
+      "gasCost": 1,
+      "time": 35,
+      "power": 45
+    },
+    "Gold": {
+      "gasCons": 300,
+      "gasCost": 1,
+      "time": 35,
+      "power": 45
+    },
+    "Gold 18K": {
+      "gasCons": 300,
+      "gasCost": 1,
+      "time": 35,
+      "power": 45
+    },
+    "Gold 14K": {
+      "gasCons": 300,
+      "gasCost": 1,
+      "time": 35,
+      "power": 45
+    }
+  },
+  "debinding": {
+    "SS316L": {
+      "time": 9,
+      "power": 2.5
+    },
+    "Silver": {
+      "time": 0,
+      "power": 0
+    },
+    "Gold": {
+      "time": 0,
+      "power": 0
+    },
+    "Gold 18K": {
+      "time": 0,
+      "power": 0
+    },
+    "Gold 14K": {
+      "time": 0,
+      "power": 0
+    }
+  },
+  "labor": {
+    "SS316L": {
+      "trayPrep": 0.5,
+      "machine": 0.05,
+      "supportRemoval": 1,
+      "debinding": 0.5,
+      "sintering": 0.5
+    },
+    "Silver": {
+      "trayPrep": 0.5,
+      "machine": 0.05,
+      "supportRemoval": 1,
+      "debinding": 0,
+      "sintering": 0.5
+    },
+    "Gold": {
+      "trayPrep": 0.5,
+      "machine": 0.05,
+      "supportRemoval": 1,
+      "debinding": 0,
+      "sintering": 0.5
+    },
+    "Gold 18K": {
+      "trayPrep": 0.5,
+      "machine": 0.05,
+      "supportRemoval": 1,
+      "debinding": 0,
+      "sintering": 0.5
+    },
+    "Gold 14K": {
+      "trayPrep": 0.5,
+      "machine": 0.05,
+      "supportRemoval": 1,
+      "debinding": 0,
+      "sintering": 0.5
+    }
+  },
+  "depreciation": {
+    "machDays": 292,
+    "machHours": 24,
+    "sinterDays": 350,
+    "sinterHours": 24,
+    "sinterCeramicPrice": 30000,
+    "debindPrice": 5000,
+    "machinesPerCleaning": 1,
+    "machinesPerSintering": 3
+  },
+  "serviceLevels": {
+    "Diamond": 0.12,
+    "Silver": 0.1,
+    "Bronze": 0.08,
+    "Standard": 0.05
+  },
+  "machines": {
+    "Carmel 1400": {
+      "xValue": 500,
+      "yValue": 140,
+      "systemPrice": 728000
+    },
+    "Carmel 5000X": {
+      "xValue": 500,
+      "yValue": 280,
+      "systemPrice": 1050000
+    },
+    "Carmel Pro": {
+      "xValue": 350,
+      "yValue": 140,
+      "systemPrice": 350000
+    }
+  },
+  "margins": {
+    "pedestal": 0.45,
+    "stacking": 1.5,
+    "envelope": 1.0
+  },
+  "machinePowerKW": 4.5,
+  "rollerFactor": 0.07,
+  "defectRateOverride": 0,
+  "feasibility": {
+    "bulkyFactor": {
+      "Alumina": 6,
+      "Zirconia": 12,
+      "Silicon Nitride": 8,
+      "17-4 PH": 9,
+      "SS316L": 9,
+      "Silver": 9,
+      "Gold": 9,
+      "Copper": 9,
+      "Gold 18K": 9,
+      "Gold 14K": 9
+    },
+    "minFeatureSize": 0.3,
+    "maxAspectRatio": 10,
+    "maxDimX": 200,
+    "maxDimY": 107,
+    "maxDimZMetal": 30,
+    "maxDimZCeramic": 50
+  },
+  "metal_map": {
+    "24K Yellow Gold": {
+      "matKey": "Gold",
+      "density": 19.3,
+      "priceScale": 1.0,
+      "margin": 0.5
+    },
+    "18K Yellow Gold": {
+      "matKey": "Gold 18K",
+      "density": 15.3,
+      "priceScale": 1.0,
+      "margin": 0.5
+    },
+    "18K White Gold": {
+      "matKey": "Gold 18K",
+      "density": 15.3,
+      "priceScale": 1.0,
+      "margin": 0.5
+    },
+    "18K Rose Gold": {
+      "matKey": "Gold 18K",
+      "density": 15.3,
+      "priceScale": 1.0,
+      "margin": 0.5
+    },
+    "14K Yellow Gold": {
+      "matKey": "Gold 14K",
+      "density": 13.7,
+      "priceScale": 1.0,
+      "margin": 0.5
+    },
+    "14K White Gold": {
+      "matKey": "Gold 14K",
+      "density": 13.7,
+      "priceScale": 1.0,
+      "margin": 0.5
+    },
+    "14K Rose Gold": {
+      "matKey": "Gold 14K",
+      "density": 13.7,
+      "priceScale": 1.0,
+      "margin": 0.5
+    },
+    "10K Yellow Gold": {
+      "matKey": "Gold 14K",
+      "density": 11.6,
+      "priceScale": 0.714286,
+      "margin": 0.53
+    },
+    "10K White Gold": {
+      "matKey": "Gold 14K",
+      "density": 11.6,
+      "priceScale": 0.714286,
+      "margin": 0.53
+    },
+    "10K Rose Gold": {
+      "matKey": "Gold 14K",
+      "density": 11.6,
+      "priceScale": 0.714286,
+      "margin": 0.53
+    },
+    "Sterling Silver 925": {
+      "matKey": "Silver",
+      "density": 10.36,
+      "priceScale": 1.0,
+      "margin": 0.77
+    },
+    "14K Gold Vermeil": {
+      "matKey": "Silver",
+      "density": 10.36,
+      "priceScale": 1.0,
+      "margin": 0.79
+    },
+    "18K Gold Vermeil": {
+      "matKey": "Silver",
+      "density": 10.36,
+      "priceScale": 1.0,
+      "margin": 0.79
+    },
+    "Stainless Steel": {
+      "matKey": "SS316L",
+      "density": 8.0,
+      "priceScale": 1.0,
+      "margin": 0.87
+    }
+  }
+}

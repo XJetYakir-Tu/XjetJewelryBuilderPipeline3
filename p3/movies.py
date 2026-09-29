@@ -1,0 +1,113 @@
+"""Customize movie: one Minimax camera-controls video from the selected image.
+
+  * generated only on Proceed (never for all six candidates);
+  * keyed by (candidate, movie config_version): a live or ready movie is reused,
+    so repeated Proceed clicks and returning to the same candidate never
+    duplicate paid work (enforced by the movies_one_live partial unique index);
+  * a failed movie is retried on its own — the image batch is untouched;
+  * movie state never gates pricing or the bag.
+"""
+
+import logging
+import sqlite3
+
+from p3 import assets
+from p3.context import Context, HttpError
+from p3.db import NewId, Now
+from p3.providers import endpoints
+from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
+
+Logger = logging.getLogger("p3.movies")
+
+
+class MovieService:
+    def __init__(self, Ctx: Context):
+        self.Ctx = Ctx
+
+    def Latest(self, CandidateId: str) -> dict | None:
+        """Most relevant movie for the candidate under the current config (live first, then latest)."""
+        Version = self.Ctx.Gen.Movie.Version
+        Row = self.Ctx.Db.One(
+            "SELECT * FROM movies WHERE candidate_id = ? AND config_version = ? "
+            "ORDER BY CASE WHEN status IN ('queued','running','ready') THEN 0 ELSE 1 END, created_at DESC LIMIT 1",
+            (CandidateId, Version))
+        return Row
+
+    def Ensure(self, Token: str, CandidateId: str) -> dict:
+        """Start the movie for a ready candidate, or return the live/ready one."""
+        Db = self.Ctx.Db
+        Version = self.Ctx.Gen.Movie.Version
+        Live = Db.One("SELECT * FROM movies WHERE candidate_id = ? AND config_version = ? "
+                      "AND status IN ('queued','running','ready')", (CandidateId, Version))
+        if Live:
+            return self.ToJson(Live)
+        MovieId = NewId("mov")
+        T = Now()
+        try:
+            Db.Execute("INSERT INTO movies (id, candidate_id, config_version, endpoint, status, created_at, updated_at) "
+                       "VALUES (?,?,?,?,?,?,?)", (MovieId, CandidateId, Version, endpoints.Movie, "queued", T, T))
+        except sqlite3.IntegrityError:
+            # Lost a race with a concurrent Proceed: reuse the winner.
+            return self.ToJson(Db.One("SELECT * FROM movies WHERE candidate_id = ? AND config_version = ? "
+                                      "AND status IN ('queued','running','ready')", (CandidateId, Version)))
+        self.Ctx.Runner.Spawn(f"movie:{MovieId}", self._Drive(MovieId, Token))
+        return self.ToJson(Db.One("SELECT * FROM movies WHERE id = ?", (MovieId,)))
+
+    async def _Drive(self, MovieId: str, Token: str | None) -> None:
+        Ctx = self.Ctx
+        Db = Ctx.Db
+        S = Ctx.Settings
+        Movie = Db.One("SELECT * FROM movies WHERE id = ?", (MovieId,))
+        if Movie is None or Movie["status"] not in ("queued", "running"):
+            return
+        Cand = Db.One("SELECT c.*, b.design_id FROM candidates c JOIN batches b ON b.id = c.batch_id "
+                      "WHERE c.id = ?", (Movie["candidate_id"],))
+        try:
+            RequestId = Movie["provider_request_id"]
+            if not RequestId:
+                ImagePath = assets.Resolve(S.AssetsDir, Cand["asset_path"])
+                if not ImagePath.is_file():
+                    from p3.providers.base import ProviderError
+                    raise ProviderError("The selected image could not be loaded.", "reference_unavailable")
+                ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), "image/png")
+                Arguments = {"image_url": ImageUrl, **Ctx.Gen.Movie.Params}
+                RequestId = await Ctx.Provider.Submit(Movie["endpoint"], Arguments)
+                Db.Update("movies", MovieId, status="running", provider_request_id=RequestId)
+                if Token:
+                    Db.RecordUsage(Token, "movie", MovieId, 1)
+            Result = await PollUntilDone(Ctx.Provider, Movie["endpoint"], RequestId,
+                                         Ctx.Gen.Movie.RequestTimeoutS, S.PollIntervalS, S.MaxTransientPollErrors)
+            Url = (Result.get("video") or {}).get("url")
+            if not Url:
+                raise assets.AssetError("Provider returned no video")
+            Data = await DownloadWithRetry(Ctx.Provider, Url, S.MaxTransientPollErrors, S.PollIntervalS)
+            assets.ValidateMp4(Data)
+            RelPath = f"designs/{Cand['design_id']}/movies/{MovieId}.mp4"
+            assets.WriteAtomic(S.AssetsDir, RelPath, Data)
+            Db.Update("movies", MovieId, status="ready", asset_path=RelPath, error=None, error_code=None)
+        except Exception as E:
+            Message, Code = FailureFor(E)
+            Logger.warning("Movie %s failed (%s): %s", MovieId, Code, E)
+            Db.Update("movies", MovieId, status="failed", error=Message, error_code=Code)
+
+    def Reconcile(self) -> dict:
+        Db = self.Ctx.Db
+        Resumed = Interrupted = 0
+        for M in Db.All("SELECT id, provider_request_id FROM movies WHERE status IN ('queued','running')"):
+            if M["provider_request_id"]:
+                self.Ctx.Runner.Spawn(f"movie:{M['id']}", self._Drive(M["id"], None))
+                Resumed += 1
+            else:
+                Db.Update("movies", M["id"], status="interrupted", error_code="interrupted",
+                          error="Movie generation was interrupted by a server restart. You can retry.")
+                Interrupted += 1
+        return {"resumed": Resumed, "interrupted": Interrupted}
+
+    def ToJson(self, M: dict | None) -> dict | None:
+        if M is None:
+            return None
+        return {"id": M["id"], "candidate_id": M["candidate_id"], "status": M["status"],
+                "config_version": M["config_version"], "endpoint": M["endpoint"],
+                "movie_url": self.Ctx.AssetUrl(M["asset_path"]) if M["status"] == "ready" else None,
+                "error": M["error"], "error_code": M["error_code"],
+                "retryable": M["status"] in ("failed", "interrupted")}

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>XJET Atelier — Pipeline 3</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
+</head>
+<body x-data="p3App()" x-init="init()">
+
+<header class="top">
+  <div class="brand">XJET ATELIER<small>Pipeline 3 · preview</small></div>
+  <nav class="nav" x-show="token" x-cloak>
+    <button :class="{on: view==='design' || view==='customize'}" @click="goDesign()">Design</button>
+    <button :class="{on: view==='designs'}" @click="showDesigns()">My designs</button>
+    <button :class="{on: view==='bag'}" @click="showBag()" x-text="'Bag (' + bagCount + ')'"></button>
+  </nav>
+</header>
+
+<main>
+  <!-- ── Access ─────────────────────────────────────────────── -->
+  <section x-show="!token" x-cloak class="compose stack">
+    <h1>Welcome</h1>
+    <p class="lede">Enter the access token you were given to start designing.</p>
+    <input type="password" x-model="tokenInput" placeholder="Access token" @keydown.enter="signIn()" autocomplete="off">
+    <div class="row"><button class="btn" @click="signIn()" :disabled="!tokenInput.trim()">Enter</button></div>
+    <p class="error" x-show="authError" x-text="authError"></p>
+  </section>
+
+  <template x-if="token">
+  <div>
+    <!-- ── Design: compose ───────────────────────────────────── -->
+    <section x-show="view==='design' && !design" class="compose stack">
+      <h1>Design your ring</h1>
+      <p class="lede">Describe the ring you imagine. We'll create six different options from your description for you to choose from.</p>
+      <textarea rows="4" x-model="prompt" placeholder="e.g. A slim band that twists into a small open leaf at the front"></textarea>
+      <div class="upload">
+        <label class="btn ghost" style="display:inline-block">
+          <input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" @change="pickReference($event)">
+          Add reference image
+        </label>
+        <template x-if="referencePreview">
+          <div class="row">
+            <img :src="referencePreview" alt="Reference image">
+            <button class="link" @click="clearReference()">Remove</button>
+          </div>
+        </template>
+        <span class="muted" x-show="!referencePreview">Optional</span>
+      </div>
+      <label class="check" x-show="referenceFile">
+        <input type="checkbox" x-model="rightsConfirmed">
+        I confirm I own this image or have the rights to use it.
+      </label>
+      <div class="row">
+        <button class="btn" @click="generate()" :disabled="submitting">
+          <span x-show="!submitting">Create six designs</span><span x-show="submitting">Starting…</span>
+        </button>
+      </div>
+      <p class="error" x-show="composeError" x-text="composeError"></p>
+    </section>
+
+    <!-- ── Design: candidates ─────────────────────────────────── -->
+    <section x-show="view==='design' && design" x-cloak>
+      <h1 x-text="design?.title"></h1>
+      <p class="muted" x-text="design?.prompt"></p>
+
+      <div class="batch-tabs" x-show="(design?.batches || []).filter(b => b.id !== pendingRefineBatchId).length > 1">
+        <template x-for="(b, i) in (design?.batches || [])" :key="b.id">
+          <button x-show="b.id !== pendingRefineBatchId" :class="{on: b.id===viewBatchId}" @click="viewBatchId=b.id"
+                  x-text="batchLabel(b, i)"></button>
+        </template>
+      </div>
+      <p class="muted small" x-show="viewBatch?.kind==='refine'" x-text="'Refinement: ' + (viewBatch?.user_text || '')"></p>
+
+      <div class="notice warn" x-show="viewBatch?.status==='partial'" style="margin-bottom:14px">
+        <span x-text="readyCount(viewBatch) + ' of 6 designs are ready. Some options could not be created.'"></span>
+        <button class="link" @click="retryBatch(viewBatch)">Retry missing designs</button>
+      </div>
+      <div class="notice warn" x-show="viewBatch?.status==='failed'" style="margin-bottom:14px">
+        None of the designs could be created.
+        <button class="link" @click="retryBatch(viewBatch)">Try again</button>
+      </div>
+
+      <div class="grid">
+        <template x-for="c in (viewBatch?.candidates || [])" :key="c.id">
+          <div class="card" :class="{ready: c.status==='ready', selected: c.id===selectedId, shimmer: c.status==='pending' || c.status==='generating'}"
+               @click="select(c)" role="button" :aria-pressed="c.id===selectedId">
+            <template x-if="c.status==='ready'"><img :src="c.image_url" :alt="'Design option ' + (c.slot+1)"></template>
+            <template x-if="c.status==='pending' || c.status==='generating'">
+              <div class="state"><div><span class="spinner"></span><div style="margin-top:8px">Creating option <span x-text="c.slot+1"></span>…</div></div></div>
+            </template>
+            <template x-if="c.status==='failed'">
+              <div class="state"><div>
+                <div x-text="c.error || 'This option could not be created.'"></div>
+                <button class="btn ghost" style="margin-top:12px" @click.stop="retrySlot(c)">Retry</button>
+              </div></div>
+            </template>
+            <span class="tag" x-show="c.id===selectedId">Selected</span>
+            <button class="zoom" x-show="c.status==='ready'" @click.stop="openZoom(c)" :aria-label="'Zoom option ' + (c.slot+1)" title="Zoom">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg>
+            </button>
+            <span class="slot" x-text="'Option ' + (c.slot+1)"></span>
+          </div>
+        </template>
+      </div>
+
+      <div class="progress" x-show="pendingBatch">
+        <span class="spinner"></span>
+        <span x-text="'Creating six refinements… ' + readyCount(pendingBatch) + ' of 6 ready'"></span>
+      </div>
+
+      <div class="actions">
+        <button class="btn ghost" :disabled="!canActOnSelection || !!pendingBatch" @click="refineOpen = !refineOpen; refineError=''">Refine selected</button>
+        <button class="btn" :disabled="!canActOnSelection" @click="proceed()">Proceed with selected</button>
+        <button class="btn ghost" @click="startNew()">Start new</button>
+        <span class="muted" x-show="!selectedId">Select one design to refine or proceed.</span>
+      </div>
+      <div class="refine-box stack" x-show="refineOpen && canActOnSelection">
+        <textarea rows="3" x-model="refineText" placeholder="What should change? e.g. Make the band thinner and add fine milgrain edges"></textarea>
+        <div class="row">
+          <button class="btn" @click="refine()">Create six refinements</button>
+          <button class="link" @click="refineOpen=false">Cancel</button>
+        </div>
+      </div>
+      <p class="error" x-show="refineError" x-text="refineError"></p>
+      <p class="error" x-show="actionError" x-text="actionError"></p>
+    </section>
+
+    <!-- ── Customize ─────────────────────────────────────────── -->
+    <section x-show="view==='customize' && cust" x-cloak>
+      <button class="link" @click="backToDesign()">← Back to designs</button>
+      <div class="custom" style="margin-top:16px">
+        <div>
+          <div class="media-tabs">
+            <button :class="{on: mediaTab==='image'}" @click="mediaTab='image'">Image</button>
+            <button :class="{on: mediaTab==='movie'}" @click="mediaTab='movie'">Movie<span class="dot" :class="{ready: cust?.movie?.status==='ready'}"></span></button>
+          </div>
+          <div class="media">
+            <img x-show="mediaTab==='image'" :src="cust?.image_url" alt="Selected design" :style="{filter: material(cust?.material_id)?.tint || ''}">
+            <template x-if="mediaTab==='movie' && cust?.movie?.status==='ready'">
+              <video :src="cust.movie.movie_url" autoplay loop muted playsinline controls :style="{filter: material(cust?.material_id)?.tint || ''}"></video>
+            </template>
+            <div class="state" x-show="mediaTab==='movie' && (cust?.movie?.status==='queued' || cust?.movie?.status==='running')">
+              <span class="spinner"></span><div style="margin-top:10px">Creating your movie… you can keep customizing.</div>
+            </div>
+            <div class="state" x-show="mediaTab==='movie' && (cust?.movie?.status==='failed' || cust?.movie?.status==='interrupted')">
+              <div x-text="cust?.movie?.error || 'The movie could not be created.'"></div>
+              <button class="btn ghost" style="margin-top:12px" @click="retryMovie()">Retry movie</button>
+            </div>
+          </div>
+          <p class="muted small">Metal colour is a visual preview of the same design.</p>
+        </div>
+
+        <div>
+          <h2 x-text="design?.title"></h2>
+
+          <div class="section-label">Material</div>
+          <div class="groups">
+            <template x-for="g in (catalog?.groups || [])" :key="g.id">
+              <button class="group" :class="{on: currentGroup===g.id}" @click="chooseGroup(g.id)" :aria-label="g.label" :aria-pressed="currentGroup===g.id">
+                <b x-text="g.label"></b>
+                <span x-text="g.materials.map(m => m.label).join(' · ')" x-show="g.id==='fashion'"></span>
+                <span x-show="g.id==='luxury'">Gold options — preview only</span>
+              </button>
+            </template>
+          </div>
+          <div class="options">
+            <template x-for="m in materialsOf(currentGroup)" :key="m.id">
+              <button class="opt" :class="{on: cust?.material_id===m.id}" @click="chooseMaterial(m.id)" :aria-label="m.label" :aria-pressed="cust?.material_id===m.id">
+                <span class="swatch" :style="{background: m.swatch}"></span><span x-text="m.label"></span>
+              </button>
+            </template>
+          </div>
+
+          <div class="section-label">Price</div>
+          <div class="price" :class="{na: priceText==='Price unavailable'}" x-text="priceText"></div>
+          <template x-if="!isLuxury && cust?.quote?.pricing_status==='available'">
+            <div class="stack" style="margin-top:6px">
+              <div class="muted small">
+                Per piece, based on an assumed volume of <span x-text="cust.quote.assumed_volume_cm3"></span> cm³.
+                Estimated metal weight <span x-text="cust.quote.estimated_weight_g"></span> g (assumed, not measured).
+                Price does not change with ring size.
+              </div>
+              <div x-show="!cust.quote.profile_approved"><span class="badge">Unapproved development pricing — not a real price</span></div>
+            </div>
+          </template>
+
+          <div class="section-label">Ring size (<span x-text="catalog?.ring_sizes.system"></span>)</div>
+          <select @change="setSize($event.target.value)" :disabled="!cust?.id" style="max-width:220px">
+            <option value="" :selected="cust?.ring_size==null">Select size</option>
+            <template x-for="s in (catalog?.ring_sizes.values || [])" :key="s">
+              <option :value="s" :selected="cust?.ring_size==s" x-text="s"></option>
+            </template>
+          </select>
+
+          <div class="section-label">Quantity</div>
+          <div class="qty">
+            <button @click="setQuantity(-1)" :disabled="!cust?.id">−</button>
+            <span x-text="cust?.quantity || 1"></span>
+            <button @click="setQuantity(1)" :disabled="!cust?.id">+</button>
+          </div>
+          <div class="muted small" style="margin-top:6px" x-show="cust?.line_total != null && cust?.quantity > 1"
+               x-text="'Total ' + money(cust?.line_total || 0, cust?.quote?.currency)"></div>
+
+          <div class="actions">
+            <button class="btn" :disabled="!cust?.can_add_to_bag || quotePending" @click="addToBag()">Add to bag</button>
+          </div>
+          <p class="muted small" x-show="!cust?.can_add_to_bag" x-text="bagBlockedText"></p>
+          <p class="small" style="color:var(--ok)" x-show="bagMessage" x-text="bagMessage"></p>
+          <p class="error" x-show="custError" x-text="custError"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Bag ───────────────────────────────────────────────── -->
+    <section x-show="view==='bag'" x-cloak>
+      <h1>Your bag</h1>
+      <div class="notice" style="margin:14px 0 8px" x-text="bag?.checkout_note"></div>
+      <p class="muted" x-show="!(bag?.lines || []).length">Your bag is empty.</p>
+      <template x-for="l in (bag?.lines || [])" :key="l.id">
+        <div class="bag-line">
+          <img :src="l.image_url" :alt="l.title" :style="{filter: material(l.material_id)?.tint || ''}">
+          <div>
+            <div x-text="l.title"></div>
+            <div class="muted small" x-text="l.material_label + ' · Size ' + l.ring_size + ' · Qty ' + l.quantity"></div>
+            <div class="muted small" x-text="money(l.unit_price, l.currency) + ' each · 1 cm³ assumed volume'"></div>
+            <span class="badge" x-show="!l.quote.profile_approved">Unapproved development pricing</span>
+            <span class="badge" x-show="l.price_is_stale">Price profile changed since added</span>
+          </div>
+          <div style="text-align:right">
+            <div x-text="money(l.line_total, l.currency)"></div>
+            <button class="link" @click="removeLine(l)">Remove</button>
+          </div>
+        </div>
+      </template>
+      <template x-for="(total, cur) in (bag?.totals || {})" :key="cur">
+        <div class="row" style="justify-content:flex-end; margin-top:16px"><b x-text="'Subtotal ' + money(total, cur)"></b></div>
+      </template>
+      <div class="row" style="justify-content:flex-end; margin-top:16px">
+        <button class="btn" disabled title="Not available in this prototype">Checkout unavailable</button>
+      </div>
+    </section>
+
+    <!-- ── My designs ─────────────────────────────────────────── -->
+    <section x-show="view==='designs'" x-cloak>
+      <h1>My designs</h1>
+      <p class="muted" x-show="!designs.length">No saved designs yet.</p>
+      <div class="designs">
+        <template x-for="d in designs" :key="d.id">
+          <button class="design-tile" @click="openDesign(d.id)">
+            <div class="thumb"><img x-show="d.thumbnail_url" :src="d.thumbnail_url" :alt="d.title"></div>
+            <div class="meta"><div x-text="d.title"></div><div class="muted small" x-text="new Date(d.updated_at).toLocaleString()"></div></div>
+          </button>
+        </template>
+      </div>
+    </section>
+  </div>
+  </template>
+</main>
+
+<!-- ── Zoom lightbox ────────────────────────────────────────── -->
+<div class="lightbox" x-show="lightbox" x-cloak @click.self="closeZoom()" @keydown.escape.window="closeZoom()">
+  <div class="panel">
+    <div class="viewport">
+      <img :src="lightbox?.image_url" :class="{big: lightboxBig}" :style="lightboxBig ? {width: '1600px', maxHeight: 'none'} : {width: 'auto', maxWidth: '100%', maxHeight: '70vh'}"
+           @click="lightboxBig = !lightboxBig" alt="Zoomed design">
+    </div>
+    <div class="bar">
+      <span class="muted small">Click the image to zoom in or out.</span>
+      <div class="row">
+        <span class="muted small" x-show="lightbox && lightbox.id===selectedId">This design is selected.</span>
+        <button class="btn ghost" x-show="lightbox && lightbox.id!==selectedId" @click="select(lightbox)">Select this design</button>
+        <button class="btn" @click="closeZoom()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

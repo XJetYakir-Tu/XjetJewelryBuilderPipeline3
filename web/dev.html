@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pipeline 3 — Developer mesh tools</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
+  <style>
+    .dev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+    .dev-grid .card { aspect-ratio: auto; cursor: pointer; }
+    .dev-grid .card img { aspect-ratio: 1/1; }
+    .dev-grid .card .cap { padding: 6px 8px; font-size: 11px; color: var(--ink-3); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    td, th { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; }
+  </style>
+</head>
+<body x-data="devApp()" x-init="init()">
+<header class="top"><div class="brand">XJET ATELIER<small>Pipeline 3 · developer mesh tools</small></div></header>
+<main class="stack">
+  <div class="notice warn">
+    Developer-only. Generates a mesh from ONE selected candidate image with
+    <code>hitem3d/hi3d/v3.0/image-to-3d</code>. Each request is a paid provider call in live mode.
+    Output is not measured, not sized to a ring size, and not approved for manufacturing.
+  </div>
+
+  <section class="stack" x-show="!ok" style="max-width:480px">
+    <h2>Developer key</h2>
+    <input type="password" x-model="keyInput" placeholder="P3_ADMIN_KEY" @keydown.enter="connect()">
+    <button class="btn" @click="connect()">Connect</button>
+    <p class="error" x-text="error" x-show="error"></p>
+  </section>
+
+  <template x-if="ok">
+  <div class="stack">
+    <div class="row">
+      <h2 style="margin:0">Ready candidates</h2>
+      <button class="link" @click="loadCandidates()">Refresh</button>
+      <button class="link" @click="disconnect()">Disconnect</button>
+    </div>
+    <div class="dev-grid">
+      <template x-for="c in candidates" :key="c.id">
+        <div class="card ready" :class="{selected: selected?.id===c.id}" @click="pick(c)">
+          <img :src="c.image_url" alt="">
+          <div class="cap" x-text="c.title + ' · ' + c.kind + ' · #' + (c.slot+1)"></div>
+        </div>
+      </template>
+    </div>
+
+    <template x-if="selected">
+      <div class="stack">
+        <h2 style="margin-top:20px">Mesh for <span x-text="selected.id"></span></h2>
+        <div class="row">
+          <label>Format <select x-model="settings.export_format" style="width:auto">
+            <option>stl</option><option>glb</option><option>obj</option></select></label>
+          <label>Resolution <select x-model="settings.resolution" style="width:auto">
+            <option>2048quality</option><option>2048master</option></select></label>
+          <label>Faces <input type="text" x-model.number="settings.face_count" style="width:140px"></label>
+          <button class="btn" @click="create()" :disabled="busy">Generate mesh</button>
+        </div>
+        <p class="error" x-text="error" x-show="error"></p>
+        <table>
+          <tr><th>Mesh</th><th>Status</th><th>Settings</th><th>Files</th></tr>
+          <template x-for="m in meshes" :key="m.id">
+            <tr>
+              <td x-text="m.id"></td>
+              <td><span x-text="m.status"></span><div class="error small" x-text="m.error || ''"></div></td>
+              <td class="small" x-text="JSON.stringify(m.settings)"></td>
+              <td>
+                <button class="link" x-show="m.status==='ready'" @click="download(m, 'original')" x-text="'Original .' + m.original_format"></button>
+                <button class="link" x-show="m.has_stl" @click="download(m, 'stl')">STL</button>
+                <button class="link" x-show="m.can_convert" @click="convert(m)">Convert to STL</button>
+              </td>
+            </tr>
+          </template>
+        </table>
+      </div>
+    </template>
+  </div>
+  </template>
+</main>
+<script>
+function devApp() {
+  return {
+    key: '', keyInput: '', ok: false, error: '', busy: false,
+    candidates: [], selected: null, meshes: [], _poll: null,
+    settings: { export_format: 'stl', resolution: '2048quality', face_count: 2000000 },
+    async init() {
+      try { this.key = sessionStorage.getItem('p3_dev_key') || ''; } catch {}
+      if (this.key) await this.connect(this.key);
+    },
+    async req(method, path, body) {
+      const r = await fetch(path, { method, headers: { 'Authorization': 'Bearer ' + this.key,
+        ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error?.message || ('HTTP ' + r.status)); }
+      return r;
+    },
+    async connect(k) {
+      this.error = ''; this.key = k || this.keyInput.trim();
+      try {
+        await this.req('GET', '/api/dev/status');
+        this.ok = true; try { sessionStorage.setItem('p3_dev_key', this.key); } catch {}
+        await this.loadCandidates();
+      } catch (e) { this.ok = false; this.error = e.message; }
+    },
+    disconnect() { this.ok = false; this.key = ''; try { sessionStorage.removeItem('p3_dev_key'); } catch {} },
+    async loadCandidates() { this.candidates = (await (await this.req('GET', '/api/dev/candidates')).json()).candidates; },
+    async pick(c) { this.selected = c; await this.loadMeshes(); },
+    async loadMeshes() {
+      if (!this.selected) return;
+      this.meshes = (await (await this.req('GET', '/api/dev/meshes?candidate_id=' + this.selected.id)).json()).meshes;
+      const active = this.meshes.some(m => m.status === 'queued' || m.status === 'running');
+      clearTimeout(this._poll);
+      if (active) this._poll = setTimeout(() => this.loadMeshes(), 3000);
+    },
+    async create() {
+      this.error = ''; this.busy = true;
+      try {
+        await this.req('POST', `/api/dev/candidates/${this.selected.id}/meshes`, { settings: this.settings });
+        await this.loadMeshes();
+      } catch (e) { this.error = e.message; } finally { this.busy = false; }
+    },
+    async convert(m) {
+      try { await this.req('POST', `/api/dev/meshes/${m.id}/convert-stl`); await this.loadMeshes(); }
+      catch (e) { this.error = e.message; }
+    },
+    async download(m, kind) {
+      try {
+        const r = await this.req('GET', `/api/dev/meshes/${m.id}/download?kind=${kind}`);
+        const blob = await r.blob();
+        const cd = r.headers.get('content-disposition') || '';
+        const name = (cd.match(/filename="?([^";]+)"?/) || [])[1] || `${m.id}.${kind}`;
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      } catch (e) { this.error = e.message; }
+    },
+  };
+}
+</script>
+</body>
+</html>

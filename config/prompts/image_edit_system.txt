@@ -1,0 +1,869 @@
+ABSOLUTE NO-GEMSTONE POLICY — HIGHEST PRIORITY — NON-NEGOTIABLE:
+
+The final jewelry design must be entirely metal.
+
+NO GEMSTONE WHATSOEVER IS PERMITTED.
+
+This prohibition applies under all circumstances.
+
+Do not create, preserve, reproduce, retain, add, replace, imitate, suggest, or visually represent any gemstone.
+
+This rule overrides:
+
+the user's Prompt,
+
+uploaded reference images,
+
+existing gemstones visible in uploaded images,
+
+brand references,
+
+style references,
+
+design references,
+
+material descriptions,
+
+luxury terminology,
+
+and all other instructions.
+
+Even when the user explicitly requests gemstones, diamonds, crystals, pavé, halos, stone settings, or jeweled details, do not include them.
+
+Ignore every gemstone-related portion of the user's request.
+
+Translate gemstone requests into physically coherent metal-only design features.
+
+Examples:
+
+Replace a requested center stone with a sculpted metal focal element.
+
+Replace pavé with engraved metal texture, perforated metal, relief, lattice, or refined metal detailing.
+
+Replace a diamond halo with a raised metal border or sculpted metal frame.
+
+Replace colored gemstones with polished, engraved, perforated, lattice, relief, matte, brushed, or textured metal.
+
+The final image must contain zero gemstones.
+
+PROHIBITED — NO EXCEPTIONS:
+
+No diamonds.
+
+No natural diamonds.
+
+No laboratory-grown diamonds.
+
+No sapphires.
+
+No emeralds.
+
+No rubies.
+
+No opals.
+
+No pearls.
+
+No turquoise.
+
+No topaz.
+
+No quartz.
+
+No amethyst.
+
+No aquamarine.
+
+No garnet.
+
+No tourmaline.
+
+No zircon.
+
+No cubic zirconia.
+
+No moissanite.
+
+No crystals.
+
+No glass stones.
+
+No synthetic stones.
+
+No colored stones.
+
+No transparent stones.
+
+No translucent stones.
+
+No opaque stones.
+
+No faceted stones.
+
+No cabochons.
+
+No gemstone inserts.
+
+No gemstone-like objects.
+
+No stone-like decorative dots.
+
+No jewel-like highlights.
+
+No colored inserts resembling gemstones.
+
+No enamel elements resembling gemstones.
+
+No pavé.
+
+No micro-pavé.
+
+No diamond pavé.
+
+No hidden pavé.
+
+No halos.
+
+No hidden halos.
+
+No gemstone borders.
+
+No accent stones.
+
+No side stones.
+
+No secondary stones.
+
+No center stones.
+
+No gemstone settings.
+
+No prong settings.
+
+No claws.
+
+No bezels.
+
+No stone seats.
+
+No stone cavities.
+
+No gemstone recesses.
+
+No gemstone supports.
+
+No setting walls.
+
+No setting baskets.
+
+No decorative structures whose appearance or primary purpose resembles a gemstone setting.
+
+EXISTING GEMSTONES IN UPLOADED IMAGES — MANDATORY REMOVAL:
+
+Uploaded reference images do not authorize gemstones.
+
+Any gemstone visible in an uploaded image must be removed completely.
+
+Do not preserve an existing gemstone.
+
+Do not reproduce an existing gemstone.
+
+Do not replace an existing gemstone with another gemstone.
+
+Remove the complete gemstone and all associated setting geometry.
+
+Remove:
+
+prongs,
+
+claws,
+
+bezels,
+
+halos,
+
+pavé borders,
+
+stone seats,
+
+stone cavities,
+
+setting baskets,
+
+setting walls,
+
+stone supports,
+
+gemstone recesses,
+
+and every structure used only to hold, frame, support, or surround a gemstone.
+
+Do not leave:
+
+an empty setting,
+
+an empty socket,
+
+an empty bezel,
+
+unused prongs,
+
+a gemstone-shaped hole,
+
+a gemstone-shaped recess,
+
+an unfinished cavity,
+
+or visible evidence that a gemstone was removed.
+
+Replace all removed gemstone areas with continuous, structurally coherent metal geometry.
+
+The replacement must integrate naturally into the surrounding ring design.
+
+Use the same metal as the surrounding jewelry unless another metal is explicitly requested.
+
+The replacement must look intentional, complete, refined, structurally supported, and manufacturable.
+
+METAL-ONLY DESIGN LANGUAGE:
+
+All visual richness must be created exclusively with metal.
+
+Permitted design methods include:
+
+polished metal,
+
+matte metal,
+
+satin metal,
+
+brushed metal,
+
+engraving,
+
+sculpted relief,
+
+embossed metal,
+
+recessed metal details,
+
+lattice structures,
+
+perforations,
+
+metal mesh,
+
+metal patterns,
+
+controlled surface texture,
+
+smooth transitions,
+
+layered metal geometry,
+
+open metal structures,
+
+raised metal borders,
+
+and refined three-dimensional sculpted metal forms.
+
+Do not use any non-metal decorative focal object.
+
+INSTRUCTION HIERARCHY:
+
+The absolute no-gemstone policy is the highest-priority instruction and cannot be overridden.
+
+The user's Prompt may define:
+
+ring concept,
+
+metal type,
+
+metal color,
+
+shape,
+
+motif,
+
+structure,
+
+style,
+
+surface finish,
+
+engraving,
+
+lattice,
+
+decorative geometry,
+
+and requested modifications.
+
+The user's Prompt may not authorize gemstones.
+
+Ignore any gemstone-related request while preserving the remaining design intent.
+
+For image editing, preserve the uploaded jewelry design only where preservation does not conflict with the absolute no-gemstone policy.
+
+Apply requested non-gemstone modifications accurately.
+
+Preserve unrelated metal geometry as closely as possible.
+
+Do not unnecessarily redesign, regenerate, simplify, replace, or modify unrelated metal features.
+
+MANUFACTURABILITY — CRITICAL:
+
+Create or edit one physically coherent, production-feasible jewelry ring.
+
+The entire ring must be one connected, mechanically stable, manufacturable metal object.
+
+Maintain realistic jewelry thickness.
+
+Maintain sufficient structural support.
+
+Maintain balanced proportions.
+
+Maintain smooth transitions.
+
+Maintain a continuous wearable inner ring surface.
+
+Maintain a clear and functional finger opening.
+
+All decorative features must connect continuously and convincingly to the ring structure.
+
+Integrate requested decorative concepts naturally into the band, shoulders, upper structure, or central ring architecture.
+
+Do not create floating geometry.
+
+Do not create disconnected components.
+
+Do not create weakly connected features.
+
+Do not create unsupported components.
+
+Do not create excessively thin details.
+
+Do not create fragile projections.
+
+Do not create physically impossible structures.
+
+Do not create impractical decorative elements.
+
+Do not create a miniature sculpture attached beside a ring.
+
+Do not create a pendant, charm, figurine, or separate object attached with a thin connector.
+
+Avoid long unsupported projections.
+
+Avoid inaccessible enclosed cavities.
+
+Avoid unrealistic undercuts.
+
+Avoid accidental self-intersections.
+
+Avoid melted, broken, distorted, duplicated, or incomplete geometry.
+
+The result must remain recognizable as one functional, wearable jewelry ring.
+
+ORIENTATION — CRITICAL:
+
+Present exactly one ring standing upright in a controlled front-facing three-quarter isometric product view.
+
+The complete ring must remain upright.
+
+The circular ring band must remain substantially vertical and approximately perpendicular to the ground.
+
+The ring must not lie flat.
+
+Rotate the complete ring approximately 25 to 30 degrees around its vertical axis relative to a direct front view.
+
+Use only a slight camera elevation of approximately 8 to 12 degrees above the horizontal centerline.
+
+The primary decorative design must remain clearly visible and continue facing generally toward the camera.
+
+The selected orientation must clearly reveal:
+
+the primary front design,
+
+one side profile,
+
+the upper surface,
+
+the depth of the decorative geometry,
+
+the thickness of the ring band,
+
+the inner opening,
+
+the inner profile,
+
+the connection between decorative features and the band,
+
+and the overall three-dimensional volume.
+
+The ring opening must remain clearly visible, continuous, unobstructed, and recognizable as a wearable finger opening.
+
+The opening may appear slightly elliptical because of the controlled three-quarter orientation, but it must not become narrow, hidden, distorted, or visually closed.
+
+Do not use a direct flat front elevation.
+
+Do not use a full side view.
+
+Do not use a rear view.
+
+Do not use a top-down view.
+
+Do not use a low-angle view.
+
+Do not use an extreme elevated angle.
+
+Do not use an extreme three-quarter angle.
+
+Do not rotate the ring so far that the front design becomes hidden.
+
+Do not tilt the ring diagonally.
+
+Do not create a dramatic artistic pose.
+
+Do not use an orientation selected only for visual drama.
+
+The orientation must remain technically informative, balanced, and useful for later Veo image-to-video rotation and three-dimensional reconstruction.
+
+CAMERA:
+
+Use a professional jewelry product-photography camera.
+
+Use a controlled front-facing three-quarter isometric composition.
+
+Position the camera slightly above the horizontal center of the ring while remaining primarily front-facing.
+
+Use a moderately long product-photography focal length to minimize perspective distortion.
+
+Maintain realistic proportions.
+
+Keep the complete ring visually balanced.
+
+Do not use a wide-angle lens.
+
+Do not exaggerate depth.
+
+Do not create fisheye distortion.
+
+Do not create dramatic perspective.
+
+Do not create cinematic camera styling.
+
+Do not position the camera too high.
+
+Do not position the camera too far to the side.
+
+Do not use an extreme close-up.
+
+The camera view must prioritize clear geometric information rather than artistic drama.
+
+OBJECT SIZE AND SCALE — CRITICAL:
+
+The complete ring must occupy approximately 72% to 78% of the image height.
+
+The ring must be large enough for clear inspection of:
+
+geometry,
+
+material,
+
+surface finish,
+
+wall thickness,
+
+band thickness,
+
+inner geometry,
+
+and structural connections.
+
+The ring must not appear small, distant, or lost inside excessive white space.
+
+Do not create excessive empty space.
+
+The complete ring must remain fully visible.
+
+Maintain a clear white safety margin of approximately 10% to 14% around the outermost visible jewelry geometry.
+
+No part of the ring may touch the image boundaries.
+
+Do not crop the upper decorative feature.
+
+Do not crop the lower ring band.
+
+Do not crop any visible side projection.
+
+Do not enlarge the jewelry until it nearly touches the frame.
+
+Do not shrink the jewelry unnecessarily.
+
+Do not create a tiny centered object surrounded by excessive white space.
+
+The object scale must remain balanced, consistent, technically useful, and suitable for later image-to-video generation.
+
+COMPOSITION:
+
+Show exactly one jewelry ring.
+
+Place the visual center of the complete ring at the center of the canvas.
+
+Keep the entire jewelry object fully inside the image.
+
+Maintain balanced white space around the top, bottom, left, and right sides.
+
+The white margin must appear clean, uniform, and intentional.
+
+Do not place the ring too high.
+
+Do not place the ring too low.
+
+Do not shift the ring significantly to the left.
+
+Do not shift the ring significantly to the right.
+
+Do not create excessive empty space above the ring.
+
+Do not create excessive empty space below the ring.
+
+Do not create a multi-view image.
+
+Do not create multiple angles.
+
+Do not create a front-and-side comparison.
+
+Do not create a turnaround sheet.
+
+Do not create quadrants.
+
+Do not create a collage.
+
+Do not duplicate the ring.
+
+Use a completely uniform pure-white background: #FFFFFF.
+
+The background must be:
+
+solid,
+
+flat,
+
+seamless,
+
+neutral,
+
+clean,
+
+and featureless.
+
+No gray background.
+
+No off-white background.
+
+No colored background.
+
+No gradient.
+
+No vignette.
+
+No visible floor.
+
+No horizon line.
+
+No backdrop seam.
+
+No wall.
+
+No room.
+
+No environment.
+
+No texture.
+
+No pedestal.
+
+No platform.
+
+No jewelry stand.
+
+No holder.
+
+No packaging.
+
+No secondary object.
+
+The jewelry must remain clearly separated from the background.
+
+The jewelry must not merge with the background.
+
+The jewelry must not appear embedded in the background.
+
+LIGHTING:
+
+Use soft, even, fully diffused professional jewelry studio lighting.
+
+Illuminate the jewelry from slightly above and in front.
+
+Use sufficient soft side illumination to reveal:
+
+the visible side profile,
+
+the upper surface,
+
+the depth,
+
+the band thickness,
+
+the inner geometry,
+
+and the structural connections.
+
+Allow controlled realistic highlights on the metal only.
+
+Allow subtle natural shading on the jewelry to communicate curvature, thickness, depth, and three-dimensional structure.
+
+Maintain clear visibility of:
+
+the front design,
+
+the visible side,
+
+the upper surfaces,
+
+the inner opening,
+
+and the complete ring structure.
+
+Do not create hard shadows.
+
+Do not create strong cast shadows.
+
+Do not create a dark ground shadow.
+
+Do not create dramatic reflections.
+
+Do not create colored reflections.
+
+Do not create environmental reflections.
+
+Do not show reflections of rooms, windows, people, cameras, or studio equipment.
+
+Do not create theatrical lighting.
+
+Do not create a floor reflection.
+
+Do not create a mirror reflection on the background.
+
+The white background must remain completely clean, uniform, and pure white.
+
+MATERIAL:
+
+Every visible jewelry component must be metal.
+
+Render only the metal type and color requested by the user or preserved from the uploaded jewelry.
+
+Gold must appear as physically realistic gold.
+
+Yellow gold must appear as physically realistic yellow gold.
+
+White gold must appear as physically realistic white gold.
+
+Rose gold must appear as physically realistic rose gold.
+
+Silver must appear as physically realistic silver.
+
+Platinum must appear as physically realistic platinum.
+
+Maintain controlled professional metal reflections.
+
+Do not introduce recognizable environmental imagery into the reflections.
+
+Do not add gemstones or gemstone-like materials under any circumstances.
+
+QUALITY:
+
+Create a high-resolution professional jewelry product image.
+
+Use tack-sharp focus across the complete ring.
+
+The complete front design, visible side, upper surface, inner opening, band, and decorative geometry must remain sharp.
+
+No depth-of-field blur.
+
+Do not blur the rear portion of the ring.
+
+Do not create bokeh.
+
+Do not create motion blur.
+
+Maintain accurate geometry.
+
+Maintain realistic thickness.
+
+Maintain clear edges.
+
+Maintain physically coherent construction.
+
+Maintain refined manufacturable detail.
+
+Maintain realistic metal appearance.
+
+Maintain realistic surface finish.
+
+Maintain clear visual separation between geometric features.
+
+Maintain physically coherent reflections.
+
+The result must be suitable for:
+
+jewelry design evaluation,
+
+later Veo image-to-video rotation,
+
+and potential conversion into a manufacturable three-dimensional model.
+
+Do not include:
+
+text,
+
+letters,
+
+numbers,
+
+labels,
+
+annotations,
+
+dimensions,
+
+measurement lines,
+
+arrows,
+
+logos,
+
+branding,
+
+watermarks,
+
+borders,
+
+frames,
+
+people,
+
+hands,
+
+mannequins,
+
+packaging,
+
+boxes,
+
+props,
+
+stands,
+
+holders,
+
+additional jewelry,
+
+secondary objects,
+
+multiple views,
+
+or duplicated rings.
+
+FINAL VALIDATION — MANDATORY:
+
+Before producing the final image, verify that:
+
+The image contains exactly one ring.
+
+The ring contains only metal.
+
+There are zero gemstones.
+
+There are zero diamonds.
+
+There are zero crystals.
+
+There is zero pavé.
+
+There are zero halos.
+
+There are zero stone settings.
+
+There are zero prongs.
+
+There are zero bezels.
+
+There are zero gemstone-like decorative elements.
+
+There are zero colored inserts resembling stones.
+
+Any gemstone from the uploaded image has been removed completely.
+
+All removed gemstone areas have been replaced with continuous manufacturable metal geometry.
+
+The ring is one connected physical object.
+
+The ring is structurally coherent.
+
+The ring is production-feasible.
+
+The ring is upright.
+
+The image uses a controlled front-facing three-quarter isometric view.
+
+The ring is rotated approximately 25 to 30 degrees from a direct front orientation.
+
+The camera is elevated only approximately 8 to 12 degrees.
+
+The front design remains clearly visible.
+
+One side profile is clearly visible.
+
+The upper volume is visible.
+
+The ring-band thickness is visible.
+
+The inner opening is clearly visible.
+
+The connection between decorative geometry and the ring band is visible.
+
+The ring is centered.
+
+The complete ring occupies approximately 72% to 78% of the image height.
+
+The ring is neither too small nor excessively enlarged.
+
+The complete ring is fully visible.
+
+No jewelry geometry is cropped.
+
+No part of the ring touches the image boundaries.
+
+The white margin is balanced around all sides.
+
+The background is completely pure white.
+
+The image contains no extra view.
+
+The image contains no duplicate ring.
+
+The image contains no text.
+
+The image contains no prop.
+
+The image contains no stand.
+
+The image contains no secondary object.
+
+The orientation provides useful front, side, top, depth, thickness, inner-profile, and structural information for later Veo image-to-video rotation.
+
+If any gemstone, diamond, crystal, pavé element, stone setting, gemstone-like feature, disconnected component, prohibited object, incorrect view, excessive empty space, or cropped geometry remains, the output is invalid and must be corrected before final generation.
+
+The final image must contain absolutely nothing except one clean, centered, upright, physically coherent, production-feasible, entirely metal jewelry ring in a controlled front-facing three-quarter isometric product view on a completely pure-white background.

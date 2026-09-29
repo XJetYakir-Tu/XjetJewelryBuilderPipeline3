@@ -1,0 +1,60 @@
+{
+  "_comment": "Pipeline 3 material catalog. Groups and customer labels are confirmed product requirements (spec section 3). The cpp_metal mappings for Silver/Vermeil are continuity defaults from Pipeline 2 (spec 4.5). The Luxury list is the gold set Pipeline 2 offered in Customize; it is preview-only and must not be extended without product-owner confirmation.",
+  "version": "materials-2026-09-29",
+  "default_material_id": "silver",
+  "groups": [
+    { "id": "fashion", "label": "Fashion jewelry", "purchasable": true },
+    { "id": "luxury",  "label": "Luxury",          "purchasable": false }
+  ],
+  "materials": [
+    {
+      "id": "stainless_steel", "group": "fashion", "label": "Stainless Steel",
+      "cpp_metal": "Stainless Steel", "density_g_cm3": 8.0, "requires_plating": false,
+      "swatch": "#6E7377", "tint": "grayscale(1) brightness(0.80) contrast(1.10)"
+    },
+    {
+      "id": "silver", "group": "fashion", "label": "Silver",
+      "cpp_metal": "Sterling Silver 925", "density_g_cm3": 10.36, "requires_plating": false,
+      "swatch": "#C8C8C5", "tint": "grayscale(0.85) brightness(1.08) contrast(0.94)"
+    },
+    {
+      "id": "vermeil", "group": "fashion", "label": "Vermeil",
+      "cpp_metal": "14K Gold Vermeil", "density_g_cm3": 10.36, "requires_plating": true,
+      "swatch": "#B9923F", "tint": "sepia(0.65) hue-rotate(4deg) saturate(1.85) brightness(0.97)"
+    },
+    {
+      "id": "gold_10k_yellow", "group": "luxury", "label": "10K Yellow Gold",
+      "cpp_metal": "10K Yellow Gold", "density_g_cm3": 11.6, "requires_plating": false,
+      "swatch": "#A88445", "tint": "sepia(0.65) hue-rotate(4deg) saturate(1.60) brightness(0.92)"
+    },
+    {
+      "id": "gold_10k_rose", "group": "luxury", "label": "10K Rose Gold",
+      "cpp_metal": "10K Rose Gold", "density_g_cm3": 11.6, "requires_plating": false,
+      "swatch": "#A77A73", "tint": "sepia(0.60) hue-rotate(-22deg) saturate(1.20) brightness(0.92)"
+    },
+    {
+      "id": "gold_14k_yellow", "group": "luxury", "label": "14K Yellow Gold",
+      "cpp_metal": "14K Yellow Gold", "density_g_cm3": 13.7, "requires_plating": false,
+      "swatch": "#B9923F", "tint": "sepia(0.65) hue-rotate(4deg) saturate(1.85) brightness(0.97)"
+    },
+    {
+      "id": "gold_14k_rose", "group": "luxury", "label": "14K Rose Gold",
+      "cpp_metal": "14K Rose Gold", "density_g_cm3": 13.7, "requires_plating": false,
+      "swatch": "#C58A88", "tint": "sepia(0.62) hue-rotate(-26deg) saturate(1.35) brightness(1.02)"
+    },
+    {
+      "id": "gold_18k_yellow", "group": "luxury", "label": "18K Yellow Gold",
+      "cpp_metal": "18K Yellow Gold", "density_g_cm3": 15.3, "requires_plating": false,
+      "swatch": "#C9A227", "tint": "sepia(0.68) hue-rotate(5deg) saturate(2.20) brightness(1.00)"
+    },
+    {
+      "id": "gold_18k_rose", "group": "luxury", "label": "18K Rose Gold",
+      "cpp_metal": "18K Rose Gold", "density_g_cm3": 15.3, "requires_plating": false,
+      "swatch": "#B76E79", "tint": "sepia(0.70) hue-rotate(-30deg) saturate(1.55) brightness(0.98)"
+    }
+  ],
+  "ring_sizes": {
+    "system": "US",
+    "values": [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12]
+  }
+}
