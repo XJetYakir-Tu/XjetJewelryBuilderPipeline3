@@ -1,10 +1,10 @@
-"""Six-candidate image batches: initial generation, refinement, slot retry.
+"""Four-candidate image batches: initial generation, refinement, slot retry.
 
 Semantics (spec sections 3, 4.2, 4.3, 7.1):
-  * one batch = six separately identified candidates from ONE effective prompt;
+  * one batch = four separately identified candidates from ONE effective prompt;
   * fal nano-banana-pro caps num_images at 4, so each slot is its own
     single-image request with a distinct seed (enables per-slot retry/identity);
-  * refinement uses the SELECTED candidate's image as the reference for all six
+  * refinement uses the SELECTED candidate's image as the reference for all four
     slots with one identical instruction — never text-only as a fallback;
   * exact-duplicate outputs within a batch are retried a bounded number of times;
   * async results only ever write their own candidate row — never the design's
@@ -58,7 +58,7 @@ class ImageService:
     # ── creation ─────────────────────────────────────────────────────────
     def CreateInitial(self, Token: str, Prompt: str, ReferencePng: bytes | None,
                       ClientRequestId: str | None) -> dict:
-        """Create a design and its first six-candidate batch. Idempotent per ClientRequestId."""
+        """Create a design and its first four-candidate batch. Idempotent per ClientRequestId."""
         Db = self.Ctx.Db
         Prompt = ValidateText(Prompt, "design")
         if ClientRequestId:
@@ -203,7 +203,7 @@ class ImageService:
         return Args
 
     async def _ReferenceUrl(self, Batch: dict) -> str:
-        """Upload the batch reference once; all six slots share the same uploaded image."""
+        """Upload the batch reference once; all slots share the same uploaded image."""
         async with self.Ctx.Lock(f"ref:{Batch['id']}"):
             Row = self.Ctx.Db.One("SELECT reference_upload_url FROM batches WHERE id = ?", (Batch["id"],))
             if Row and Row["reference_upload_url"]:

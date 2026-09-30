@@ -14,6 +14,9 @@ from pathlib import Path
 from p3.settings import ConfigDir
 
 
+CandidatesPerBatch = 4
+
+
 def ContentVersion(Prefix: str, Data) -> str:
     Digest = hashlib.sha256(json.dumps(Data, sort_keys=True).encode("utf-8")).hexdigest()[:12]
     return f"{Prefix}-{Digest}"
@@ -56,11 +59,12 @@ def LoadGenerationConfig(ConfigPath: Path | None = None) -> GenerationConfig:
     GenPrompt  = _ReadText(Img["generate_system_prompt_file"])
     EditPrompt = _ReadText(Img["edit_system_prompt_file"])
     Suffix     = _ReadText(Img["prompt_suffix_file"])
-    if int(Img["candidates_per_batch"]) != 6:
-        # Confirmed requirement: one prompt produces six candidates.
-        raise ValueError("images.candidates_per_batch must be 6 (confirmed product requirement)")
+    if int(Img["candidates_per_batch"]) != CandidatesPerBatch:
+        # Product-owner decision: every batch (initial and refinement) has four candidates
+        # (changed from six on 2026-09-30).
+        raise ValueError(f"images.candidates_per_batch must be {CandidatesPerBatch} (product requirement)")
     Images = ImageConfig(
-        CandidatesPerBatch=6,
+        CandidatesPerBatch=CandidatesPerBatch,
         MaxConcurrentRequests=max(1, int(Img["max_concurrent_requests"])),
         RequestTimeoutS=float(Img["request_timeout_s"]),
         MaxDuplicateRetriesPerSlot=max(0, int(Img["max_duplicate_retries_per_slot"])),

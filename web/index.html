@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XJET Atelier — Custom AI Jewelry, Designed by You</title>
-    <meta name="description" content="Design custom rings with AI at XJET Atelier. Describe your vision, choose from six designs, refine it, and preview it in a 360° movie.">
+    <meta name="description" content="Design custom rings with AI at XJET Atelier. Describe your vision, choose from four designs, refine it, and preview it in a 360° movie.">
     <meta name="robots" content="noindex">
     <meta name="theme-color" content="#111111">
     <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
@@ -161,10 +161,10 @@
                     <h1 class="text-5xl md:text-6xl lg:text-[4.5rem] leading-[1.08] text-zinc-900 mb-6 brand-font">
                         Custom Jewelry,<br><span class="italic font-normal" style="color:#B08040">Designed by You</span>
                     </h1>
-                    <p class="text-zinc-700 text-[15px] leading-[1.8] mb-9 max-w-[420px]">Describe your vision or upload a photo. Our AI creates six original ring designs for you to choose from — refine your favourite, then preview it in a 360° movie.</p>
+                    <p class="text-zinc-700 text-[15px] leading-[1.8] mb-9 max-w-[420px]">Describe your vision or upload a photo. Our AI creates four original ring designs for you to choose from — refine your favourite, then preview it in a 360° movie.</p>
                     <div class="flex flex-col gap-3 mb-10">
                         <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Describe your vision</div>
-                        <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Choose from six AI designs</div>
+                        <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Choose from four AI designs</div>
                         <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Select your metal &amp; size</div>
                         <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Preview it in a 360° movie</div>
                     </div>
@@ -192,7 +192,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-10">
                     <template x-for="(s, i) in [
                         {num:'01', title:'Share Your Idea',    desc:'Describe what you want or upload a photo. No design skills needed.'},
-                        {num:'02', title:'Choose From Six',    desc:'Our AI creates six different designs from your idea. Pick one and refine it until it feels right.'},
+                        {num:'02', title:'Choose From Four',   desc:'Our AI creates four different designs from your idea. Pick one and refine it until it feels right.'},
                         {num:'03', title:'Choose Your Details', desc:'Select your metal and ring size, and watch your ring in a 360° movie.'},
                         {num:'04', title:'Add to Your Bag',    desc:'Save your finished configuration to your bag.'}
                     ]" :key="i">
@@ -246,7 +246,7 @@
                 <div class="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
                     <template x-for="t in [
                         {icon:'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z', label:'Real Metal Production', sub:'Crafted in actual metal, never plastic.'},
-                        {icon:'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z', label:'Six Designs Per Idea', sub:'Every idea becomes six options to choose from.'},
+                        {icon:'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z', label:'Four Designs Per Idea', sub:'Every idea becomes four options to choose from.'},
                         {icon:'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', label:'360° Preview', sub:'See your selected ring from every angle.'},
                         {icon:'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', label:'Made by XJet', sub:'Produced with XJet industrial NanoJetting™ printers.'}
                     ]" :key="t.label">
@@ -282,7 +282,7 @@
 
             <section class="py-28 px-8 text-center bg-zinc-900 text-white">
                 <h2 class="text-4xl md:text-5xl brand-font mb-6">Your Jewelry.<br><span class="italic" style="color:#C9A96E">Your Design.</span></h2>
-                <p class="text-zinc-400 mb-10 max-w-md mx-auto text-sm leading-relaxed">Start with a description or an image. Choose from six designs, refine your favourite and preview it in 360°.</p>
+                <p class="text-zinc-400 mb-10 max-w-md mx-auto text-sm leading-relaxed">Start with a description or an image. Choose from four designs, refine your favourite and preview it in 360°.</p>
                 <button @click="resetAIFlow()" class="btn-gold px-12 py-5 text-xs uppercase tracking-[0.25em] stream-glow transition">Start Designing Now</button>
                 <p class="mt-6 text-[12px] text-zinc-400">Currently supported: Rings only. More jewelry categories will be added in future releases.</p>
             </section>
@@ -336,13 +336,13 @@
                     <template x-for="(q, i) in [
                         {q:'What jewelry can I create?',         a:'Currently, XJet Atelier supports Rings only. Additional jewelry categories will be introduced in future updates.'},
                         {q:'What metals are available?',         a: metalsFaqAnswer},
-                        {q:'Do I need design experience?',       a:'None at all. Just describe what you want in plain language or upload a reference photo. Our AI creates six designs for you to choose from.'},
-                        {q:'Can I see the design before I buy?', a:'Yes. You choose from six designs, refine your favourite as many times as you like, and preview the selected ring in a 360° movie before adding it to your bag.'},
+                        {q:'Do I need design experience?',       a:'None at all. Just describe what you want in plain language or upload a reference photo. Our AI creates four designs for you to choose from.'},
+                        {q:'Can I see the design before I buy?', a:'Yes. You choose from four designs, refine your favourite as many times as you like, and preview the selected ring in a 360° movie before adding it to your bag.'},
                         {q:'How is the price calculated?',       a:'Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price.'},
                         {q:'How long does production take?',     a:'Design happens the same day. Production takes 7–10 business days. Shipping adds about 5 business days with Express or up to 14 with free Standard delivery.'},
                         {q:'Are prices in USD?',                 a:'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen).'},
                         {q:'What is NanoParticle Jetting™?',     a:'It is XJet\'s proprietary metal printing technology. It jets ultra-fine metal nanoparticles at 8-micron layer precision — enabling finer detail and more complex shapes than traditional casting.'},
-                        {q:'Can I make changes?',                a:'Yes. Select any of your six designs and describe what should change — you get six new variations of that design each time.'},
+                        {q:'Can I make changes?',                a:'Yes. Select any of your four designs and describe what should change — you get four new variations of that design each time.'},
                         {q:'Who can I contact for help?',        a:'If you need assistance at any stage, reach out and a specialist will respond within one business day.'}
                     ]" :key="i">
                         <div class="border border-zinc-100 rounded-xl overflow-hidden">
@@ -494,7 +494,7 @@
                         <h2 class="text-4xl brand-font text-zinc-900">Terms of Service</h2>
                         <p class="text-[13px] text-zinc-500">Draft pending legal review · adapted for this preview</p>
                         <h3 class="text-lg font-semibold text-zinc-900">The service</h3>
-                        <p>XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for a ring, generates six design options and a 360° preview with AI, and lets you configure the metal and size of the design you choose. The current release supports rings only.</p>
+                        <p>XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for a ring, generates four design options and a 360° preview with AI, and lets you configure the metal and size of the design you choose. The current release supports rings only.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Your access</h3>
                         <p>Access is by a personal access token. Keep your token private: anyone holding it can use your account and create designs.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Your content</h3>
@@ -555,7 +555,7 @@
     </template>
 
     <!-- ══════════════════════════════════════════════════════════════════════
-         Design studio — six candidates · select · zoom · refine · proceed
+         Design studio — four candidates · select · zoom · refine · proceed
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'ai-studio'">
         <div class="flex-1 flex overflow-hidden relative fade-in min-h-0" style="background:#F8F8F8;">
@@ -584,7 +584,7 @@
                             <div x-show="!design" class="flex flex-col items-center text-center gap-3">
                                 <span class="text-[12px] uppercase tracking-[0.3em] font-semibold" style="color:#C9A96E;">AI Design Engine</span>
                                 <h1 class="brand-font text-5xl sm:text-6xl leading-[1.05]" style="color:#1A1A1A;">Hello, Designer.</h1>
-                                <p class="text-[14px] text-zinc-500 max-w-md">Describe your ring and we'll create six different designs for you to choose from.</p>
+                                <p class="text-[14px] text-zinc-500 max-w-md">Describe your ring and we'll create four different designs for you to choose from.</p>
                             </div>
 
                             <!-- Design results -->
@@ -602,7 +602,7 @@
                                     <div x-show="viewBatchGenerating" class="flex gap-3">
                                         <div class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0 font-semibold mt-0.5 brand-font" style="background:#F5EFE4; color:#C9A96E;">Ai</div>
                                         <div class="flex flex-col gap-2">
-                                            <span class="text-[14px]" style="color:#6F6F6F;">Creating your six designs…</span>
+                                            <span class="text-[14px]" style="color:#6F6F6F;">Creating your four designs…</span>
                                             <div class="inline-flex items-center gap-1.5 px-4 py-3 rounded-2xl rounded-tl-sm w-fit" style="background:#FAF8F4; border:1px solid #EDE8DE;">
                                                 <div class="w-1.5 h-1.5 rounded-full typing-dot" style="background:#C9A96E;"></div>
                                                 <div class="w-1.5 h-1.5 rounded-full typing-dot" style="background:#C9A96E;"></div>
@@ -612,10 +612,10 @@
                                     </div>
 
                                     <p x-show="!viewBatchGenerating" class="text-[15px] sm:text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#A9791F;"
-                                       x-text="viewBatch.kind === 'refine' ? 'Here are six refinements — select your favourite' : 'Here are your six designs — select your favourite'"></p>
+                                       x-text="viewBatch.kind === 'refine' ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite'"></p>
 
                                     <div x-show="viewBatch.status === 'partial'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
-                                        <span class="flex-1" x-text="readyCount(viewBatch) + ' of 6 designs are ready — some options could not be created.'"></span>
+                                        <span class="flex-1" x-text="readyCount(viewBatch) + ' of ' + viewBatch.desired_count + ' designs are ready — some options could not be created.'"></span>
                                         <button @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold" style="color:#8A561B;">Retry missing</button>
                                     </div>
                                     <div x-show="viewBatch.status === 'failed'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FDECEC; border:1px solid #F1B7B7; color:#8A2424;">
@@ -623,8 +623,8 @@
                                         <button @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold">Try again</button>
                                     </div>
 
-                                    <!-- Six candidates -->
-                                    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+                                    <!-- Four candidates (2x2) -->
+                                    <div class="grid grid-cols-2 gap-3 sm:gap-4 w-full mx-auto" style="max-width:min(640px, max(320px, calc(100dvh - 300px)));">
                                         <template x-for="c in viewBatch.candidates" :key="c.id">
                                             <div class="cand-card relative aspect-square rounded-2xl overflow-hidden bg-white border border-zinc-200"
                                                  :class="{'is-ready': c.status === 'ready', 'is-selected': c.id === selectedId, 'shimmer': c.status === 'pending' || c.status === 'generating'}"
@@ -658,7 +658,7 @@
 
                                     <div x-show="pendingBatch" class="flex items-center justify-center gap-2 text-[13px]" style="color:#6F6F6F;">
                                         <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
-                                        <span x-text="'Creating six refinements… ' + readyCount(pendingBatch) + ' of 6 ready'"></span>
+                                        <span x-text="'Creating four refinements… ' + readyCount(pendingBatch) + ' of ' + pendingBatch.desired_count + ' ready'"></span>
                                     </div>
                                 </div>
                             </template>
@@ -708,7 +708,7 @@
                                               style="color:#2A2A2A; caret-color:#C9A96E; max-height:200px;"></textarea>
                                     <button @click="sendComposer()" :disabled="!canSend"
                                             class="tap shrink-0 rounded-full flex items-center justify-center disabled:opacity-40 transition w-9 h-9 sm:w-11 sm:h-11 bg-[#1A1A1A] hover:bg-black"
-                                            :title="composerMode === 'refine' ? 'Create six refinements' : 'Create six designs'" aria-label="Send">
+                                            :title="composerMode === 'refine' ? 'Create four refinements' : 'Create four designs'" aria-label="Send">
                                         <svg class="w-4 h-4 sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#FFFFFF;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7"/></svg>
                                     </button>
                                 </div>
@@ -803,31 +803,34 @@
                     <span class="text-[10px] lg:text-[13px] uppercase tracking-widest text-zinc-500">Your Selected Design</span>
                 </div>
                 <div class="flex items-center justify-center gap-2 pb-2 shrink-0">
-                    <button @click="mediaTab = 'image'" class="px-3 py-1 rounded-full text-[11px] uppercase tracking-[0.12em] border transition"
-                            :class="mediaTab === 'image' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">Image</button>
                     <button @click="mediaTab = 'movie'" class="px-3 py-1 rounded-full text-[11px] uppercase tracking-[0.12em] border transition inline-flex items-center gap-1.5"
                             :class="mediaTab === 'movie' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">
                         360° Movie
                         <span class="w-1.5 h-1.5 rounded-full" :class="movieStatus === 'ready' ? 'bg-emerald-400' : (movieFailed ? 'bg-red-400' : 'bg-amber-400 animate-pulse')"></span>
                     </button>
+                    <button @click="mediaTab = 'image'" class="px-3 py-1 rounded-full text-[11px] uppercase tracking-[0.12em] border transition"
+                            :class="mediaTab === 'image' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">Image</button>
                 </div>
 
                 <div class="flex-1 relative overflow-hidden" style="min-height:320px;">
                     <div class="absolute inset-0 flex items-center justify-center overflow-hidden p-4">
-                        <img x-show="mediaTab === 'image'" :src="cust.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="'filter:' + tint">
+                        <img x-show="mediaTab === 'image' || movieStatus !== 'ready'" :src="cust.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="'filter:' + tint">
                         <template x-if="mediaTab === 'movie' && movieStatus === 'ready'">
                             <video :src="cust.movie.movie_url" autoplay loop muted playsinline class="max-w-full max-h-full object-contain" :style="'filter:' + tint"></video>
                         </template>
-                        <div x-show="mediaTab === 'movie' && (movieBusy || !movieStatus)" class="flex flex-col items-center gap-3 text-zinc-500 text-center px-6">
+                    </div>
+                    <!-- While the movie is being made (or if it failed) the static image stays visible underneath. -->
+                    <div x-show="mediaTab === 'movie' && (movieBusy || !movieStatus)" class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none">
+                        <div class="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-white/90 backdrop-blur border shadow-sm text-zinc-600" style="border-color:#E8DCC4;">
                             <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
-                            <span class="text-[13px] uppercase tracking-widest">Creating Your Atelier Preview</span>
-                            <span class="text-[12px] normal-case tracking-normal text-zinc-400">You can keep customizing while the movie is made.</span>
+                            <span class="text-[11px] uppercase tracking-widest">Creating your 360&deg; movie&hellip;</span>
                         </div>
-                        <div x-show="mediaTab === 'movie' && movieFailed" class="flex flex-col items-center gap-2 px-4 text-center">
-                            <span class="text-lg" style="color:#e05050;">⚠</span>
-                            <span class="text-[10px] uppercase tracking-widest" style="color:#e05050;">Movie generation failed</span>
+                    </div>
+                    <div x-show="mediaTab === 'movie' && movieFailed" class="absolute inset-x-0 bottom-4 flex justify-center px-4">
+                        <div class="flex flex-col sm:flex-row items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 border shadow-sm text-center" style="border-color:#F1B7B7;">
+                            <span class="text-[11px] uppercase tracking-widest" style="color:#c03030;">Movie generation failed</span>
                             <span class="text-[11px]" style="color:#777;" x-text="cust.movie?.error"></span>
-                            <button @click="retryMovie()" class="btn-outline px-4 py-2 mt-2">Retry Movie</button>
+                            <button @click="retryMovie()" class="btn-outline px-4 py-1.5">Retry Movie</button>
                         </div>
                     </div>
                     <button x-show="mediaTab === 'image' || movieStatus === 'ready'"
@@ -882,7 +885,7 @@
                                         </template>
                                     </div>
                                     <!-- Luxury: gold grid (P2 gold sub-options) -->
-                                    <div x-show="groupOpen[g.id] && g.id === 'luxury'" x-transition class="mt-1 grid grid-cols-2 sm:grid-cols-3 gap-1 pl-2">
+                                    <div x-show="groupOpen[g.id] && g.id === 'luxury'" x-transition class="mt-1 grid grid-cols-3 gap-1 pl-2">
                                         <template x-for="m in g.materials" :key="m.id">
                                             <button @click="chooseMaterial(m.id)"
                                                     :class="cust.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"

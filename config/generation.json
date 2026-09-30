@@ -1,8 +1,8 @@
 {
   "_comment": "Provider request settings. Endpoint ids are fixed in code (p3/providers/endpoints.py); only parameters live here. Every section's content hash becomes its config_version, so editing a section invalidates movie/mesh reuse automatically. Schemas verified against fal.ai OpenAPI on 2026-09-29 (see docs/IMPLEMENTATION.md, Provider verification).",
   "images": {
-    "candidates_per_batch": 6,
-    "max_concurrent_requests": 6,
+    "candidates_per_batch": 4,
+    "max_concurrent_requests": 8,
     "request_timeout_s": 300,
     "max_duplicate_retries_per_slot": 1,
     "params": {

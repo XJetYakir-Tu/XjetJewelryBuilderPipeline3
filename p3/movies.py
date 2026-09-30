@@ -1,6 +1,6 @@
 """Customize movie: one Minimax camera-controls video from the selected image.
 
-  * generated only on Proceed (never for all six candidates);
+  * generated only on Proceed (never for every candidate);
   * keyed by (candidate, movie config_version): a live or ready movie is reused,
     so repeated Proceed clicks and returning to the same candidate never
     duplicate paid work (enforced by the movies_one_live partial unique index);

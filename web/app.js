@@ -66,7 +66,7 @@ function p3App() {
     previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null,
 
     // ── customize ────────────────────────────────────────────────────
-    cust: null, custError: '', mediaTab: 'image', quotePending: false, bagMessage: '',
+    cust: null, custError: '', mediaTab: 'movie', quotePending: false, bagMessage: '',
     lastMaterialByGroup: { fashion: 'silver', luxury: null },
     groupOpen: { fashion: true, luxury: false },
     showSizeGuide: false,
@@ -438,7 +438,7 @@ function p3App() {
       // Show the selected image immediately; the server returns the authoritative customization.
       this.cust = { candidate_id: candidateId, image_url: this.selectedCandidate.image_url, material_id: 'silver',
                     quote: null, movie: { status: 'queued' }, ring_size: null, quantity: 1 };
-      this.mediaTab = 'image'; this.custError = ''; this.bagMessage = '';
+      this.mediaTab = 'movie'; this.custError = ''; this.bagMessage = '';
       this.groupOpen = { fashion: true, luxury: false };
       this.navigateTo('review');
       try {
@@ -452,6 +452,7 @@ function p3App() {
 
     showCustomization(c) {
       this.cust = c;
+      this.mediaTab = 'movie';          // the movie is the default Customize view
       const g = this.groupOfMaterial(c.material_id) || 'fashion';
       this.lastMaterialByGroup[g] = c.material_id;
       this.groupOpen = { fashion: g === 'fashion', luxury: g === 'luxury' };
@@ -469,9 +470,7 @@ function p3App() {
         try {
           const fresh = await this.api('GET', `/api/customizations/${custId}`);
           if (this.cust?.id === custId) {
-            const becameReady = fresh.movie?.status === 'ready' && this.cust.movie?.status !== 'ready';
             this.cust.movie = fresh.movie;
-            if (becameReady) this.mediaTab = 'movie';
           }
         } catch { /* retry next tick */ }
       };

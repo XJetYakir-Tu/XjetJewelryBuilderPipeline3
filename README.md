@@ -2,7 +2,7 @@
 
 A leaner ring-design flow:
 
-**six images → select (with zoom) → refine the selected image into six more, or proceed → Customize with the static image plus a Minimax camera-controls movie → fixed 1 cm³ Fashion pricing / preview-only Luxury.**
+**four images → select (with zoom) → refine the selected image into four more, or proceed → Customize with the static image plus a Minimax camera-controls movie → fixed 1 cm³ Fashion pricing / preview-only Luxury.**
 
 There is no Visual Hull and no measurement. Hitem3D/STL is developer-only.
 
@@ -58,7 +58,7 @@ The site always shows which mode it is in:
 3. Restart the server (it does not auto-reload), then confirm the nav shows **Live AI**.
 
 Costs at published fal.ai rates:
-- Each image batch or refinement is six Nano Banana Pro requests, about $0.90.
+- Each image batch or refinement is four Nano Banana Pro requests, about $0.60.
 - Each Proceed on a new candidate is one Minimax request (price not published).
 - Each developer mesh is about $2.10.
 

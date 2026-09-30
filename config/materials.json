@@ -28,24 +28,24 @@
       "swatch": "#A88445", "tint": "sepia(0.65) hue-rotate(4deg) saturate(1.60) brightness(0.92)"
     },
     {
-      "id": "gold_10k_rose", "group": "luxury", "label": "10K Rose Gold",
-      "cpp_metal": "10K Rose Gold", "density_g_cm3": 11.6, "requires_plating": false,
-      "swatch": "#A77A73", "tint": "sepia(0.60) hue-rotate(-22deg) saturate(1.20) brightness(0.92)"
-    },
-    {
       "id": "gold_14k_yellow", "group": "luxury", "label": "14K Yellow Gold",
       "cpp_metal": "14K Yellow Gold", "density_g_cm3": 13.7, "requires_plating": false,
       "swatch": "#B9923F", "tint": "sepia(0.65) hue-rotate(4deg) saturate(1.85) brightness(0.97)"
     },
     {
-      "id": "gold_14k_rose", "group": "luxury", "label": "14K Rose Gold",
-      "cpp_metal": "14K Rose Gold", "density_g_cm3": 13.7, "requires_plating": false,
-      "swatch": "#C58A88", "tint": "sepia(0.62) hue-rotate(-26deg) saturate(1.35) brightness(1.02)"
-    },
-    {
       "id": "gold_18k_yellow", "group": "luxury", "label": "18K Yellow Gold",
       "cpp_metal": "18K Yellow Gold", "density_g_cm3": 15.3, "requires_plating": false,
       "swatch": "#C9A227", "tint": "sepia(0.68) hue-rotate(5deg) saturate(2.20) brightness(1.00)"
+    },
+    {
+      "id": "gold_10k_rose", "group": "luxury", "label": "10K Rose Gold",
+      "cpp_metal": "10K Rose Gold", "density_g_cm3": 11.6, "requires_plating": false,
+      "swatch": "#A77A73", "tint": "sepia(0.60) hue-rotate(-22deg) saturate(1.20) brightness(0.92)"
+    },
+    {
+      "id": "gold_14k_rose", "group": "luxury", "label": "14K Rose Gold",
+      "cpp_metal": "14K Rose Gold", "density_g_cm3": 13.7, "requires_plating": false,
+      "swatch": "#C58A88", "tint": "sepia(0.62) hue-rotate(-26deg) saturate(1.35) brightness(1.02)"
     },
     {
       "id": "gold_18k_rose", "group": "luxury", "label": "18K Rose Gold",

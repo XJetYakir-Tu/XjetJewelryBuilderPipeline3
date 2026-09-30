@@ -7,7 +7,7 @@ from p3.providers import endpoints
 
 async def _Ready(Hx, Prompt="Twisted rope band"):
     Batch = await Hx.NewDesign(Prompt)
-    return Batch["design_id"], Batch["candidates"][4]
+    return Batch["design_id"], Batch["candidates"][3]
 
 
 async def test_proceed_shows_selected_image_immediately_and_starts_one_movie(H):
@@ -184,7 +184,14 @@ async def test_reload_recovers_design_state_without_new_requests(H):
     D = await H.Design(DesignId)
     assert D["selected_candidate_id"] == Cand["id"]
     assert D["customization"]["movie"]["status"] == "ready"
-    assert len(D["batches"]) == 1 and len(D["batches"][0]["candidates"]) == 6
+    assert len(D["batches"]) == 1 and len(D["batches"][0]["candidates"]) == 4
     assert len(H.Provider.Submissions) == Before
     Listed = (await H.Client.get("/api/designs")).json()["designs"]
     assert Listed[0]["id"] == DesignId and Listed[0]["thumbnail_url"] == Cand["image_url"]
+
+
+async def test_luxury_order_is_yellow_row_then_rose_row():
+    from p3.config import LoadCatalog
+    Lux = [M["label"] for G in LoadCatalog().ToJson()["groups"] if G["id"] == "luxury" for M in G["materials"]]
+    assert Lux == ["10K Yellow Gold", "14K Yellow Gold", "18K Yellow Gold",
+                   "10K Rose Gold", "14K Rose Gold", "18K Rose Gold"]

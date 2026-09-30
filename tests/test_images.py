@@ -1,10 +1,11 @@
-"""Six-candidate generation, selection, refinement lineage, partial failure, dedupe, recovery."""
+"""Four-candidate generation, selection, refinement lineage, partial failure, dedupe, recovery."""
 
 import asyncio
 
 import pytest
 
 from p3 import assets
+from p3.config import CandidatesPerBatch as N
 from p3.providers import endpoints
 from p3.providers.mock import MockProvider, _RingImage
 from tests.conftest import Harness
@@ -18,20 +19,20 @@ async def test_requires_access_token(H):
     assert H.Provider.Submissions == []
 
 
-async def test_initial_batch_is_six_distinct_candidates_from_one_prompt(H):
+async def test_initial_batch_is_n_distinct_candidates_from_one_prompt(H):
     Batch = await H.NewDesign("Art deco band with stepped shoulders")
     assert Batch["kind"] == "initial" and Batch["status"] == "complete"
     Cands = Batch["candidates"]
-    assert [C["slot"] for C in Cands] == [0, 1, 2, 3, 4, 5]
+    assert N == 4 and [C["slot"] for C in Cands] == list(range(N))
     assert all(C["status"] == "ready" and C["image_url"] for C in Cands)
-    assert len({C["id"] for C in Cands}) == 6
-    assert len({assets.Sha256(H.AssetBytes(C["image_url"])) for C in Cands}) == 6
+    assert len({C["id"] for C in Cands}) == N
+    assert len({assets.Sha256(H.AssetBytes(C["image_url"])) for C in Cands}) == N
 
     Subs = H.Provider.SubmissionsFor(endpoints.ImageGenerate)
-    assert len(Subs) == 6
+    assert len(Subs) == N
     Prompts = {S[1]["prompt"] for S in Subs}
     assert len(Prompts) == 1 and Prompts.pop().startswith("Art deco band with stepped shoulders\n\n")
-    assert len({S[1]["seed"] for S in Subs}) == 6
+    assert len({S[1]["seed"] for S in Subs}) == N
     assert all(S[1]["num_images"] == 1 and "image_urls" not in S[1] for S in Subs)
 
 
@@ -44,7 +45,7 @@ async def test_create_is_idempotent_per_client_request_id(H):
     A = await H.NewDesign("Plain band", client_request_id="req-1")
     B = await H.NewDesign("Plain band", client_request_id="req-1")
     assert A["id"] == B["id"]
-    assert len(H.Provider.Submissions) == 6
+    assert len(H.Provider.Submissions) == N
 
 
 async def test_reference_upload_requires_rights_and_uses_edit(H):
@@ -57,7 +58,7 @@ async def test_reference_upload_requires_rights_and_uses_edit(H):
     assert R.status_code == 200
     await H.Idle()
     Subs = H.Provider.SubmissionsFor(endpoints.ImageEdit)
-    assert len(Subs) == 6 and len({S[1]["image_urls"][0] for S in Subs}) == 1
+    assert len(Subs) == N and len({S[1]["image_urls"][0] for S in Subs}) == 1
 
 
 async def test_selection_requires_ready_candidate_of_same_design(H):
@@ -72,7 +73,7 @@ async def test_selection_requires_ready_candidate_of_same_design(H):
     assert (await H.Design(A["design_id"]))["selected_candidate_id"] == A["candidates"][2]["id"]
 
 
-async def test_refine_uses_selected_image_for_all_six_outputs(H):
+async def test_refine_uses_selected_image_for_all_outputs(H):
     First = await H.NewDesign("Signet ring with a hexagon face")
     Selected = First["candidates"][3]
     await H.Client.put(f"/api/designs/{First['design_id']}/selection", json={"candidate_id": Selected["id"]})
@@ -82,10 +83,10 @@ async def test_refine_uses_selected_image_for_all_six_outputs(H):
     await H.Idle()
     Refined = (await H.Client.get(f"/api/batches/{R.json()['id']}")).json()
     assert Refined["kind"] == "refine" and Refined["parent_candidate_id"] == Selected["id"]
-    assert Refined["status"] == "complete" and len(Refined["candidates"]) == 6
+    assert Refined["status"] == "complete" and len(Refined["candidates"]) == N
 
     Subs = H.Provider.SubmissionsFor(endpoints.ImageEdit)
-    assert len(Subs) == 6
+    assert len(Subs) == N
     assert len({S[1]["prompt"] for S in Subs}) == 1
     assert Subs[0][1]["prompt"].startswith("Add fine milgrain edges\n\n")
     RefUrls = {S[1]["image_urls"][0] for S in Subs}
@@ -117,32 +118,32 @@ async def test_refine_rejects_not_ready_or_foreign_parent(H):
 
 
 async def test_partial_failure_keeps_successes_and_retries_only_failed_slot(H):
-    H.Provider.Script(endpoints.ImageGenerate, "ok", "fail", "ok", "fail", "ok", "ok")
+    H.Provider.Script(endpoints.ImageGenerate, "ok", "fail", "ok", "fail")
     Batch = await H.NewDesign("Braided band")
     assert Batch["status"] == "partial"
     Failed = [C for C in Batch["candidates"] if C["status"] == "failed"]
     Ready = {C["id"]: C["image_url"] for C in Batch["candidates"] if C["status"] == "ready"}
-    assert len(Failed) == 2 and len(Ready) == 4 and all(C["retryable"] for C in Failed)
+    assert len(Failed) == 2 and len(Ready) == N - 2 and all(C["retryable"] for C in Failed)
 
     R = await H.Client.post(f"/api/candidates/{Failed[0]['id']}/retry")
     assert R.status_code == 200
     await H.Idle()
     After = (await H.Client.get(f"/api/batches/{Batch['id']}")).json()
-    assert len(H.Provider.Submissions) == 7          # exactly one extra request
+    assert len(H.Provider.Submissions) == N + 1      # exactly one extra request
     assert {C["id"]: C["image_url"] for C in After["candidates"] if C["id"] in Ready} == Ready
     assert After["status"] == "partial"
 
     R = await H.Client.post(f"/api/batches/{Batch['id']}/retry-failed")
     await H.Idle()
     After = (await H.Client.get(f"/api/batches/{Batch['id']}")).json()
-    assert After["status"] == "complete" and len(H.Provider.Submissions) == 8
+    assert After["status"] == "complete" and len(H.Provider.Submissions) == N + 2
 
     R = await H.Client.post(f"/api/candidates/{Failed[0]['id']}/retry")
     assert R.status_code == 409                       # ready slots are never regenerated
 
 
 async def test_entire_batch_failure_is_reported_and_retryable(H):
-    H.Provider.Script(endpoints.ImageGenerate, *["fail"] * 6)
+    H.Provider.Script(endpoints.ImageGenerate, *["fail"] * N)
     Batch = await H.NewDesign("Band")
     assert Batch["status"] == "failed"
     assert Batch["user_text"] == "Band"               # prompt preserved for retry
@@ -155,8 +156,8 @@ async def test_exact_duplicate_output_is_retried_then_bounded(H):
     H.Provider.Script(endpoints.ImageGenerate, "duplicate", "duplicate")
     Batch = await H.NewDesign("Band")
     assert Batch["status"] == "complete"
-    assert len({assets.Sha256(H.AssetBytes(C["image_url"])) for C in Batch["candidates"]}) == 6
-    assert len(H.Provider.Submissions) == 7          # one bounded re-request for the duplicate
+    assert len({assets.Sha256(H.AssetBytes(C["image_url"])) for C in Batch["candidates"]}) == N
+    assert len(H.Provider.Submissions) == N + 1      # one bounded re-request for the duplicate
 
     H.Provider.Script(endpoints.ImageGenerate, "duplicate", "duplicate", "duplicate")
     Batch = await H.NewDesign("Band two")
@@ -167,14 +168,14 @@ async def test_exact_duplicate_output_is_retried_then_bounded(H):
 async def test_transient_poll_errors_retry_same_request(H):
     H.Provider.Script(endpoints.ImageGenerate, "status_transient:3")
     Batch = await H.NewDesign("Band")
-    assert Batch["status"] == "complete" and len(H.Provider.Submissions) == 6
+    assert Batch["status"] == "complete" and len(H.Provider.Submissions) == N
 
 
 async def test_transient_errors_are_bounded(H):
     H.Provider.Script(endpoints.ImageGenerate, "status_transient:50")
     Batch = await H.NewDesign("Band")
     Codes = [C["error_code"] for C in Batch["candidates"] if C["status"] == "failed"]
-    assert Codes == ["provider_unreachable"] and len(H.Provider.Submissions) == 6
+    assert Codes == ["provider_unreachable"] and len(H.Provider.Submissions) == N
 
 
 async def test_late_results_do_not_touch_other_designs(H):
@@ -193,7 +194,7 @@ async def test_late_results_do_not_touch_other_designs(H):
 
 async def test_restart_resumes_submitted_and_interrupts_unconfirmed(tmp_path):
     Provider = MockProvider(LatencyS=0.0, RenderVideo=False)
-    Provider.Script(endpoints.ImageGenerate, *["hang"] * 6)
+    Provider.Script(endpoints.ImageGenerate, *["hang"] * N)
     First = Harness(tmp_path, Provider=Provider)
     R = await First.Client.post("/api/designs", data={"prompt": "Band"})
     BatchId = R.json()["id"]
@@ -204,19 +205,19 @@ async def test_restart_resumes_submitted_and_interrupts_unconfirmed(tmp_path):
         await asyncio.sleep(0.005)
     await First.Close()                                   # simulated crash: pollers die
     # One slot looks like it crashed between submit and persisting the request id.
-    Victim = First.Ctx.Db.One("SELECT id FROM candidates WHERE batch_id = ? AND slot = 5", (BatchId,))
+    Victim = First.Ctx.Db.One("SELECT id FROM candidates WHERE batch_id = ? AND slot = ?", (BatchId, N - 1))
     First.Ctx.Db.Update("candidates", Victim["id"], status="pending", provider_request_id=None)
     for Req in Provider.Requests.values():
         Req["outcome"] = "ok"                             # remote work finished while we were down
 
     Second = Harness(tmp_path, Provider=Provider)
     Summary = Second.Svc.Reconcile()
-    assert Summary["candidates"] == {"resumed": 5, "interrupted": 1}
+    assert Summary["candidates"] == {"resumed": N - 1, "interrupted": 1}
     await Second.Idle()
     Rows = Second.Ctx.Db.All("SELECT status, error_code FROM candidates WHERE batch_id = ? ORDER BY slot", (BatchId,))
-    assert [R_["status"] for R_ in Rows] == ["ready"] * 5 + ["failed"]
-    assert Rows[5]["error_code"] == "interrupted"
-    assert len(Provider.Submissions) == 6                 # nothing was resubmitted automatically
+    assert [R_["status"] for R_ in Rows] == ["ready"] * (N - 1) + ["failed"]
+    assert Rows[N - 1]["error_code"] == "interrupted"
+    assert len(Provider.Submissions) == N                 # nothing was resubmitted automatically
     await Second.Close()
 
 
