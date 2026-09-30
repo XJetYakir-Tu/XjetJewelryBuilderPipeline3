@@ -594,23 +594,30 @@
                                     <div class="flex gap-3 flex-row-reverse">
                                         <div class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0 font-semibold mt-0.5 brand-font" style="background:#EEEEEE; color:#555;">U</div>
                                         <div class="px-4 py-3 rounded-2xl text-[14px] max-w-[80%] leading-relaxed" style="background:#F0F0F0; color:#333; border:1px solid #E5E5E5;">
-                                            <span x-show="viewBatch.kind === 'refine'" class="block text-[10px] uppercase tracking-[0.14em] font-semibold mb-1" style="color:#9B7040;">Refinement of the selected design</span>
-                                            <span x-text="viewBatch.user_text"></span>
+                                            <span x-show="bubbleBatch.kind === 'refine'" class="block text-[10px] uppercase tracking-[0.14em] font-semibold mb-1" style="color:#9B7040;">Refinement of the selected design</span>
+                                            <span x-text="bubbleBatch.user_text"></span>
                                         </div>
                                     </div>
 
-                                    <div x-show="viewBatchGenerating" class="flex gap-3">
-                                        <div class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0 font-semibold mt-0.5 brand-font" style="background:#F5EFE4; color:#C9A96E;">Ai</div>
-                                        <div class="flex flex-col gap-2">
-                                            <span class="text-[14px]" style="color:#6F6F6F;">Creating your four designs…</span>
-                                            <div class="inline-flex items-center gap-1.5 px-4 py-3 rounded-2xl rounded-tl-sm w-fit" style="background:#FAF8F4; border:1px solid #EDE8DE;">
-                                                <div class="w-1.5 h-1.5 rounded-full typing-dot" style="background:#C9A96E;"></div>
-                                                <div class="w-1.5 h-1.5 rounded-full typing-dot" style="background:#C9A96E;"></div>
-                                                <div class="w-1.5 h-1.5 rounded-full typing-dot" style="background:#C9A96E;"></div>
+                                    <!-- Waiting screen (P2 atelier-loading movie) while a design or refinement is generated -->
+                                    <template x-if="waitVariant">
+                                        <div class="w-full flex flex-col items-center text-center py-2 fade-in" role="status" aria-live="polite">
+                                            <!-- Crop the clip's baked-in black side bars (as in P2) -->
+                                            <div class="overflow-hidden rounded-xl w-full max-w-[560px]" style="aspect-ratio:1088/720;">
+                                                <video src="/static/videos/atelier-loading.mp4" autoplay muted loop playsinline preload="auto"
+                                                       class="w-full h-full object-cover" style="object-position:73% 50%;"></video>
                                             </div>
+                                            <h2 class="brand-font mt-6 sm:mt-7 text-[24px] sm:text-[30px] font-medium leading-tight" style="color:#2A2A2A;" x-text="waitPreset.title"></h2>
+                                            <p class="mt-2.5 max-w-[500px] text-[15px] sm:text-[16px] leading-relaxed" style="color:#6F6F6F;" x-text="waitPreset.message"></p>
+                                            <div class="mt-5 flex items-center justify-center gap-2 h-5 text-[14px]" style="color:#9B7040;">
+                                                <span class="w-2 h-2 rounded-full animate-pulse motion-reduce:animate-none shrink-0" style="background:#C9A96E;"></span>
+                                                <span x-text="waitStatus"></span>
+                                            </div>
+                                            <p class="mt-3 text-[12px]" style="color:#8F8F8F;" x-text="readyCount(waitBatch) + ' of ' + waitBatch.desired_count + ' designs ready'"></p>
                                         </div>
-                                    </div>
+                                    </template>
 
+                                    <div x-show="!waitVariant" class="flex flex-col gap-4">
                                     <p x-show="!viewBatchGenerating" class="text-[15px] sm:text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#A9791F;"
                                        x-text="viewBatch.kind === 'refine' ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite'"></p>
 
@@ -656,9 +663,6 @@
 
                                     <h2 class="brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design.title"></h2>
 
-                                    <div x-show="pendingBatch" class="flex items-center justify-center gap-2 text-[13px]" style="color:#6F6F6F;">
-                                        <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
-                                        <span x-text="'Creating four refinements… ' + readyCount(pendingBatch) + ' of ' + pendingBatch.desired_count + ' ready'"></span>
                                     </div>
                                 </div>
                             </template>
@@ -729,7 +733,7 @@
                                         <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                                     </button>
                                 </div>
-                                <p x-show="design && !selectedId && !viewBatchGenerating" class="text-center text-[12px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
+                                <p x-show="design && !selectedId && !waitVariant" class="text-center text-[12px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
                                 <p x-show="actionError" class="text-center text-[13px]" style="color:#A1261D;" x-text="actionError"></p>
                             </div>
                         </div>

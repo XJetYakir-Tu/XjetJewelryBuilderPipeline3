@@ -24,6 +24,20 @@ const MATERIAL_COPY = {
   gold_18k_rose:   { desc: 'A romantic blush alloy at 75% gold content — warm, refined, and timeless.' },
 };
 
+// Waiting-screen copy from Pipeline 2 (app-p2.js showLoading presets 'design' / 'refine').
+const WAIT_PRESETS = {
+  design: {
+    title: 'Your jewelry is coming to life',
+    message: 'Turning your vision into a detailed design, ready for precision 3D printing.',
+    statuses: ['Creating your design...', 'Interpreting your idea...', 'Developing the jewelry geometry...', 'Refining the design details...', 'Preparing your result...'],
+  },
+  refine: {
+    title: 'Refining your jewelry design',
+    message: 'Applying your ideas while preserving the character of your creation.',
+    statuses: ['Refining your design...', 'Interpreting your changes...', 'Updating the jewelry geometry...', 'Refining the details...', 'Preparing your result...'],
+  },
+};
+
 function loadStore() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch { return {}; }
 }
@@ -75,10 +89,15 @@ function p3App() {
     bag: null,
 
     _poll: null, _pollCust: null,
+    waitStatusIndex: 0,
 
     // ── lifecycle ─────────────────────────────────────────────────────
     async init() {
       const st = loadStore();
+      // Rotate the waiting-screen status line every 3.5 s (P2 cadence); skipped for reduced motion.
+      if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+        setInterval(() => { this.waitStatusIndex++; }, 3500);
+      }
       try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch { this.health = null; }
       this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
       const lux = this.materialsOf('luxury');
@@ -290,6 +309,15 @@ function p3App() {
       return `Refinement ${n}`;
     },
     anyActive(b) { return !!b && (b.status === 'queued' || b.status === 'generating'); },
+    // The P2 waiting movie is shown while a new design or a refinement is being generated.
+    get waitBatch() {
+      if (this.pendingBatch) return this.pendingBatch;
+      return this.anyActive(this.viewBatch) ? this.viewBatch : null;
+    },
+    get waitVariant() { return this.waitBatch ? (this.waitBatch.kind === 'refine' ? 'refine' : 'design') : null; },
+    get waitPreset() { return WAIT_PRESETS[this.waitVariant || 'design']; },
+    get waitStatus() { const s = this.waitPreset.statuses; return s[this.waitStatusIndex % s.length]; },
+    get bubbleBatch() { return this.pendingBatch || this.viewBatch; },
     get viewBatchGenerating() { return this.anyActive(this.viewBatch) && this.readyCount(this.viewBatch) === 0; },
 
     ensurePolling() {

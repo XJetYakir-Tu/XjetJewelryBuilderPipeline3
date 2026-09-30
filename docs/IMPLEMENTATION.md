@@ -11,6 +11,9 @@ This document separates three things:
 > **Product-owner changes, 2026-09-30** (they supersede the matching items below):
 > - **Batch size.** Every batch — the first generation and every refinement — now produces **four** candidates, not six. The grid is 2×2 and sized to fit the first screen. `images.candidates_per_batch = 4` is enforced in `p3/config.py`, and refinement still uses the selected image for every output. Cost is about $0.60 per batch at published rates. Four is also the provider's `num_images` maximum, but P3 keeps one request per slot so each slot keeps its own seed, status, and retry.
 > - **Movie is the default Customize view.** The "360° Movie" tab is first and selected on entry. While the movie is being made, or if it failed, the static image stays visible with a status or retry pill. The "Image" tab is second.
+> - **Customize final behaviour (confirmed).** The 360° Movie tab is first and selected on entry, and a ready movie plays immediately. While the movie is being made there is no empty or blocked state: the selected image stays visible with a small status pill, and all controls stay usable.
+> - **Design waiting screen.** P2's waiting movie (`atelier-loading.mp4`, copied to `web/videos/`) plays inline in the Design screen, with P2's "design" / "refine" titles and rotating status lines. It shows while a new design or a refinement is generated, then the four results replace it. Unlike P2 it is not a full-screen overlay, so the nav, My Designs, and batch tabs stay usable.
+> - **UI caching.** `/`, `/dev` and `/static/*` are served with `Cache-Control: no-cache`, so browsers revalidate (304) instead of running an outdated `app.js` after an update.
 > - **Luxury order.** Row 1 is 10K / 14K / 18K Yellow Gold; row 2 is 10K / 14K / 18K Rose Gold (`config/materials.json` order plus a fixed 3-column grid).
 
 ## 1. Isolation from Pipeline 2

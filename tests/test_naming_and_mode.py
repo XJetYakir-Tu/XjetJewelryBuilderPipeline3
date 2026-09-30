@@ -28,3 +28,9 @@ async def test_design_title_uses_product_name(H):
 async def test_health_reports_mock_mode(H):
     R = (await H.Client.get("/api/health")).json()
     assert R["mode"] == "mock" and R["provider"] == "mock"
+
+
+async def test_ui_assets_are_revalidated_not_cached_stale(H):
+    for Path in ("/", "/static/app.js", "/static/videos/atelier-loading.mp4"):
+        R = await H.Client.get(Path)
+        assert R.status_code == 200 and R.headers["cache-control"] == "no-cache", Path

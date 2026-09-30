@@ -75,6 +75,15 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
     App_.state.Ctx = Ctx
     App_.state.Services = Svc
 
+    @App_.middleware("http")
+    async def _NoStaleUi(Req: Request, CallNext):
+        # The page and its scripts change with every release; make browsers revalidate
+        # (cheap 304s via ETag) instead of running a cached, outdated app.js.
+        Resp = await CallNext(Req)
+        if Req.url.path in ("/", "/dev") or Req.url.path.startswith("/static/"):
+            Resp.headers["Cache-Control"] = "no-cache"
+        return Resp
+
     @App_.exception_handler(HttpError)
     async def _HttpError(_Req: Request, E: HttpError):
         return JSONResponse(status_code=E.Status, content={"error": {"code": E.Code, "message": E.Message}})
