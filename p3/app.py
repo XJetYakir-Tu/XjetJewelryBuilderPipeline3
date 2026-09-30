@@ -8,7 +8,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import Body, FastAPI, File, Form, Header, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from p3 import assets
@@ -47,6 +47,17 @@ class Services:
     def Reconcile(self) -> dict:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),
                 "meshes": self.Meshes.Reconcile()}
+
+
+def _VersionedPage(Name: str) -> str:
+    """Serve a page with ?v=<mtime> on its local scripts/styles, so a browser can never pair a
+    new page with a cached older app.js (which silently breaks the UI after an update)."""
+    Html = (WebDir / Name).read_text(encoding="utf-8")
+    for Asset in ("app.js", "styles.css"):
+        Path_ = WebDir / Asset
+        if Path_.is_file():
+            Html = Html.replace(f'"/static/{Asset}"', f'"/static/{Asset}?v={Path_.stat().st_mtime_ns}"')
+    return Html
 
 
 def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
@@ -94,11 +105,11 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
     # ── pages / static ───────────────────────────────────────────────────
     @App_.get("/", include_in_schema=False)
     async def Index():
-        return FileResponse(WebDir / "index.html")
+        return HTMLResponse(_VersionedPage("index.html"))
 
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():
-        return FileResponse(WebDir / "dev.html")
+        return HTMLResponse(_VersionedPage("dev.html"))
 
     App_.mount("/static", StaticFiles(directory=WebDir), name="static")
     App_.mount("/assets", StaticFiles(directory=S.AssetsDir), name="assets")

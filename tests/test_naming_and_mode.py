@@ -34,3 +34,11 @@ async def test_ui_assets_are_revalidated_not_cached_stale(H):
     for Path in ("/", "/static/app.js", "/static/videos/atelier-loading.mp4"):
         R = await H.Client.get(Path)
         assert R.status_code == 200 and R.headers["cache-control"] == "no-cache", Path
+
+
+async def test_page_references_versioned_script(H):
+    import re
+    Html = (await H.Client.get("/")).text
+    Match = re.search(r'src="/static/app\.js\?v=(\d+)"', Html)
+    assert Match, "app.js must be versioned so browsers never run a stale cached copy"
+    assert (await H.Client.get(f"/static/app.js?v={Match.group(1)}")).status_code == 200
