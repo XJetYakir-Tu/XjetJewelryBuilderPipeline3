@@ -11,6 +11,9 @@ its body with a proper admin role / company sign-in (e.g. SSO) — the routes do
 from dataclasses import dataclass
 
 import asyncio
+import hashlib
+import hmac
+import time
 from statistics import mean
 
 from fastapi import Body, FastAPI, Header
@@ -91,6 +94,9 @@ def _Detail(Ctx: Context, AccountId: str) -> dict:
         "sessions": Sessions.Summaries(Ctx, OwnerAccountId=AccountId, IncludeMock=False),
         "mock_excluded": True,
     }
+
+
+DownloadLinkSeconds = 600
 
 
 def _Pct(Part: int, Whole: int) -> float | None:
@@ -284,9 +290,30 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
         return Production.Request(DesignId, Body_.get("production_size"), Body_.get("material_id") or None,
                                   Body_.get("candidate_id") or None, RequestedBy=Who.Id)
 
-    @App_.get("/api/admin/3d/{Sid}/stl/{Stage}")
-    async def Download3D(Sid: str, Stage: str, authorization: str | None = Header(None)):
+    # Large files (a 5M-face STL is ~250 MB) are downloaded natively by the browser — streamed to disk
+    # with its progress bar — through a short-lived signed link, instead of being loaded into the page.
+    def _DownloadSig(Sid: str, Stage: str, Exp: int) -> str:
+        return hmac.new((Ctx.Settings.AdminKey or "").encode(), f"3d-download:{Sid}:{Stage}:{Exp}".encode(),
+                        hashlib.sha256).hexdigest()
+
+    @App_.post("/api/admin/3d/{Sid}/download-link")
+    async def Download3DLink(Sid: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Admin(authorization)
+        Stage = str(Body_.get("stage") or "")
+        if Stage not in ("raw", "production", "preview"):
+            raise HttpError(404, "geometry_not_found", "Unknown stage.")
+        Path_ = Production.StlPath(Sid, Stage)                     # 404 if the file does not exist (yet)
+        Exp = int(time.time()) + DownloadLinkSeconds
+        return {"url": f"{Ctx.Settings.BasePath}/api/admin/3d/{Sid}/stl/{Stage}?exp={Exp}&sig={_DownloadSig(Sid, Stage, Exp)}",
+                "bytes": Path_.stat().st_size, "expires_in_s": DownloadLinkSeconds}
+
+    @App_.get("/api/admin/3d/{Sid}/stl/{Stage}")
+    async def Download3D(Sid: str, Stage: str, exp: int | None = None, sig: str | None = None,
+                         authorization: str | None = Header(None)):
+        Signed = (exp is not None and sig and exp >= time.time() and Ctx.Settings.AdminKey
+                  and hmac.compare_digest(sig, _DownloadSig(Sid, Stage, exp)))
+        if not Signed:
+            Admin(authorization)
         if Stage not in ("raw", "production", "preview"):
             raise HttpError(404, "geometry_not_found", "Unknown stage.")
         Path_ = Production.StlPath(Sid, Stage)

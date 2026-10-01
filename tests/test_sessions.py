@@ -281,3 +281,22 @@ async def test_measurement_runs_in_a_worker_and_out_of_memory_keeps_the_raw_mode
     assert (await H.Client.get(f"/api/admin/3d/{T2['id']}/stl/raw", headers=Admin)).status_code == 200
     assert (await H.Client.get(f"/api/admin/3d/{T2['id']}/stl/production", headers=Admin)).status_code == 404
     assert (await H.Client.get("/api/health")).status_code == 200                # the server is fine
+
+
+async def test_signed_download_link_streams_the_file_without_the_admin_header(HS):
+    H = HS
+    Batch = await H.NewDesign("Plain band")
+    T = (await H.Client.post(f"/api/admin/sessions/{Batch['design_id']}/3d", json={}, headers=Admin)).json()
+    await H.Idle()
+    assert (await H.Client.post(f"/api/admin/3d/{T['id']}/download-link", json={"stage": "production"})).status_code == 403
+    L = (await H.Client.post(f"/api/admin/3d/{T['id']}/download-link", json={"stage": "production"}, headers=Admin)).json()
+    assert L["bytes"] > 84 and "sig=" in L["url"]
+    Path = L["url"].split("/api/", 1)[1]
+    R = await H.Client.get("/api/" + Path)                                    # no Authorization header
+    assert R.status_code == 200 and len(R.content) == L["bytes"] and "attachment" in R.headers["content-disposition"]
+    Bad = await H.Client.get("/api/" + Path.replace("sig=", "sig=0"))
+    assert Bad.status_code == 403
+    Expired = "/api/" + Path.split("?")[0] + "?exp=1&sig=" + Path.split("sig=")[1]
+    assert (await H.Client.get(Expired)).status_code == 403
+    Other = await H.Client.get("/api/" + Path.replace("/stl/production", "/stl/raw"))   # signature is per file
+    assert Other.status_code == 403

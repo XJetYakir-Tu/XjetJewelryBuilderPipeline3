@@ -59,7 +59,7 @@ function adminApp() {
     editing: null, edit: {}, editError: '',
     userId: '', d: null, detailError: '', openDesign: null,
     tab: 'sessions', materials: {}, swatches: {}, showChoices: false,
-    viewer3d: { id: null, label: '', loading: false, error: '' },
+    viewer3d: { id: null, label: '', loading: false, error: '' }, downloadNote: '',
     dash: null, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
@@ -228,13 +228,16 @@ function adminApp() {
         await this.loadSession();
       } catch (e) { this.g3.error = e.message; } finally { this.g3.busy = false; }
     },
+    // Native browser download (streams to disk with the browser's progress bar) via a signed link,
+    // so a 250 MB STL is never loaded into the page.
     async downloadStl(id, stage) {
-      const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(id)}/stl/${stage}`, { headers: { Authorization: 'Bearer ' + this.key } });
-      if (!r.ok) { alert('Download failed (' + r.status + ')'); return; }
-      const url = URL.createObjectURL(await r.blob());
-      const ext = stage === 'raw' ? ((this.sd?.three_d.find(t => t.id === id)?.geometry?.raw?.stl_path || '').split('.').pop() || 'stl') : 'stl';
-      const a = Object.assign(document.createElement('a'), { href: url, download: `${id}_${stage}.${ext}` });
-      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      try {
+        const r = await this.api('POST', `/api/admin/3d/${encodeURIComponent(id)}/download-link`, { stage });
+        const a = Object.assign(document.createElement('a'), { href: r.url });
+        document.body.appendChild(a); a.click(); a.remove();
+        this.downloadNote = `Downloading ${(r.bytes / 1e6).toFixed(0)} MB — see your browser's downloads.`;
+        setTimeout(() => { this.downloadNote = ''; }, 6000);
+      } catch (e) { alert('Download failed: ' + e.message); }
     },
 
     // ── detail ─────────────────────────────────────────────────────────
@@ -448,14 +451,21 @@ function adminApp() {
         const scene = new THREE.Scene(); scene.background = new THREE.Color(0xfafafa);
         const camera = new THREE.PerspectiveCamera(35, w / h, R / 100, R * 100);
         camera.position.set(R * 0.8, R * 1.2, R * 4.2);          // ring axis is Z: look at the ring's face, slightly from above
-        const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(w, h); renderer.setPixelRatio(window.devicePixelRatio || 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(w, h); renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
         el.innerHTML = ''; el.appendChild(renderer.domElement);
         scene.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: new THREE.Color(this.swatch(t.material_id)), metalness: 0.6, roughness: 0.35 })));
         scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 1.1));
         const d = new THREE.DirectionalLight(0xffffff, 0.9); d.position.set(R, R * 2, R * 3); scene.add(d);
         const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 1.5;
         this._three = { renderer, el, raf: 0 };
-        const tick = () => { if (!this._three) return; controls.update(); renderer.render(scene, camera); this._three.raf = requestAnimationFrame(tick); };
+        // Draw only while the viewer is on screen and the tab is visible (a 100k+ face model is heavy).
+        let onScreen = true;
+        const io = new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; }); io.observe(el);
+        const tick = () => {
+          if (!this._three) { io.disconnect(); return; }
+          if (onScreen && !document.hidden) { controls.update(); renderer.render(scene, camera); }
+          this._three.raf = requestAnimationFrame(tick);
+        };
         tick();
         this.viewer3d.loading = false;
       } catch (e) { this.viewer3d.loading = false; this.viewer3d.error = e.message; }

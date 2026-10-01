@@ -560,6 +560,7 @@
                   </ol>
                 </div>
                 <p x-show="t.price?.status === 'cost_model_not_configured'" class="text-[11px] text-zinc-500">Production cost and 3D price need the cost model (metal price per gram, production cost, markup) in <code>config/production_costs.json</code> — not configured yet.</p>
+                <p x-show="downloadNote" class="text-[11px] text-emerald-700" x-text="downloadNote"></p>
                 <div class="flex gap-4 text-xs uppercase tracking-widest">
                   <button class="underline" @click="show3d(t)">View in 3D</button>
                   <button class="underline" @click="downloadStl(t.id, 'production')">Download scaled STL</button>

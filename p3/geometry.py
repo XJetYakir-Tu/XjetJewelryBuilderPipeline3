@@ -31,7 +31,7 @@ RoundnessLimit = 0.04           # (std of bore radius) / radius above this → n
 Directions = 72
 Chunk = 1_000_000               # triangles per chunk for whole-mesh passes
 RepairMaxFaces = 1_000_000      # trimesh repair (graph based) only below this size
-PreviewFaces = 300_000
+PreviewFaces = 120_000          # browser viewer copy (~6 MB STL)
 
 
 def UsSizeToInnerDiameterMm(Size: float) -> float:
