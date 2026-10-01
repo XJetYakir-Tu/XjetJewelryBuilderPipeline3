@@ -96,6 +96,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
     Ctx.Pricing.Book = Ctx.MaterialPrices         # the website's fixed price per material comes from it
     Svc = Services(Ctx)
+    Ctx.MaterialPrices.OnSave.append(Svc.Production3D.RepriceMissing)
     Sessions.BackfillBagEvents(Ctx)               # bag lines can be removed later; keep their bag_added
     Sessions.BackfillDesignModes(Ctx)             # mark older sessions mock / live from their requests
     Annotated = BackfillUsageAnnotations(Ctx)     # provider/endpoint on usage recorded before they were captured

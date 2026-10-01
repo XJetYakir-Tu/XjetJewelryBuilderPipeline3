@@ -36,7 +36,74 @@ const THREE_D = {
   needs_review: ['Needs review', 'bg-amber-100 text-amber-800'], failed: ['Failed', 'bg-red-100 text-red-700'],
   cancelled: ['Cancelled', 'bg-zinc-100 text-zinc-600'],
 };
-const GL = { renderer: null, failed: false, scene: null, camera: null, light: null, mesh: null, controls: null, io: null, raf: 0 };
+const GL = { renderer: null, failed: false, scene: null, camera: null, light: null, mesh: null, controls: null, io: null, raf: 0, soft: null };
+// WebGL-free 3D view (browsers with graphics acceleration off): the light preview (~25k faces) drawn with
+// the plain 2D canvas — depth-sorted, shaded triangles; drag to rotate, slow auto-rotate while visible.
+function SoftViewer(el, geo, colorHex) {
+  const pos = geo.attributes.position.array, idx = geo.index ? geo.index.array : null;
+  const nv = pos.length / 3, nf = idx ? idx.length / 3 : nv / 3;
+  geo.computeBoundingSphere();
+  const R = geo.boundingSphere.radius || 1, C = geo.boundingSphere.center;
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'width:100%;height:100%;display:block;touch-action:none;cursor:grab';
+  el.innerHTML = ''; el.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const hex = (colorHex || '#c0c0c0').replace('#', '').padEnd(6, '0');
+  const base = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const X = new Float32Array(nv), Y = new Float32Array(nv), Z = new Float32Array(nv);
+  const depth = new Float32Array(nf), order = new Uint32Array(nf), shade = new Float32Array(nf);
+  const L = [0.35, 0.55, 0.76];
+  let yaw = 0.5, pitch = -0.35, drag = null, raf = 0, alive = true, onScreen = true, last = 0;
+  const v = (f, k) => (idx ? idx[f * 3 + k] : f * 3 + k);
+  function draw() {
+    const W = canvas.clientWidth || 300, H = canvas.clientHeight || 300;
+    if (canvas.width !== Math.round(W * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
+    const s = 0.42 * Math.min(canvas.width, canvas.height) / R, cx = canvas.width / 2, cy = canvas.height / 2;
+    const cyw = Math.cos(yaw), syw = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+    for (let i = 0; i < nv; i++) {
+      const x = pos[i * 3] - C.x, y = pos[i * 3 + 1] - C.y, z = pos[i * 3 + 2] - C.z;
+      const x1 = x * cyw + z * syw, z1 = -x * syw + z * cyw;
+      X[i] = x1; Y[i] = y * cp - z1 * sp; Z[i] = y * sp + z1 * cp;
+    }
+    for (let f = 0; f < nf; f++) {
+      const a = v(f, 0), b = v(f, 1), c = v(f, 2);
+      const ux = X[b] - X[a], uy = Y[b] - Y[a], uz = Z[b] - Z[a], wx = X[c] - X[a], wy = Y[c] - Y[a], wz = Z[c] - Z[a];
+      let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      const n = Math.hypot(nx, ny, nz) || 1; nx /= n; ny /= n; nz /= n;
+      const d = Math.abs(nx * L[0] + ny * L[1] + nz * L[2]);         // two-sided: no reliance on winding
+      shade[f] = 0.32 + 0.6 * d + 0.35 * Math.pow(d, 24);           // ambient + diffuse + a metal highlight
+      depth[f] = Z[a] + Z[b] + Z[c];
+      order[f] = f;
+    }
+    order.sort((p, q) => depth[p] - depth[q]);                       // far → near (painter's algorithm)
+    ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.lineWidth = 0.6; ctx.lineJoin = 'round';
+    for (let k = 0; k < nf; k++) {
+      const f = order[k], a = v(f, 0), b = v(f, 1), c = v(f, 2), t = shade[f];
+      const col = 'rgb(' + (Math.min(255, base[0] * t) | 0) + ',' + (Math.min(255, base[1] * t) | 0) + ',' + (Math.min(255, base[2] * t) | 0) + ')';
+      ctx.fillStyle = col; ctx.strokeStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(cx + X[a] * s, cy - Y[a] * s); ctx.lineTo(cx + X[b] * s, cy - Y[b] * s); ctx.lineTo(cx + X[c] * s, cy - Y[c] * s);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+  }
+  function tick(ts) {
+    if (!alive) return;
+    if (!el.isConnected) { alive = false; return; }
+    if (!drag && onScreen && !document.hidden && ts - last > 80) { yaw += 0.03; last = ts; draw(); }   // ~12 fps
+    raf = requestAnimationFrame(tick);
+  }
+  const down = (e) => { drag = { x: e.clientX, y: e.clientY, yaw, pitch }; canvas.setPointerCapture(e.pointerId); canvas.style.cursor = 'grabbing'; };
+  const move = (e) => { if (!drag) return; yaw = drag.yaw + (e.clientX - drag.x) * 0.01; pitch = Math.max(-1.5, Math.min(1.5, drag.pitch + (e.clientY - drag.y) * 0.01)); draw(); };
+  const up = () => { drag = null; canvas.style.cursor = 'grab'; };
+  canvas.addEventListener('pointerdown', down); canvas.addEventListener('pointermove', move);
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+  const io = new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; }); io.observe(el);
+  draw(); raf = requestAnimationFrame(tick);
+  return { dispose() { alive = false; cancelAnimationFrame(raf); io.disconnect(); canvas.remove(); geo.dispose(); }, draw };
+}
+
 const STAGE_SHORT = { waiting_hi3d: 'Waiting for Hi3D', generating_3d: 'Generating 3D', downloading_stl: 'Download',
   queued: 'Queued', calculating_geometry: 'Geometry', exporting: 'Scaled STL' };
 const EVENTS = {
@@ -579,7 +646,8 @@ function adminApp() {
       if (GL.mesh) { GL.scene.remove(GL.mesh); GL.mesh.geometry.dispose(); GL.mesh.material.dispose(); GL.mesh = null; }
       if (GL.controls) { GL.controls.dispose(); GL.controls = null; }
       if (GL.io) { GL.io.disconnect(); GL.io = null; }
-      this.viewer3d = { id: null, label: '', loading: false, error: this.viewer3d?.error && !GL.renderer ? this.viewer3d.error : '' };
+      if (GL.soft) { GL.soft.dispose(); GL.soft = null; }
+      this.viewer3d = { id: null, label: '', loading: false, error: '', note: '' };
     },
     glRenderer() {
       if (GL.renderer) return GL.renderer;
@@ -598,13 +666,9 @@ function adminApp() {
     async show3d(t) {
       if (!window.THREE || !THREE.STLLoader || !THREE.OrbitControls) { this.viewer3d.error = '3D viewer library not loaded'; return; }
       this.clear3d();
-      const renderer = this.glRenderer();
-      if (!renderer) {                                 // WebGL off / unavailable: keep the Hi3D image instead
-        this.viewer3d = { id: null, label: '', loading: false,
-          error: '3D viewer unavailable — this browser could not start WebGL (graphics acceleration off?). Showing the Hi3D image.' };
-        return;
-      }
-      this.viewer3d = { id: t.id, label: (t.ring_id ? t.ring_id + ' · ' : '') + 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '' };
+      const renderer = this.glRenderer();                // null when the browser cannot start WebGL
+      this.viewer3d = { id: t.id, label: (t.ring_id ? t.ring_id + ' · ' : '') + 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '',
+                        note: renderer ? '' : 'Basic 3D view (WebGL is off in this browser) · drag to rotate' };
       try {
         const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: { Authorization: 'Bearer ' + this.key } });   // light, visual only
         if (!r.ok) throw new Error('Preview download failed (' + r.status + ')');
@@ -613,6 +677,11 @@ function adminApp() {
         const geo = this.parsePreview(buf) || new THREE.STLLoader().parse(buf);
         geo.computeVertexNormals(); geo.center(); geo.computeBoundingSphere();
         const el = this.$refs.viewer; if (!el) return;
+        if (!renderer) {                                // no WebGL: draw it with the 2D canvas instead
+          GL.soft = SoftViewer(el, geo, this.swatch(t.material_id));
+          this.viewer3d.loading = false;
+          return;
+        }
         const w = el.clientWidth || 300, h = el.clientHeight || 300, R = geo.boundingSphere.radius || 10;
         renderer.setSize(w, h);
         if (renderer.domElement.parentNode !== el) { el.innerHTML = ''; el.appendChild(renderer.domElement); }

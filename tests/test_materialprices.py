@@ -45,3 +45,24 @@ async def test_fixed_price_is_the_website_price_and_edits_are_versioned(HM):
     Mats["silver"]["cost_per_g"] = -1
     Bad = await HM.Client.put("/api/admin/material-prices", json={"materials": Mats}, headers=Admin)
     assert Bad.status_code == 400 and "greater than 0" in Bad.json()["error"]["message"]
+
+
+async def test_3d_results_without_a_price_are_priced_when_the_table_gets_numbers(HM):
+    H = HM
+    Doc = H.Ctx.MaterialPrices.Current()
+    Empty = {M: {**R, "cost_per_g": None, "price_per_g": None} for M, R in Doc["materials"].items()}
+    H.Ctx.MaterialPrices.Save({"materials": Empty}, "test", "no numbers yet")
+    Batch = await H.NewDesign("Plain band")
+    T = (await H.Client.post(f"/api/admin/sessions/{Batch['design_id']}/3d", json={"material_id": "silver"}, headers=Admin)).json()
+    await H.Idle()
+    P = H.Ctx.Db.One("SELECT * FROM price_calculations WHERE session_3d_id = ?", (T["id"],))
+    assert P["production_cost"] is None and P["status"] == "cost_model_not_configured"
+    R = await H.Client.put("/api/admin/material-prices", json={"materials": Doc["materials"], "note": "numbers"}, headers=Admin)
+    assert R.status_code == 200
+    Rows = H.Ctx.Db.All("SELECT * FROM price_calculations WHERE session_3d_id = ? ORDER BY created_at", (T["id"],))
+    New = Rows[-1]
+    assert len(Rows) == 2 and New["status"] == "calculated" and New["cost_model_version"] == R.json()["version"]
+    assert New["production_cost"] == pytest.approx(New["weight_g"] * 16, abs=0.01)
+    assert New["calculated_price"] == pytest.approx(New["weight_g"] * 35, abs=0.01)
+    H.Ctx.MaterialPrices.Save({"materials": Doc["materials"]}, "test", "same again")    # complete prices stay as they are
+    assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM price_calculations WHERE session_3d_id = ?", (T["id"],))["n"] == 2

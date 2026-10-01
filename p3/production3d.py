@@ -252,8 +252,19 @@ class Production3D:
             return
         G = Scaled(Raw, UsSizeToInnerDiameterMm(Row["production_size"]))
         Gid = Insert("production", G, G["scale_factor"], None)          # scaled STL: exported on demand only
+        Weight = self._Price(Row, Gid, G["volume_mm3"] if Raw["closed_heuristic"] else None)
+        Status = "needs_review" if Problems else "measured"
+        Db.Update("session_3d", Sid, status=Status, error=" ".join(Problems) or None)
+        Stages.Begin(Db, Sid, "ready", needs_review=bool(Problems))
+        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
+        Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid,
+                        status=Status, inner_diameter_mm=G["inner_diameter_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
+
+    def _Price(self, Row: dict, Gid: str, VolumeMm3: float | None) -> float | None:
+        """Weight, production cost and 3D price from Admin → Material pricing (current version)."""
+        Ctx = self.Ctx
         Mat = Ctx.Catalog.Get(Row["material_id"])
-        Weight = round(G["volume_mm3"] / 1000.0 * Mat.DensityGCm3, 3) if Raw["closed_heuristic"] else None
+        Weight = round(VolumeMm3 / 1000.0 * Mat.DensityGCm3, 3) if VolumeMm3 else None
         Book = Ctx.MaterialPrices.Current()
         P = Ctx.MaterialPrices.Price3D(Row["material_id"], Weight)   # weight × cost $/g and × price $/g
         Summary = (Sessions.Summaries(Ctx, [Row["design_id"]]) or [{}])[0]
@@ -262,19 +273,32 @@ class Production3D:
         if Row["material_id"] != Summary.get("material_id"):
             Q = Ctx.Pricing.QuoteFor(Row["material_id"])
             Fixed = {"unit_price": Q.unit_price, "pricing_version": Q.pricing_version, "source": "current_quote"}
-        Db.Execute("INSERT INTO price_calculations (id, session_3d_id, geometry_id, material_id, density_g_cm3, weight_g, "
-                   "production_cost, calculated_price, currency, cost_model_version, breakdown_json, fixed_price, "
-                   "fixed_price_version, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                   (NewId("prc"), Sid, Gid, Row["material_id"], Mat.DensityGCm3, Weight, P.get("production_cost"),
-                    P.get("calculated_price"), Book.get("currency"), Book["version"],
-                    Dumps({**P.get("breakdown", {}), "reason": P.get("reason"), "fixed_price_source": Fixed.get("source")}),
-                    Fixed.get("unit_price"), Fixed.get("pricing_version"), P["status"], T))
-        Status = "needs_review" if Problems else "measured"
-        Db.Update("session_3d", Sid, status=Status, error=" ".join(Problems) or None)
-        Stages.Begin(Db, Sid, "ready", needs_review=bool(Problems))
-        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
-        Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid,
-                        status=Status, inner_diameter_mm=G["inner_diameter_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
+        Ctx.Db.Execute("INSERT INTO price_calculations (id, session_3d_id, geometry_id, material_id, density_g_cm3, weight_g, "
+                       "production_cost, calculated_price, currency, cost_model_version, breakdown_json, fixed_price, "
+                       "fixed_price_version, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (NewId("prc"), Row["id"], Gid, Row["material_id"], Mat.DensityGCm3, Weight, P.get("production_cost"),
+                        P.get("calculated_price"), Book.get("currency"), Book["version"],
+                        Dumps({**P.get("breakdown", {}), "reason": P.get("reason"), "fixed_price_source": Fixed.get("source")}),
+                        Fixed.get("unit_price"), Fixed.get("pricing_version"), P["status"], Now()))
+        return Weight
+
+    def RepriceMissing(self) -> int:
+        """Results whose latest price has no production cost / 3D price (made before the material table had
+        the numbers) are priced again from the current table. Complete prices are never changed."""
+        N = 0
+        for R in self.Ctx.Db.All(
+                "SELECT s.*, g.id AS gid, g.volume_mm3, g.watertight FROM session_3d s JOIN geometry_results g "
+                "ON g.session_3d_id = s.id AND g.stage = 'production' WHERE s.status IN ('measured', 'needs_review')"):
+            Last = self.Ctx.Db.One("SELECT production_cost, calculated_price FROM price_calculations WHERE session_3d_id = ? "
+                                   "ORDER BY created_at DESC, rowid DESC LIMIT 1", (R["id"],))
+            if Last and Last["production_cost"] is not None and Last["calculated_price"] is not None:
+                continue
+            Need = self.Ctx.MaterialPrices.Row(R["material_id"])
+            if not (Need.get("cost_per_g") or Need.get("price_per_g")):
+                continue                                  # still nothing to price with
+            self._Price(R, R["gid"], R["volume_mm3"] if R["watertight"] else None)
+            N += 1
+        return N
 
     # ── admin actions: cancel / retry / export ───────────────────────────
     def _MeasureJob(self, MeshId: str, Statuses=("queued", "running")) -> dict | None:
@@ -347,6 +371,7 @@ class Production3D:
     # ── recovery ─────────────────────────────────────────────────────────
     def Reconcile(self) -> int:
         """After a restart: continue every request whose raw STL is on disk; Hi3D ones resume via the mesh."""
+        self.RepriceMissing()
         N = 0
         for R in self.Ctx.Db.All("SELECT DISTINCT s.mesh_id, m.status FROM session_3d s JOIN meshes m ON m.id = s.mesh_id "
                                  f"WHERE s.status IN ({','.join('?' * len(Waiting))})", Waiting):

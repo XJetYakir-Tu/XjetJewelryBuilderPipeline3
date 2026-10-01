@@ -494,6 +494,7 @@
             <span x-show="!measured3d() && !thumb()" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-400">Not generated — use Generate 3D below</span>
             <span x-show="measured3d() && !viewer3d.id && thumb() && !viewer3d.error" class="absolute inset-x-0 bottom-2 text-center text-[11px] text-zinc-500">Hi3D thumbnail · light 3D preview is being prepared…</span>
             <span x-show="measured3d() && viewer3d.loading" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-400">Loading 3D…</span>
+            <span x-show="viewer3d.note" class="absolute left-2 top-2 text-[10px] text-zinc-500 bg-white/80 px-1.5 py-0.5 pointer-events-none" x-text="viewer3d.note"></span>
             <span x-show="viewer3d.error" class="absolute inset-x-0 bottom-2 text-center text-[11px] text-red-600" x-text="viewer3d.error"></span>
           </div></div>
       </section>
@@ -585,12 +586,13 @@
                   <div><p class="lbl">3D calculated price</p><p x-text="t.price?.calculated_price != null ? '$' + t.price.calculated_price.toFixed(2) : '—'"></p></div>
                 </div>
                 <!-- What was done to the Hi3D model -->
-                <div class="bg-zinc-50 border border-zinc-100 p-4">
-                  <p class="lbl mb-2">What was done to the model</p>
-                  <ol class="text-[12px] text-zinc-600 space-y-1 list-decimal pl-5">
+                <details class="bg-zinc-50 border border-zinc-100 px-4 py-2.5 group">
+                  <summary class="lbl cursor-pointer select-none list-none flex items-center gap-2">
+                    <span class="inline-block transition-transform group-open:rotate-90">›</span>What was done to the model</summary>
+                  <ol class="text-[12px] text-zinc-600 space-y-1 list-decimal pl-5 mt-2 pb-1">
                     <template x-for="line in adjustments(t)"><li x-text="line"></li></template>
                   </ol>
-                </div>
+                </details>
                 <p x-show="t.price?.status === 'cost_model_not_configured'" class="text-[11px] text-zinc-500" x-text="'Production cost / 3D price: ' + (t.price?.breakdown?.reason || 'not set') + ' — set it in AI Prompts & Params → Pricing · materials.'"></p>
                 <p x-show="background(t)" class="text-[11px] text-zinc-500" x-text="background(t)"></p>
                 <p x-show="exports3d[t.id]" class="text-[11px] text-sky-800 tabular-nums" x-text="exportLine(t)"></p>
