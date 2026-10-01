@@ -78,11 +78,12 @@ class Material:
     RequiresPlating: bool
     Swatch: str
     Tint: str
-    Recolor: str = "ramp"     # "ramp": map onto the swatch colour ramp · "tint": apply Tint (CSS filter) to the ring
+    Recolor: str = "ramp"     # "ramp": map onto the colour ramp · "tint": apply Tint (CSS filter) to the ring
+    Ramp: tuple = ()          # optional 5 colours (shadow → highlight) for luminance 0, .25, .5, .75, 1
 
     def ToJson(self) -> dict:
         return {"id": self.Id, "group": self.Group, "label": self.Label,
-                "swatch": self.Swatch, "tint": self.Tint, "recolor": self.Recolor}
+                "swatch": self.Swatch, "tint": self.Tint, "recolor": self.Recolor, "ramp": list(self.Ramp)}
 
 
 @dataclass(frozen=True)
@@ -126,7 +127,7 @@ def LoadCatalog() -> Catalog:
         Materials[M["id"]] = Material(
             Id=M["id"], Group=M["group"], Label=M["label"], CppMetal=M["cpp_metal"],
             DensityGCm3=float(M["density_g_cm3"]), RequiresPlating=bool(M["requires_plating"]),
-            Swatch=M["swatch"], Tint=M["tint"], Recolor=M.get("recolor", "ramp"))
+            Swatch=M["swatch"], Tint=M["tint"], Recolor=M.get("recolor", "ramp"), Ramp=tuple(M.get("ramp", ())))
     Cat = Catalog(
         Version=Raw["version"], DefaultMaterialId=Raw["default_material_id"],
         Groups=tuple(Raw["groups"]), Materials=Materials,

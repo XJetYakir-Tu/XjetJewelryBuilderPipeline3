@@ -770,7 +770,10 @@ function p3App() {
             ${c.body}<feColorMatrix in="${c.result}" type="identity" result="metal"/>${mask}</filter>`;
         }
         // ramp stops at luminance 0, .25, .5, .75, 1 — most of the ring lands on the swatch itself
-        const ramp = [s.map(v => v * 0.18), s.map(v => v * 0.48), s.map(v => v * 0.82), s, mix(s, [1, 1, 1], 0.55)];
+        // An explicit 5-colour ramp (config/materials.json "ramp") gives real metal hue shifts:
+        // warm brown shadows, the alloy colour in the mid-tones, pale highlights. Otherwise derive one.
+        const ramp = (m.ramp && m.ramp.length === 5) ? m.ramp.map(hex)
+          : [s.map(v => v * 0.18), s.map(v => v * 0.48), s.map(v => v * 0.82), s, mix(s, [1, 1, 1], 0.55)];
         const table = c => ramp.map(p => f(p[c])).join(' ');
         return `<filter id="p3-metal-${m.id}" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
           <feColorMatrix in="SourceGraphic" type="matrix" result="gray" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0"/>
