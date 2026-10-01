@@ -58,11 +58,13 @@ function adminApp() {
     created: null, createError: '', duplicateOf: null, copied: null,
     editing: null, edit: {}, editError: '',
     userId: '', d: null, detailError: '', openDesign: null,
-    tab: 'sessions', materials: {},
+    tab: 'sessions', materials: {}, swatches: {}, showChoices: false,
+    viewer3d: { id: null, label: '', loading: false, error: '' },
     dash: null, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '',
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
     mProblems: [], mMessage: '', mBusy: false, preview: null,
+    prices: null, pricesEdit: null, pricesBusy: false, pricesMsg: '', pricesErr: false,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout Clicked']],
     chartKinds: [
       { key: 'images', label: 'Images', color: '#3b82f6' },
@@ -97,7 +99,7 @@ function adminApp() {
         try { sessionStorage.setItem(KEY_STORE, this.key); } catch (_) {}
         try {
           const cat = await (await fetch(BASE + '/api/catalog')).json();
-          for (const g of cat.groups || []) for (const m of g.materials || []) this.materials[m.id] = m.label;
+          for (const g of cat.groups || []) for (const m of g.materials || []) { this.materials[m.id] = m.label; this.swatches[m.id] = m.swatch; }
         } catch (_) {}
         this.route();
       } catch (e) {
@@ -202,6 +204,10 @@ function adminApp() {
         const material = keep ? this.g3.material : sd.three_d_defaults.material_id;
         this.g3.size = null; this.g3.material = '';
         this.sd = sd;
+        this.showChoices = false;
+        const latest = sd.three_d.find(t => t.geometry?.production);
+        if (latest && this.viewer3d.id !== latest.id) setTimeout(() => this.show3d(latest), 50);
+        if (!latest) this.clear3d();
         await this.$nextTick();                 // the <option>s must exist before the selects get their value
         await new Promise(r => setTimeout(r));  // (a freshly created detail block renders its options a tick later)
         this.g3.size = size; this.g3.material = material;
@@ -284,6 +290,7 @@ function adminApp() {
 
     // ── AI prompts & params ────────────────────────────────────────────
     async loadModels(id) {
+      this.prices = await this.api('GET', '/api/admin/ai-prices').catch(() => null);
       const r = await this.api('GET', '/api/admin/models');
       this.models = r.models; this.runtimePlaceholders = r.runtime_placeholders;
       const want = id || this.mid || this.models[0].model.id;
@@ -384,6 +391,34 @@ function adminApp() {
       await this.loadModels(this.mid); await this.selectModel(this.mid);
       this.mMessage = data.changed ? `Restored v${v.number} as v${data.active.number} (active).` : 'Already active.';
     },
+    pricesDoc() {
+      const { version, updated_at, updated_by, update_note, fal_key_configured, ...doc } = this.prices || {};
+      return doc;
+    },
+    priceRate(p) {
+      if (p.per_image != null) return '$' + p.per_image + ' / image';
+      if (p.per_second) return Object.entries(p.per_second).map(([r, v]) => r + ' $' + v + '/s').join(' · ');
+      if (p.per_credit != null) return '$' + p.per_credit + ' / credit · ' + Object.entries(p.credits?.geometry || {}).map(([r, v]) => r + ' ' + v).join(', ') + ' cr (+texture ' + (p.credits?.texture ?? 0) + ', PBR ' + (p.credits?.pbr ?? 0) + ')';
+      if (p.per_request != null) return '$' + p.per_request + ' / request';
+      return '—';
+    },
+    async refreshPrices() {
+      this.pricesBusy = true; this.pricesMsg = ''; this.pricesErr = false;
+      try {
+        const r = await this.api('POST', '/api/admin/ai-prices/refresh');
+        this.prices = await this.api('GET', '/api/admin/ai-prices');
+        this.pricesMsg = r.changes?.length ? 'Updated: ' + r.changes.join('; ') : 'Prices are up to date (no changes from fal.ai).';
+      } catch (e) { this.pricesErr = true; this.pricesMsg = e.message; } finally { this.pricesBusy = false; }
+    },
+    async savePrices() {
+      this.pricesBusy = true; this.pricesMsg = ''; this.pricesErr = false;
+      try {
+        const doc = JSON.parse(this.pricesEdit);
+        await this.api('PUT', '/api/admin/ai-prices', { prices: doc, note: 'Edited in Admin' });
+        this.prices = await this.api('GET', '/api/admin/ai-prices'); this.pricesEdit = null; this.pricesMsg = 'Prices saved.';
+      } catch (e) { this.pricesErr = true; this.pricesMsg = e instanceof SyntaxError ? 'Invalid JSON: ' + e.message : e.message; }
+      finally { this.pricesBusy = false; }
+    },
     async exportModels(model, fmt) {
       const r = await fetch(BASE + `/api/admin/models/export?model=${encodeURIComponent(model)}&format=${fmt}`, { headers: { Authorization: 'Bearer ' + this.key } });
       if (!r.ok) { alert('Export failed (' + r.status + ')'); return; }
@@ -392,7 +427,60 @@ function adminApp() {
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
 
+    // ── 3D viewer (three.js; the STL is fetched with the admin key) ─────
+    measured3d() { return !!this.sd?.three_d.some(t => t.geometry?.production); },
+    clear3d() {
+      if (this._three) { cancelAnimationFrame(this._three.raf); this._three.renderer.dispose(); this._three.el.innerHTML = ''; this._three = null; }
+      this.viewer3d = { id: null, label: '', loading: false, error: '' };
+    },
+    async show3d(t) {
+      if (!window.THREE || !THREE.STLLoader || !THREE.OrbitControls) { this.viewer3d.error = '3D viewer library not loaded'; return; }
+      this.clear3d();
+      this.viewer3d = { id: t.id, label: 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '' };
+      try {
+        const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/production`, { headers: { Authorization: 'Bearer ' + this.key } });
+        if (!r.ok) throw new Error('STL download failed (' + r.status + ')');
+        const geo = new THREE.STLLoader().parse(await r.arrayBuffer());
+        geo.computeVertexNormals(); geo.center(); geo.computeBoundingSphere();
+        const el = this.$refs.viewer; if (!el) return;
+        const w = el.clientWidth || 300, h = el.clientHeight || 300, R = geo.boundingSphere.radius || 10;
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0xfafafa);
+        const camera = new THREE.PerspectiveCamera(35, w / h, R / 100, R * 100);
+        camera.position.set(R * 0.8, R * 1.2, R * 4.2);          // ring axis is Z: look at the ring's face, slightly from above
+        const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(w, h); renderer.setPixelRatio(window.devicePixelRatio || 1);
+        el.innerHTML = ''; el.appendChild(renderer.domElement);
+        scene.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: new THREE.Color(this.swatch(t.material_id)), metalness: 0.6, roughness: 0.35 })));
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 1.1));
+        const d = new THREE.DirectionalLight(0xffffff, 0.9); d.position.set(R, R * 2, R * 3); scene.add(d);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 1.5;
+        this._three = { renderer, el, raf: 0 };
+        const tick = () => { if (!this._three) return; controls.update(); renderer.render(scene, camera); this._three.raf = requestAnimationFrame(tick); };
+        tick();
+        this.viewer3d.loading = false;
+      } catch (e) { this.viewer3d.loading = false; this.viewer3d.error = e.message; }
+    },
+    adjustments(t) {
+      const raw = t.geometry.raw || {}, prod = t.geometry.production || {}, c = prod.checks || {};
+      const n = (v, d) => v == null ? '?' : Number(v).toFixed(d);
+      const out = [
+        `Received the Hi3D model (${(raw.stl_path || '').split('.').pop().toUpperCase() || 'file'}): ${n(raw.size_x_mm, 3)} × ${n(raw.size_y_mm, 3)} × ${n(raw.size_z_mm, 3)} model units, watertight: ${raw.watertight ? 'yes' : 'no'}.`,
+        c.watertight_before_repair === false
+          ? `Repaired the mesh (merged vertices, removed degenerate faces, fixed normals, filled holes) — watertight after repair: ${c.watertight_after_repair ? 'yes' : 'no'}.`
+          : 'Checked the mesh: already watertight — only merged duplicate vertices and fixed normals.',
+        `Found the ring bore: inner diameter ${n(raw.inner_diameter_mm, 4)} model units, roundness deviation ${c.bore_roundness == null ? '?' : (c.bore_roundness * 100).toFixed(2) + '%'}.`,
+        `Scaled uniformly ×${n(prod.scale_factor, 3)} so the inner diameter is ${t.target_inner_diameter_mm} mm (US ${t.production_size}); units are now millimetres.`,
+        'Aligned the ring: bore centre at the origin, ring axis along Z.',
+        `Measured: inner diameter ${n(prod.inner_diameter_mm, 3)} mm, volume ${prod.volume_mm3 == null ? 'not reliable (not watertight)' : (prod.volume_mm3 / 1000).toFixed(3) + ' cc'}, surface ${prod.surface_area_mm2 == null ? '?' : (prod.surface_area_mm2 / 100).toFixed(2) + ' cm²'}.`,
+      ];
+      if (t.price?.weight_g != null) out.push(`Weight = ${(prod.volume_mm3 / 1000).toFixed(3)} cc × ${t.density_g_cm3} g/cm³ (${t.material_label}) = ${t.price.weight_g.toFixed(2)} g.`);
+      out.push('Note: uniform scaling also scales band width and thickness.');
+      return out;
+    },
+
     // ── formatting ─────────────────────────────────────────────────────
+    swatch(id) { return this.swatches[id] || '#d4d4d8'; },
+    money(v) { return v == null ? '—' : '$' + Number(v).toFixed(2); },
+    duration(s) { if (s == null) return '—'; return s < 60 ? Math.round(s) + ' s' : s < 3600 ? Math.floor(s / 60) + ' min ' + Math.round(s % 60) + ' s' : (s / 3600).toFixed(1) + ' h'; },
     materialLabel(id) { return this.materials[id] || id || '—'; },
     priceText(p) { return !p ? '—' : p.unit_price == null ? 'Unavailable' : '$' + Number(p.unit_price).toFixed(2); },
     fixedSource(p) { return !p ? '' : { bag_snapshot: 'price at Add to Bag', shown_at_customize: 'price shown in Customize', current_quote: 'current list price' }[p.source] || ''; },

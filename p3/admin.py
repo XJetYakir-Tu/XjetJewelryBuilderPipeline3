@@ -10,6 +10,7 @@ its body with a proper admin role / company sign-in (e.g. SSO) — the routes do
 
 from dataclasses import dataclass
 
+import asyncio
 from statistics import mean
 
 from fastapi import Body, FastAPI, Header
@@ -19,6 +20,7 @@ from p3 import sessions as Sessions
 from p3.accounts import AccountNotFound, DuplicateEmail
 from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
+from p3.aipricing import PriceError
 from p3.usage import AccountActivity
 from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
 
@@ -133,7 +135,7 @@ def Dashboard(Ctx: Context) -> dict:
     }
 
 
-def SessionDetail(Ctx: Context, Production, DesignId: str) -> dict:
+def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
     Summary = (Sessions.Summaries(Ctx, [DesignId]) or [None])[0]
     if Summary is None:
         raise HttpError(404, "session_not_found", "Session not found.")
@@ -151,12 +153,34 @@ def SessionDetail(Ctx: Context, Production, DesignId: str) -> dict:
         Usage = []
     Cost = [U["cost_usd"] for U in Usage if U["cost_usd"] is not None]
     Timeline = Sessions.Timeline(Ctx, DesignId)
+    try:
+        AllUsage = Ctx.Accounts.AdminActivity(Owner)["usage"]
+        User = Ctx.Accounts.AdminGet(Owner)
+    except AccountNotFound:
+        AllUsage, User = [], None
+    Flow = Sessions.Pipeline(Ctx, DesignId, AllUsage, Prices)
+    UserTotal, UserSessions = 0.0, 0
+    for D in Ctx.Db.All("SELECT id FROM designs WHERE owner_account_id = ?", (Owner,)):
+        UserTotal += Sessions.Pipeline(Ctx, D["id"], AllUsage, Prices)["total_cost"]
+        UserSessions += 1
+    Movie = next((M for B in Batches for C in B["candidates"] if C["selected"] for M in C["movies"] if M["status"] == "ready"), None) \
+        or next((M for B in Batches for C in B["candidates"] for M in C["movies"] if M["status"] == "ready"), None)
     Keep = ("material_id", "ring_size", "quantity", "unit_price", "pricing_version", "pricing_status")
     Choices = [{"at": E["at"], "kind": E["kind"], **{K: V for K, V in (E.get("data") or {}).items() if K in Keep}}
                for E in Timeline if E["kind"] in ("customize_opened", "customization_changed")]
     ThreeD = Production.ForDesign(DesignId)
+    Last = None                                    # the customer's final selection (changes applied in order)
+    for C in Choices:
+        Last = {**(Last or {}), **{K: V for K, V in C.items() if V is not None}}
     return {
         "session": Summary,
+        "user": User,
+        "pipeline": Flow,
+        "cost": {"session": Flow["total_cost"], "user_total": round(UserTotal, 4), "user_sessions": UserSessions,
+                 "basis": "Estimated at list prices (Admin → AI Prompts & Params → AI prices); mock requests are $0.",
+                 "price_list_version": Prices.Current()["version"]},
+        "artifacts": {"image_url": Summary["thumbnail_url"], "movie_url": Movie["url"] if Movie else None},
+        "last_choice": Last,
         "timeline": Timeline,
         "design": Design,
         "choices": Choices,
@@ -178,7 +202,7 @@ def SessionDetail(Ctx: Context, Production, DesignId: str) -> dict:
     }
 
 
-def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production) -> None:
+def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None:
     """Add the admin page and API to the (inner) app. `Page(name)` renders a web/ page."""
 
     def Admin(Authorization: str | None) -> AdminPrincipal:
@@ -243,7 +267,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production) -> None:
     @App_.get("/api/admin/sessions/{DesignId}")
     async def GetSession(DesignId: str, authorization: str | None = Header(None)):
         Admin(authorization)
-        return SessionDetail(Ctx, Production, DesignId)
+        return SessionDetail(Ctx, Production, DesignId, Prices)
 
     @App_.post("/api/admin/sessions/{DesignId}/3d")
     async def Generate3D(DesignId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
@@ -321,3 +345,25 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production) -> None:
             return Ctx.Models.Restore(_Model(ModelId), str(Body_.get("version_id") or ""), Who.Id)
         except ConfigError as E:
             return _Invalid(E)
+
+    # ── AI price list (cost estimates) ─────────────────────────────────────
+    @App_.get("/api/admin/ai-prices")
+    async def GetPrices(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return {**Prices.Current(), "fal_key_configured": bool(Ctx.Settings.FalKey)}
+
+    @App_.put("/api/admin/ai-prices")
+    async def SavePrices(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        try:
+            return Prices.Save(Body_.get("prices") or {}, Who.Id, str(Body_.get("note") or "Edited in Admin")[:200])
+        except PriceError as E:
+            raise HttpError(400, "invalid_price_list", str(E)) from E
+
+    @App_.post("/api/admin/ai-prices/refresh")
+    async def RefreshPrices(authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        try:
+            return await asyncio.to_thread(Prices.RefreshFromFal, Ctx.Settings.FalKey, Who.Id)   # read-only, free
+        except PriceError as E:
+            raise HttpError(400, "price_refresh_failed", str(E)) from E

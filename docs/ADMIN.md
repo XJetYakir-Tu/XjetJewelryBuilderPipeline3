@@ -185,3 +185,26 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
 - **Movie reuse:** an existing movie is reused when its version has the same parameters as the active one. That includes movies made before versioning, through version 1's legacy alias. Changing movie settings means the next new movie request uses them. Customers who reopen Customize on an option get a new movie (charged as usual) only when its settings actually changed.
 
 **Export:** TXT (readable) or JSON (structured: model ids, endpoints, version ids and numbers, parameters, which parameters are omitted, and the pipeline-controlled fields), for one model or all. Configurations contain no API keys, and the export includes none.
+
+## AI cost estimates (Sessions)
+
+**Code:** `p3/aipricing.py`. **Admin:** *AI Prompts & Params → AI prices*.
+
+- **Where costs come from.** A versioned price list per endpoint, seeded from the fal.ai pricing API (`GET https://api.fal.ai/v1/models/pricing`, read-only) and the model pages (1 Oct 2026). *Refresh from fal.ai* updates the unit prices with the server's key; the key is never shown. *Edit* changes the list by hand, and every change is kept as a new version.
+- **How a P3 request is priced:**
+  - images: per image, $0.15 (one 1K image per request);
+  - movie: per second by resolution × the movie's duration (taken from the request's recorded configuration version);
+  - Hi3D: credits × $0.02, where credits = geometry (90 at 2048quality, 440 at 2048master) + texture 10 and PBR 5 when enabled.
+- **What is counted.** Each provider submission recorded for a job, so retries are included. Mock requests cost $0.
+- **Estimates, not invoices.** Account discounts, promotions and unlisted surcharges are not reflected. fal.ai labels the minimax per-second rates as launch prices (50% off until 30 Sep 2026); check them.
+
+**Session detail now shows:**
+- user status (active, exhausted, inactive, removed…);
+- AI cost for the session and for the user in total;
+- the selected image, the 360° movie, and the 3D model in an interactive three.js viewer of the scaled STL;
+- a pipeline flow with each step's duration, requests and cost;
+- 3D results in cc and cm², with a material colour dot, plus "what was done to the model" (repair, bore, scale, alignment, measurement);
+- the customer's last Customize choice (full history on request);
+- the journey, at the end.
+
+**The Sessions list** shows the user status and *Has* chips (Image / Movie / 3D) for each session.

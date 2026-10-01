@@ -130,13 +130,13 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         return G
 
     B, C, Cu, M, L, E, T3 = (Group(X) for X in (Batches, Cands, Custs, Movies, Lines, Events, ThreeD))
-    Names = {}
+    Names, Status = {}, {}
     for Oid in Owners:
         try:
             U = Ctx.Accounts.AdminGet(Oid)
-            Names[Oid] = (U["name"], U["email"])
+            Names[Oid], Status[Oid] = (U["name"], U["email"]), U["status"]
         except Exception:  # noqa: BLE001 — an unknown owner must not hide the session
-            Names[Oid] = ("", "")
+            Names[Oid], Status[Oid] = ("", ""), "unknown"
     NowDt = datetime.now(timezone.utc)
     Out = []
     for D in Designs:
@@ -206,6 +206,9 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "add_to_bag": bool(Times["bag"]), "checkout_clicked": bool(Times["checkout_clicked"]),
             "fixed_price": Fixed,
             "three_d_status": Last3D["status"] if Last3D else None, "three_d_id": Last3D["id"] if Last3D else None,
+            "user_status": Status.get(D["owner_account_id"], "unknown"),
+            "has_image": bool(Ready), "has_movie": any(X["status"] == "ready" for X in M[Did]),
+            "has_3d": any(X["status"] in ("measured", "needs_review") for X in T3[Did]),
         })
     return Out
 
@@ -263,3 +266,80 @@ def Timeline(Ctx: Context, DesignId: str) -> list[dict]:
                           "data": {"backfilled": True, "candidate_id": Cu["candidate_id"]}})
     Items.sort(key=lambda X: X["at"] or "")
     return Items
+
+
+def _Seconds(A: str | None, B: str | None) -> float | None:
+    if not A or not B:
+        return None
+    return max(0.0, (_Parse(B) - _Parse(A)).total_seconds())
+
+
+def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices) -> dict:
+    """Per-step duration and estimated AI cost for one session: each design / refinement batch, each
+    movie and each 3D job. Cost = every provider submission recorded for the job (retries included)
+    × the list price for that request's parameters (Prices.Estimate)."""
+    Db = Ctx.Db
+    ByRef = defaultdict(list)
+    for U in Usage:
+        if U["kind"] != "generation":
+            ByRef[U["ref_id"]].append(U)
+    Steps = []
+
+    def Cost(RefIds, Endpoint, Params):
+        Total, Basis, Providers, Requests = 0.0, set(), set(), 0
+        Unknown = False
+        for R in RefIds:
+            for U in ByRef.get(R, []):
+                E = Prices.Estimate(U["endpoint"] or Endpoint, U["provider"], Params)
+                Requests += 1
+                Providers.add(U["provider"] or "unknown")
+                Basis.add(E["basis"])
+                if E["cost"] is None:
+                    Unknown = True
+                else:
+                    Total += E["cost"]
+        return {"cost": None if Unknown and not Total else round(Total, 4), "cost_partial": Unknown and bool(Total),
+                "requests": Requests, "providers": sorted(Providers), "basis": sorted(Basis)}
+
+    for B in Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,)):
+        Cs = Db.All("SELECT id, status, updated_at FROM candidates WHERE batch_id = ?", (B["id"],))
+        Done = all(C["status"] in ("ready", "failed") for C in Cs)
+        Params = Ctx.Models.Resolve(B["config_version"], B["endpoint"]).Params
+        Steps.append({
+            "kind": "refinement" if B["kind"] == "refine" else "design", "label": "Refinement" if B["kind"] == "refine" else "Design images",
+            "endpoint": B["endpoint"], "text": B["user_text"], "started_at": B["created_at"],
+            "finished_at": _Max(*[C["updated_at"] for C in Cs]) if Done else None,
+            "duration_s": _Seconds(B["created_at"], _Max(*[C["updated_at"] for C in Cs])) if Done else None,
+            "status": "running" if not Done else ("ready" if any(C["status"] == "ready" for C in Cs) else "failed"),
+            "detail": f"{sum(1 for C in Cs if C['status'] == 'ready')} of {len(Cs)} images ready",
+            **Cost([C["id"] for C in Cs], B["endpoint"], Params),
+        })
+    for M in Db.All("SELECT m.* FROM movies m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
+                    "WHERE b.design_id = ? ORDER BY m.created_at", (DesignId,)):
+        Done = M["status"] in ("ready", "failed", "interrupted")
+        Params = Ctx.Models.Resolve(M["config_version"], M["endpoint"]).Params
+        Steps.append({
+            "kind": "movie", "label": "360° movie", "endpoint": M["endpoint"], "text": "", "started_at": M["created_at"],
+            "finished_at": M["updated_at"] if Done else None, "duration_s": _Seconds(M["created_at"], M["updated_at"]) if Done else None,
+            "status": M["status"], "detail": f"{Params.get('duration', 5)} s · {Params.get('resolution', '480P')}",
+            **Cost([M["id"]], M["endpoint"], Params),
+        })
+    SeenMeshes = set()
+    for T in Db.All("SELECT s.*, m.endpoint, m.settings_json, m.status AS mesh_status, m.created_at AS mesh_created, "
+                    "m.updated_at AS mesh_updated FROM session_3d s LEFT JOIN meshes m ON m.id = s.mesh_id "
+                    "WHERE s.design_id = ? ORDER BY s.created_at", (DesignId,)):
+        Done = T["status"] in ("measured", "needs_review", "failed")
+        Params = json.loads(T["settings_json"] or "{}")
+        Reused = T["mesh_id"] in SeenMeshes          # an earlier 3D request already paid for this Hi3D model
+        SeenMeshes.add(T["mesh_id"])
+        Steps.append({
+            "kind": "3d", "label": "3D (Hi3D + measurement)", "endpoint": T["endpoint"], "text": f"US {T['production_size']:g}",
+            "started_at": T["created_at"], "finished_at": T["updated_at"] if Done else None,
+            "duration_s": _Seconds(T["created_at"], T["updated_at"]) if Done else None, "status": T["status"],
+            "detail": "reused existing Hi3D model — only re-measured" if Reused else f"{Params.get('resolution', '2048quality')}",
+            **(Cost([], T["endpoint"], Params) if Reused else Cost([T["mesh_id"]], T["endpoint"], Params)),
+        })
+    Known = [S["cost"] for S in Steps if S["cost"] is not None]
+    return {"steps": Steps, "total_cost": round(sum(Known), 4) if Known else 0.0,
+            "total_duration_s": sum(S["duration_s"] or 0 for S in Steps),
+            "has_unpriced": any(S["cost"] is None for S in Steps if S["requests"])}

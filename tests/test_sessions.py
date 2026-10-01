@@ -1,6 +1,7 @@
 """Sessions (one design journey each), stage tracking, admin Generate 3D, ring geometry."""
 
 import io
+import json
 import math
 
 import numpy as np
@@ -182,3 +183,55 @@ def test_geometry_without_a_bore_needs_review():
 def test_us_size_table():
     assert UsSizeToInnerDiameterMm(10) == pytest.approx(19.758, abs=0.01)
     assert UsSizeToInnerDiameterMm(7) == pytest.approx(17.32, abs=0.01)
+
+
+async def test_session_pipeline_cost_duration_and_flags(HS):
+    H = HS
+    Did, Sel, Cust = await _Journey(H, Refine=False, Bag=False)
+    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)
+    await H.Idle()
+    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 9}, headers=Admin)   # re-measure only
+    await H.Idle()
+    D = await _Session(H, Did)
+    assert D["cost"]["session"] == 0.0                                  # mock requests are free
+    assert {S["kind"] for S in D["pipeline"]["steps"]} == {"design", "movie", "3d"}
+    assert all(S["duration_s"] is not None and S["duration_s"] >= 0 for S in D["pipeline"]["steps"])
+    # Price the same requests as if they had been live (fal) submissions.
+    H.Ctx.Accounts.Db.Execute("UPDATE usage_events SET provider = 'fal', mode = 'live'")
+    D = await _Session(H, Did)
+    Steps = {(S["kind"], S["detail"].startswith("reused")): S for S in D["pipeline"]["steps"]}
+    assert Steps[("design", False)]["cost"] == pytest.approx(0.60) and Steps[("design", False)]["requests"] == 4
+    assert Steps[("movie", False)]["cost"] == pytest.approx(6 * 0.04)                 # 6 s at 768P
+    assert Steps[("3d", False)]["cost"] == pytest.approx(90 * 0.02)                   # 2048quality, no texture/PBR
+    assert Steps[("3d", True)]["cost"] == 0.0                                         # reused raw mesh
+    assert D["cost"]["session"] == pytest.approx(0.60 + 0.24 + 1.80) == pytest.approx(D["cost"]["user_total"])
+    assert D["user"]["status"] in ("active", "unused") and D["artifacts"]["image_url"] and D["artifacts"]["movie_url"]
+    assert D["last_choice"]["ring_size"] == 7.0 and D["last_choice"]["material_id"] == "silver"
+    Row = next(X for X in (await H.Client.get("/api/admin/sessions", headers=Admin)).json()["sessions"] if X["session_id"] == Did)
+    assert (Row["has_image"], Row["has_movie"], Row["has_3d"]) == (True, True, True) and Row["user_status"]
+
+
+async def test_ai_prices_refresh_and_edit(HS, monkeypatch):
+    H = HS
+    P = (await H.Client.get("/api/admin/ai-prices", headers=Admin)).json()
+    assert P["endpoints"][endpoints.ImageGenerate]["per_image"] == 0.15 and P["fal_key_configured"] is False
+    assert (await H.Client.post("/api/admin/ai-prices/refresh", headers=Admin)).status_code == 400    # no key here
+    from p3 import aipricing
+
+    class Resp:
+        status_code = 200
+        def json(self):
+            return {"prices": [{"endpoint_id": endpoints.ImageGenerate, "unit_price": 0.2, "unit": "images"},
+                               {"endpoint_id": endpoints.Movie, "unit_price": 0.05, "unit": "seconds"}]}
+    Seen = {}
+    monkeypatch.setattr(aipricing.httpx, "get", lambda Url, params, headers, timeout: Seen.update(h=headers) or Resp())
+    App = H.App.state
+    Book = aipricing.PriceBook(H.Ctx.Db)
+    R = Book.RefreshFromFal("test-key", "admin")
+    assert Seen["h"] == {"Authorization": "Key test-key"}
+    assert R["endpoints"][endpoints.ImageGenerate]["per_image"] == 0.2
+    assert R["endpoints"][endpoints.Movie]["per_second"] == {"480P": 0.05, "768P": 0.08, "1080P": 0.16}   # scaled
+    assert "test-key" not in json.dumps(R)
+    Bad = await H.Client.put("/api/admin/ai-prices", json={"prices": {"endpoints": {"x": {"per_image": -1}}}}, headers=Admin)
+    assert Bad.status_code == 400
+    assert (await H.Client.get("/api/admin/ai-prices")).status_code == 403

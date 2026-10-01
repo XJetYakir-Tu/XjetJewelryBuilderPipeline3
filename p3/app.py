@@ -25,6 +25,7 @@ from p3.images import ImageService
 from p3.meshes import MeshService
 from p3.migrations import MigrateToAccounts
 from p3.admin import RegisterAdmin
+from p3.aipricing import PriceBook
 from p3.modelconfig import ModelConfigStore
 from p3.production3d import Production3D
 from p3.mail import BuildMailer
@@ -148,7 +149,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def DevPage():
         return HTMLResponse(_VersionedPage("dev.html", Base))
 
-    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D)
+    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db))
 
     App_.mount("/static", StaticFiles(directory=WebDir), name="static")
     App_.mount("/assets", StaticFiles(directory=S.AssetsDir), name="assets")
