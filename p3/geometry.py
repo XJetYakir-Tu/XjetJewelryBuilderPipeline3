@@ -365,7 +365,7 @@ def MeasureRing(Data: bytes, Fmt: str, TargetInnerDiameterMm: float) -> RingGeom
 #   lengths × s · area × s² · volume × s³ · weight = volume × density.
 # No scaled copy is written during processing — ExportScaledStl builds one only when it is downloaded,
 # from the stored transform, so every export of the same request is identical.
-FastMethodVersion = "ring-measure-once-v3"
+FastMethodVersion = "ring-measure-once-v3.1"      # v3.1: bore heights from the 5–95% surface span
 PreviewTargetFaces = 25_000
 
 
@@ -472,10 +472,20 @@ def MeasureRaw(Source) -> dict:
     Centre = Mo["centroid"]
     R = np.vstack([U, V, Axis])
     Lo3, Hi3 = np.full(3, np.inf), np.full(3, -np.inf)          # extents in the ring frame
+    Zc, Wa = np.empty(len(Tri), np.float32), np.empty(len(Tri), np.float32)   # axial height + area per face
     for S in range(0, len(Tri), Chunk):
-        P = (Tri[S:S + Chunk].reshape(-1, 3).astype(np.float64) - Centre) @ R.T
+        C = Tri[S:S + Chunk].astype(np.float64)
+        P = (C.reshape(-1, 3) - Centre) @ R.T
         Lo3, Hi3 = np.minimum(Lo3, P.min(0)), np.maximum(Hi3, P.max(0))
-    Heights = [Lo3[2] + (Hi3[2] - Lo3[2]) * F for F in (0.3, 0.5, 0.7)]
+        Zc[S:S + len(C)] = P[:, 2].reshape(-1, 3).mean(axis=1)
+        Wa[S:S + len(C)] = np.linalg.norm(np.cross(C[:, 1] - C[:, 0], C[:, 2] - C[:, 0]), axis=1) / 2
+    # Bore heights inside the band: the 5–95% (area-weighted) span of the surface along the axis, so
+    # an ornament or a chamfered edge never decides the sizing slices.
+    Order = np.argsort(Zc, kind="stable")
+    Cum = np.cumsum(Wa[Order], dtype=np.float64)
+    Zlo, Zhi = (float(Zc[Order[min(np.searchsorted(Cum, Q * Cum[-1]), len(Order) - 1)]]) for Q in (0.05, 0.95))
+    del Zc, Wa, Order, Cum
+    Heights = [Zlo + (Zhi - Zlo) * F for F in (0.3, 0.5, 0.7)]
     Slices = [{"height": float(H), **_FitBore(P)}
               for H, P in zip(Heights, _ExactSections(Tri, Centre, U, V, Axis, Heights))]
     Good = [S for S in Slices if S["radius"] and S["bins_filled"] >= Directions * 0.9]

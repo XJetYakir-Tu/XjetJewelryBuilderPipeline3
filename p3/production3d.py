@@ -26,7 +26,7 @@ from p3 import sessions as Sessions
 from p3 import stages as Stages
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
-from p3.geometry import Scaled, UsSizeToInnerDiameterMm
+from p3.geometry import FastMethodVersion, Scaled, UsSizeToInnerDiameterMm
 from p3.settings import RepoRoot
 
 Logger = logging.getLogger("p3.production3d")
@@ -167,10 +167,11 @@ class Production3D:
             for R in self._WaitingFor(MeshId):
                 self._Fail(R["id"], "The Hi3D model file is missing.")
             return
-        if Raw["status"] == "measured":
+        if Raw["status"] == "measured" and Raw["method_version"] == FastMethodVersion:
             for R in self._WaitingFor(MeshId):
                 self._Finalize(R, Raw)
             return
+        # Not measured yet, or measured by an older algorithm version: measure (again) once.
         Mesh = Db.One("SELECT original_format FROM meshes WHERE id = ?", (MeshId,))
         Job = self.Queue.Enqueue("measure", MeshId, Params={
             "source": Raw["stl_path"], "format": Mesh["original_format"] or "stl",

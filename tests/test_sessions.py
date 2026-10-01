@@ -311,6 +311,14 @@ async def test_geometry_failure_retries_locally_without_another_hi3d_call(HS, mo
     A, B = T2["geometry"]["production"], D["geometry"]["production"]
     S = A["inner_diameter_mm"] / B["inner_diameter_mm"]
     assert A["volume_mm3"] == pytest.approx(B["volume_mm3"] * S ** 3) and A["surface_area_mm2"] == pytest.approx(B["surface_area_mm2"] * S ** 2)
+    # A measurement from an older algorithm version is re-measured once (still no Hi3D call).
+    H.Ctx.Db.Execute("UPDATE raw_geometry SET method_version = 'ring-measure-once-v3'")
+    T3 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 8}, headers=Admin)).json()
+    assert T3["status"] in ("queued", "measuring")
+    await H.Idle()
+    assert (await H.Client.get(f"/api/admin/3d/{T3['id']}/status", headers=Admin)).json()["status"] == "measured"
+    assert H.Ctx.Db.One("SELECT method_version FROM raw_geometry")["method_version"] == "ring-measure-once-v3.1"
+    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == 1
 
 
 async def test_persistent_queue_position_cancel_and_restart_recovery(HS, monkeypatch):
