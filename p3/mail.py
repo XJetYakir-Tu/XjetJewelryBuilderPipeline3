@@ -1,4 +1,4 @@
-"""Registration emails (verification link, access token) — content mirrors P2 registration_mail.py.
+"""Registration emails (verification link, access token): the P2 flow, with one clear call to action.
 
 Delivery is pluggable:
   * OutboxMailer (default, P3_MAIL_MODE=outbox): writes each message to var/outbox/ and never
@@ -22,10 +22,7 @@ from pathlib import Path
 
 Logger = logging.getLogger("p3.mail")
 
-_Style = ("font-family:Helvetica,Arial,sans-serif;color:#2A2A2A;line-height:1.6;"
-          "max-width:520px;margin:0 auto;padding:32px 28px;background:#FAF8F4;border:1px solid #EDE8DF;")
-_Button = ("background:#C9A96E;color:#1A1A1A;text-decoration:none;padding:14px 28px;font-size:12px;"
-           "letter-spacing:2px;text-transform:uppercase;font-weight:700;")
+_Font = "font-family:Helvetica,Arial,sans-serif;"
 
 
 def _Greeting(Name: str) -> str:
@@ -33,44 +30,65 @@ def _Greeting(Name: str) -> str:
     return f"Hi {html.escape(Name)}," if Name else "Hello,"
 
 
+def _Button(Url: str, Label: str) -> str:
+    """A large "bulletproof" button: the colour sits on the table cell and the padding on a block
+    link, so Outlook (which ignores padding on inline links) still renders a big, clickable button."""
+    return f"""
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:8px auto 4px;">
+  <tr><td align="center" bgcolor="#9A7230" style="border-radius:6px;background:#9A7230;">
+    <a href="{Url}" target="_blank"
+       style="display:inline-block;padding:20px 56px;{_Font}font-size:18px;font-weight:700;letter-spacing:3px;
+              text-transform:uppercase;color:#FFFFFF;text-decoration:none;border-radius:6px;">
+      <span style="color:#FFFFFF;">{Label}</span></a>
+  </td></tr>
+</table>"""
+
+
+def _Layout(Heading: str, Content: str) -> str:
+    return f"""\
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" bgcolor="#FAF8F4"
+           style="width:560px;max-width:100%;background:#FAF8F4;border:1px solid #EDE8DF;border-top:3px solid #C9A96E;">
+      <tr><td style="padding:36px 40px;{_Font}color:#2A2A2A;font-size:15px;line-height:1.6;">
+        <p style="margin:0 0 6px;text-transform:uppercase;letter-spacing:3px;font-size:11px;color:#9A7230;font-weight:700;">XJet Atelier</p>
+        <h1 style="margin:0 0 20px;font-size:24px;font-weight:600;color:#1A1A1A;">{Heading}</h1>
+{Content}
+      </td></tr>
+    </table>
+  </td></tr>
+</table>"""
+
+
 def VerificationEmail(Name: str, VerifyUrl: str) -> tuple[str, str]:
     U = html.escape(VerifyUrl, quote=True)
-    return ("Verify your email to continue designing — XJet Atelier", f"""\
-<div style="{_Style}">
-  <p style="text-transform:uppercase;letter-spacing:3px;font-size:11px;color:#C9A96E;font-weight:700;">XJet Atelier</p>
-  <h2 style="font-weight:600;">One step from your design</h2>
-  <p>{_Greeting(Name)}</p>
-  <p><strong>Why you're receiving this:</strong> you registered with this email address at
-     XJet Atelier while creating a piece of jewelry.</p>
-  <p><strong>What happens next:</strong> verifying your email saves your designs to your
-     account and signs you in. Clicking the button below takes you <em>straight back to your
-     design</em> so you can keep creating &mdash; no extra login needed.</p>
-  <p style="margin:28px 0;"><a href="{U}" style="{_Button}">Verify &amp; continue designing</a></p>
-  <p style="font-size:13px;color:#666;">Or paste this link into your browser:<br><a href="{U}">{U}</a></p>
-  <p style="font-size:13px;color:#666;">This link expires in 24&nbsp;hours. If you did
-     not request this, you can safely ignore this email.</p>
-</div>""")
+    return ("Verify your email to continue designing — XJet Atelier", _Layout("Confirm your email", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
+        <p style="margin:0 0 28px;">Thanks for registering at XJet Atelier. Click the button below to confirm your
+           email address &mdash; you'll be signed in and taken straight to the design studio.</p>
+        {_Button(U, "Start designing")}
+        <p style="margin:32px 0 0;font-size:12px;color:#8F8F8F;">This link expires in 24&nbsp;hours. If you didn't
+           register at XJet Atelier, you can safely ignore this email.</p>
+        <p style="margin:12px 0 0;font-size:11px;color:#A0A0A0;word-break:break-all;">If the button doesn't work,
+           copy this link into your browser:<br><a href="{U}" style="color:#9A7230;">{U}</a></p>"""))
 
 
 def TokenEmail(Name: str, Token: str, LoginUrl: str) -> tuple[str, str]:
     U = html.escape(LoginUrl, quote=True)
-    return ("Your XJet Atelier access token", f"""\
-<div style="{_Style}">
-  <p style="text-transform:uppercase;letter-spacing:3px;font-size:11px;color:#C9A96E;font-weight:700;">XJet Atelier</p>
-  <h2 style="font-weight:600;">Your email is verified &mdash; keep designing</h2>
-  <p>{_Greeting(Name)}</p>
-  <p>Your email has been verified successfully. The button below takes you
-     <em>straight back to your design</em>, already signed in, so you can continue
-     creating your jewelry.</p>
-  <p style="text-align:center;margin:28px 0;"><a href="{U}" style="{_Button}">Continue designing</a></p>
-  <p style="font-size:13px;color:#666;">Your personal access token is below. You only
-     need it to sign in on another device or browser &mdash; keep it safe, it is tied to
-     your account and its generation quota.</p>
-  <p style="margin:16px 0 28px;text-align:center;">
-    <span style="display:inline-block;font-family:monospace;font-size:30px;letter-spacing:10px;font-weight:700;
-                 color:#1A1A1A;border:2px solid #C9A96E;background:#FFFFFF;padding:16px 28px;">{html.escape(Token)}</span>
-  </p>
-</div>""")
+    T = html.escape(Token)
+    return ("Your XJet Atelier access token", _Layout("You're all set", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
+        <p style="margin:0 0 28px;">Your email is verified and your account is ready. Click the button below to
+           start designing your ring &mdash; you'll be signed in automatically.</p>
+        {_Button(U, "Start designing")}
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:36px;">
+          <tr><td style="border-top:1px solid #E5DED0;padding-top:20px;{_Font}font-size:12px;color:#8F8F8F;line-height:1.6;">
+            Signing in on another device? Enter this access token there:
+            <span style="display:inline-block;margin-left:6px;padding:2px 10px;border:1px solid #C9A96E;background:#FFFFFF;
+                         font-family:'Courier New',monospace;font-size:15px;font-weight:700;letter-spacing:3px;color:#1A1A1A;">{T}</span>
+            <br>Keep it private &mdash; it's linked to your account and its generation allowance.
+          </td></tr>
+        </table>"""))
 
 
 class OutboxMailer:

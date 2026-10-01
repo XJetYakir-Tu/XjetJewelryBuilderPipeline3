@@ -103,7 +103,7 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
         You're signed in — the button below takes you straight back to your design so you can
         continue creating your jewelry.
       </p>
-      <a class="btn" href="{E(StudioUrl)}#token={E(Token)}">Continue designing →</a>
+      <a class="btn" href="{E(StudioUrl)}#token={E(Token)}">Start designing →</a>
       <p style="margin-top:1.75rem;">Your personal access token (you only need it to sign in on
          another device{' — a copy is on its way to your inbox' if Status == 'verified' else ''}):</p>
       <div class="token">{E(Token)}</div>
@@ -118,6 +118,9 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
             quotaUsed: 0, quotaMax: 10
           }}));
         }} catch (e) {{ /* private-mode / storage disabled — token is shown above anyway */ }}
+        // One click from the email: go straight to the Design screen, signed in. The page above
+        // stays as the fallback if the redirect is blocked.
+        location.replace({Js(f"{StudioUrl}#token={Token}")});
       </script>"""
     elif Ok:
         # Only for an account verified before tokens were kept for re-sending: nothing to reveal.
@@ -125,7 +128,7 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
       <h1>Already verified</h1>
       <p>{E(Name) + ', your' if Name else 'Your'} email has already been verified. Register again with the
         same email to receive your access token.</p>
-      <a class="btn" href="{E(StudioUrl)}">Continue designing →</a>"""
+      <a class="btn" href="{E(StudioUrl)}">Start designing →</a>"""
     elif Status == "expired":
         Body = f"""
       <h1>Link expired</h1>

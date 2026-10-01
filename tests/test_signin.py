@@ -47,6 +47,7 @@ async def test_email_registration_verify_and_sign_in(HS):
     assert Page.status_code == 200 and "Email verified" in Page.text and "Dana, your email" in Page.text
     Token = _Link(Page.text, r'<div class="token">([A-Z]{6})</div>')
     assert f"#token={Token}" in Page.text                                   # one-click sign-in link
+    assert re.search(r'location\.replace\("[^"]*/#token=' + Token + r'"\)', Page.text)   # one click: straight to Design
     Mail = _Outbox(H)
     assert Mail[0]["subject"] == "Your XJet Atelier access token" and Token in Mail[0]["html"]
 
