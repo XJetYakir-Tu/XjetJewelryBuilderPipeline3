@@ -224,5 +224,7 @@ async def test_restart_resumes_submitted_and_interrupts_unconfirmed(tmp_path):
 def test_asset_paths_cannot_escape_root(tmp_path):
     with pytest.raises(assets.AssetError):
         assets.Resolve(tmp_path, "../outside.png")
+    import os
+    Absolute = "C:/Windows/win.ini" if os.name == "nt" else "/etc/passwd"   # an absolute path on this OS
     with pytest.raises(assets.AssetError):
-        assets.Resolve(tmp_path, "C:/Windows/win.ini")
+        assets.Resolve(tmp_path, Absolute)
