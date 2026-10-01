@@ -13,6 +13,11 @@ def _Wrap(E: Exception) -> Exception:
     if isinstance(E, (httpx.TransportError, fal_client.FalClientTimeoutError)):
         return TransientProviderError(str(E))
     if isinstance(E, fal_client.FalClientHTTPError):
+        if "downstream_service_error" in str(E) or "Downstream service error" in str(E):
+            # fal.ai reports that the model's own (partner) service failed on this request. It is a
+            # failed generation, not a connection problem, so it is not retried as transient.
+            return ProviderError("The AI service failed to generate this result (fal.ai: downstream service error). "
+                                 "You can retry; if it keeps failing, check the model settings.", "provider_failed")
         if E.status_code in _TransientHttp:
             return TransientProviderError(f"HTTP {E.status_code}: {E}")
         Message, Code = ClassifyErrorMessage(f"HTTP {E.status_code}: {E}")

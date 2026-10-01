@@ -164,3 +164,17 @@ async def test_fal_error_classification():
     with pytest.raises(ProviderError) as Info:
         await P.Submit("x/y", {})
     assert Info.value.Code == "billing"
+
+
+def test_downstream_service_error_is_a_failed_generation_not_unreachable():
+    from p3.providers.fal import _Wrap
+    from p3.providers.base import ProviderError, TransientProviderError
+    from p3.runner import FailureFor
+    E = fal_client.FalClientHTTPError(
+        "[{'loc': ['body'], 'msg': 'Downstream service error', 'type': 'downstream_service_error'}]", 500, {},
+        response=httpx.Response(500))
+    W = _Wrap(E)
+    assert isinstance(W, ProviderError) and not isinstance(W, TransientProviderError)
+    Message, Code = FailureFor(W)
+    assert Code == "provider_failed" and "downstream service error" in Message and "could not be reached" not in Message
+    assert isinstance(_Wrap(fal_client.FalClientHTTPError("boom", 503, {}, response=httpx.Response(503))), TransientProviderError)
