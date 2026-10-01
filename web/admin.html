@@ -32,6 +32,12 @@
   </style>
 </head>
 <body class="bg-zinc-50 text-zinc-900 min-h-screen" x-data="adminApp()" x-init="init()">
+  <!-- Hover preview of a session image (fixed, so the scrolling table cannot clip it) -->
+  <div x-show="zoom" x-cloak class="fixed z-50 pointer-events-none bg-white border border-zinc-200 shadow-xl p-2"
+       :style="zoom ? { left: zoom.x + 'px', top: zoom.y + 'px', width: zoom.size + 'px' } : {}">
+    <img :src="zoom?.src" class="w-full aspect-square object-contain bg-zinc-50" alt="">
+    <p class="text-[11px] text-zinc-600 mt-1.5 truncate" x-text="zoom?.label"></p>
+  </div>
 
   <header class="bg-white border-b border-zinc-200">
     <div class="max-w-6xl mx-auto px-4 md:px-8 py-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -408,7 +414,8 @@
         <tbody>
           <template x-for="x in sessionsFiltered" :key="x.session_id">
             <tr class="hover:bg-zinc-50 cursor-pointer" @click="go('#/sessions/' + encodeURIComponent(x.session_id))">
-              <td class="w-16"><div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden"><img x-show="x.thumbnail_url" :src="x.thumbnail_url" class="w-full h-full object-cover" loading="lazy" alt=""></div>
+              <td class="w-16"><div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden" :class="x.thumbnail_url ? 'cursor-zoom-in' : ''"
+                     @mouseenter="x.thumbnail_url && showZoom($event, x.thumbnail_url, (x.ring_id ? x.ring_id + ' · ' : '') + x.title)" @mouseleave="zoom = null"><img x-show="x.thumbnail_url" :src="x.thumbnail_url" class="w-full h-full object-cover" loading="lazy" alt=""></div>
                 <p class="font-mono text-[10px] text-zinc-500 mt-1 whitespace-nowrap" x-text="x.ring_id || ''"></p></td>
               <td><p class="font-medium flex items-center gap-2"><span x-text="x.customer_name || '—'"></span>
                   <span class="badge !text-[9px] !px-1.5" :class="statusClass(x.user_status)" x-text="statusLabel(x.user_status)"></span></p>

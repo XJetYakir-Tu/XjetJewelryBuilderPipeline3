@@ -64,7 +64,7 @@ function adminApp() {
     editing: null, edit: {}, editError: '',
     userId: '', d: null, detailError: '', openDesign: null,
     tab: 'sessions', materials: {}, swatches: {}, showChoices: false,
-    viewer3d: { id: null, label: '', loading: false, error: '' }, downloadNote: '',
+    viewer3d: { id: null, label: '', loading: false, error: '' }, downloadNote: '', zoom: null,
     live3d: {}, exports3d: {}, clock: Date.now(), skew: 0, storage: null,
     dash: null, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
@@ -129,7 +129,7 @@ function adminApp() {
       const id = m && m[2] ? decodeURIComponent(m[2]) : '';
       this.userId = this.tab === 'users' ? id : '';
       this.sessionId = this.tab === 'sessions' ? id : '';
-      this.openDesign = null;
+      this.openDesign = null; this.zoom = null;
       window.scrollTo({ top: 0 });
       if (!this.ok) return;
       if (this.tab === 'dashboard') {
@@ -237,6 +237,14 @@ function adminApp() {
           { production_size: this.g3.size, material_id: this.g3.material });
         await this.loadSession();
       } catch (e) { this.g3.error = e.message; } finally { this.g3.busy = false; }
+    },
+    // Large hover preview next to the thumbnail, kept inside the window.
+    showZoom(ev, src, label) {
+      const r = ev.currentTarget.getBoundingClientRect(), size = Math.min(340, window.innerWidth - 32);
+      let x = r.right + 12, y = r.top + r.height / 2 - size / 2;
+      if (x + size > window.innerWidth - 16) x = Math.max(16, r.left - size - 12);
+      y = Math.max(16, Math.min(y, window.innerHeight - size - 48));
+      this.zoom = { src, label, x, y, size };
     },
     // ── live 3D status: real persisted stages, polled lightly; the clock ticks locally ──
     setLive(id, s) {
