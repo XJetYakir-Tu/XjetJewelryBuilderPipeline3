@@ -636,13 +636,16 @@
                                     <template x-if="waitVariant">
                                         <div class="w-full flex flex-col items-center text-center py-2 fade-in" role="status" aria-live="polite">
                                             <!-- Crop the clip's baked-in black side bars (as in P2) -->
-                                            <div class="overflow-hidden rounded-xl w-full max-w-[560px]" style="aspect-ratio:1088/720; background:#DFD8C8;">
-                                                <!-- Started from code too: a browser that limits autoplay still shows the poster frame,
-                                                     and the movie starts on the first click / tap -->
-                                                <video src="{{BASE}}/static/videos/atelier-loading.mp4" poster="{{BASE}}/static/images/atelier-loading-poster.jpg"
+                                            <!-- No clipping container around the video (a rounded overflow-hidden box can make the
+                                                 whole video layer render transparent on some graphics drivers). The still frame is a
+                                                 plain image underneath, so something always shows; the movie covers it when it plays. -->
+                                            <div class="relative w-full max-w-[560px]" style="aspect-ratio:1088/720;">
+                                                <img src="{{BASE}}/static/images/atelier-loading-poster.jpg" alt="" aria-hidden="true"
+                                                     class="absolute inset-0 w-full h-full object-cover rounded-xl" style="object-position:73% 50%;">
+                                                <video src="{{BASE}}/static/videos/atelier-loading.mp4"
                                                        autoplay muted loop playsinline preload="auto" disablepictureinpicture
                                                        x-init="startLoadingMovie($el)"
-                                                       class="w-full h-full object-cover" style="object-position:73% 50%;"></video>
+                                                       class="absolute inset-0 w-full h-full object-cover rounded-xl" style="object-position:73% 50%;"></video>
                                             </div>
                                             <h2 class="brand-font mt-6 sm:mt-7 text-[24px] sm:text-[30px] font-medium leading-tight" style="color:#2A2A2A;" x-text="waitPreset.title"></h2>
                                             <p class="mt-2.5 max-w-[500px] text-[15px] sm:text-[16px] leading-relaxed" style="color:#6F6F6F;" x-text="waitPreset.message"></p>
