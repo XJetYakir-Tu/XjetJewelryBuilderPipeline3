@@ -235,6 +235,11 @@ class Database:
         with self.Connect() as Conn:
             Conn.execute("PRAGMA journal_mode=WAL")
             Conn.executescript(Schema if SchemaSql is None else SchemaSql)
+            if SchemaSql is None:
+                Cols = {R[1] for R in Conn.execute("PRAGMA table_info(designs)")}
+                if "owner_account_id" in Cols and "ai_mode" not in Cols:
+                    # AI mode the session was created in ('mock' | 'fal'); mock sessions stay out of the Admin.
+                    Conn.execute("ALTER TABLE designs ADD COLUMN ai_mode TEXT")
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
 

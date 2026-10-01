@@ -52,8 +52,8 @@ def _Errors(Fn):
 def _Detail(Ctx: Context, AccountId: str) -> dict:
     User = _Errors(lambda: Ctx.Accounts.AdminGet(AccountId))
     Identity = Ctx.Accounts.AdminActivity(AccountId)
-    App = AccountActivity(Ctx, AccountId)
-    Usage = Identity["usage"]
+    App = AccountActivity(Ctx, AccountId, IncludeMock=False)                 # mock activity stays out of the Admin
+    Usage = [U for U in Identity["usage"] if U["provider"] != "mock"]
     # Usage ledger by kind and provider/endpoint — the shape a cost report will aggregate.
     Ledger: dict[tuple, dict] = {}
     for U in Usage:
@@ -88,7 +88,8 @@ def _Detail(Ctx: Context, AccountId: str) -> dict:
         "timeline": Timeline[:300],
         "daily": [Daily[K] for K in sorted(Daily)],
         "last_design_activity_at": App["last_design_activity_at"],
-        "sessions": Sessions.Summaries(Ctx, OwnerAccountId=AccountId),
+        "sessions": Sessions.Summaries(Ctx, OwnerAccountId=AccountId, IncludeMock=False),
+        "mock_excluded": True,
     }
 
 
@@ -98,17 +99,20 @@ def _Pct(Part: int, Whole: int) -> float | None:
 
 def Dashboard(Ctx: Context) -> dict:
     """Small, factual overview. Geometry/price statistics appear once 3D data exists."""
-    S = Sessions.Summaries(Ctx)
+    S = Sessions.Summaries(Ctx, IncludeMock=False)                          # mock activity stays out of statistics
     N = len(S)
+    Live = {X["session_id"] for X in S}
 
     def Reached(Key):
         return sum(1 for X in S if X["stage_times"].get(Key))
 
-    Clicks = Ctx.Db.One("SELECT COUNT(*) AS n FROM session_events WHERE kind = 'new_design_clicked'")["n"]
-    Geo = Ctx.Db.All("SELECT g.volume_mm3, p.material_id, p.weight_g, p.fixed_price, p.calculated_price, "
-                     "p.production_cost FROM geometry_results g JOIN price_calculations p ON p.geometry_id = g.id "
-                     "WHERE g.stage = 'production'")
-    Selected3D = len({R["design_id"] for R in Ctx.Db.All("SELECT DISTINCT design_id FROM session_3d")})
+    Clicks = Ctx.Db.One("SELECT COUNT(*) AS n FROM session_events WHERE kind = 'new_design_clicked' "
+                        "AND json_extract(data_json, '$.ai_mode') = 'live'")["n"]
+    Geo = [G for G in Ctx.Db.All(
+        "SELECT g.volume_mm3, p.material_id, p.weight_g, p.fixed_price, p.calculated_price, p.production_cost, s.design_id "
+        "FROM geometry_results g JOIN price_calculations p ON p.geometry_id = g.id JOIN session_3d s ON s.id = g.session_3d_id "
+        "WHERE g.stage = 'production'") if G["design_id"] in Live]
+    Selected3D = len({R["design_id"] for R in Ctx.Db.All("SELECT DISTINCT design_id FROM session_3d")} & Live)
     ByMat: dict[str, list] = {}
     for G in Geo:
         if G["weight_g"] is not None:
@@ -132,6 +136,7 @@ def Dashboard(Ctx: Context) -> dict:
             "price_pairs": len(Pairs),
         },
         "cost_model": "configured" if any(G["production_cost"] is not None for G in Geo) else "not_configured",
+        "mock_excluded": True,
     }
 
 
@@ -160,7 +165,10 @@ def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
         AllUsage, User = [], None
     Flow = Sessions.Pipeline(Ctx, DesignId, AllUsage, Prices)
     UserTotal, UserSessions = 0.0, 0
+    MockIds = Sessions.MockDesignIds(Ctx, Owner)
     for D in Ctx.Db.All("SELECT id FROM designs WHERE owner_account_id = ?", (Owner,)):
+        if D["id"] in MockIds:
+            continue
         UserTotal += Sessions.Pipeline(Ctx, D["id"], AllUsage, Prices)["total_cost"]
         UserSessions += 1
     Movie = next((M for B in Batches for C in B["candidates"] if C["selected"] for M in C["movies"] if M["status"] == "ready"), None) \
@@ -260,9 +268,10 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
         return Dashboard(Ctx)
 
     @App_.get("/api/admin/sessions")
-    async def ListSessions(authorization: str | None = Header(None)):
+    async def ListSessions(include_mock: bool = False, authorization: str | None = Header(None)):
         Admin(authorization)
-        return {"sessions": Sessions.Summaries(Ctx), "idle_minutes": Sessions.IdleMinutes}
+        return {"sessions": Sessions.Summaries(Ctx, IncludeMock=include_mock), "idle_minutes": Sessions.IdleMinutes,
+                "mock_sessions": len(Sessions.MockDesignIds(Ctx)), "include_mock": include_mock}
 
     @App_.get("/api/admin/sessions/{DesignId}")
     async def GetSession(DesignId: str, authorization: str | None = Header(None)):

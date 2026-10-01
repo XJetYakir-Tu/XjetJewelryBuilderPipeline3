@@ -35,6 +35,7 @@ StageLabels = {"started": "Started", "generated": "Generated", "refined": "Refin
 def Record(Ctx: Context, OwnerAccountId: str, Kind: str, DesignId: str | None = None, **Data) -> None:
     """Append one session event. Never raises into the customer flow."""
     try:
+        Data.setdefault("ai_mode", "mock" if Ctx.Provider.Name == "mock" else "live")
         Ctx.Db.Execute("INSERT INTO session_events (design_id, owner_account_id, kind, data_json, created_at) "
                        "VALUES (?,?,?,?,?)", (DesignId, OwnerAccountId, Kind, Dumps(Data), Now()))
     except Exception:  # noqa: BLE001 — analytics must not break the product
@@ -74,6 +75,32 @@ def BackfillBagEvents(Ctx: Context) -> int:
     return len(Rows)
 
 
+def BackfillDesignModes(Ctx: Context) -> int:
+    """Designs created before ai_mode existed: 'fal' if any of their requests went to fal.ai, else 'mock'."""
+    Rows = Ctx.Db.All("SELECT id FROM designs WHERE ai_mode IS NULL")
+    for D in Rows:
+        Live = Ctx.Db.One(
+            "SELECT 1 AS x FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE b.design_id = ? "
+            "AND c.provider_request_id IS NOT NULL AND c.provider_request_id NOT LIKE 'mockreq_%' "
+            "UNION SELECT 1 FROM movies m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
+            "WHERE b.design_id = ? AND m.provider_request_id IS NOT NULL AND m.provider_request_id NOT LIKE 'mockreq_%'",
+            (D["id"], D["id"]))
+        Ctx.Db.Execute("UPDATE designs SET ai_mode = ? WHERE id = ?", ("fal" if Live else "mock", D["id"]))
+    return len(Rows)
+
+
+def MockDesignIds(Ctx: Context, OwnerAccountId: str | None = None) -> set[str]:
+    """Sessions that are mock-only: created in mock mode and never sent a request to a live provider."""
+    Where, Params = ("AND d.owner_account_id = ?", (OwnerAccountId,)) if OwnerAccountId else ("", ())
+    Rows = Ctx.Db.All(f"SELECT d.id FROM designs d WHERE COALESCE(d.ai_mode, 'mock') = 'mock' {Where} AND NOT EXISTS ("
+                      "SELECT 1 FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE b.design_id = d.id "
+                      "AND c.provider_request_id IS NOT NULL AND c.provider_request_id NOT LIKE 'mockreq_%') AND NOT EXISTS ("
+                      "SELECT 1 FROM movies m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
+                      "WHERE b.design_id = d.id AND m.provider_request_id IS NOT NULL AND m.provider_request_id NOT LIKE 'mockreq_%')",
+                      Params)
+    return {R["id"] for R in Rows}
+
+
 def _Parse(Iso: str | None) -> datetime | None:
     return datetime.fromisoformat(Iso) if Iso else None
 
@@ -88,8 +115,10 @@ def _Max(*Values):
     return max(V) if V else None
 
 
-def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: str | None = None) -> list[dict]:
-    """Session summaries (newest first) for all designs, or the given ones / one owner."""
+def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: str | None = None,
+              IncludeMock: bool = True) -> list[dict]:
+    """Session summaries (newest first) for all designs, or the given ones / one owner. Lists for the
+    Admin pass IncludeMock=False: mock-only sessions are kept out of statistics."""
     Db, Url = Ctx.Db, Ctx.AssetUrl
     Where, Params = [], []
     if DesignIds is not None:
@@ -102,6 +131,9 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         Params.append(OwnerAccountId)
     Designs = Db.All("SELECT * FROM designs" + (" WHERE " + " AND ".join(Where) if Where else "")
                      + " ORDER BY created_at DESC", Params)
+    Mock = MockDesignIds(Ctx, OwnerAccountId)
+    if not IncludeMock:
+        Designs = [D for D in Designs if D["id"] not in Mock]
     if not Designs:
         return []
     Ids = [D["id"] for D in Designs]
@@ -192,7 +224,7 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             Path.append("stopped")
         Name, Email = Names.get(D["owner_account_id"], ("", ""))
         Out.append({
-            "session_id": Did, "design_id": Did, "title": D["title"], "prompt": D["prompt"],
+            "session_id": Did, "design_id": Did, "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
             "account_id": D["owner_account_id"], "customer_name": Name, "customer_email": Email,
             "thumbnail_url": Url(Thumb["asset_path"]) if Thumb else None,
             "started_at": D["created_at"], "last_activity_at": LastActivity, "state": State, "end_reason": EndReason,

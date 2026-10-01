@@ -349,7 +349,7 @@
             </div>
           </template>
         </div>
-        <p class="text-[11px] text-zinc-400 mt-4">Checkout is not implemented yet — "Checkout Clicked" counts clicks on the unavailable Checkout button.</p>
+        <p class="text-[11px] text-zinc-400 mt-4">Live AI sessions only — activity in Mock Mode is not counted. Checkout is not implemented yet — "Checkout Clicked" counts clicks on the unavailable Checkout button.</p>
       </section>
 
       <section class="card p-6">
@@ -382,6 +382,8 @@
           </select>
           <select class="inp !w-auto !py-1.5" x-model="sBag"><option value="">Bag: any</option><option value="yes">Reached Bag</option><option value="no">No Bag</option></select>
           <select class="inp !w-auto !py-1.5" x-model="s3d"><option value="">3D: any</option><option value="none">No 3D</option><option value="any">Has 3D</option></select>
+          <label class="flex items-center gap-1.5 text-zinc-500"><input type="checkbox" x-model="sMock" @change="loadSessions()">
+            <span x-text="'Show mock (' + mockSessions + ')'"></span></label>
           <button class="text-zinc-500 hover:text-black uppercase tracking-widest" @click="loadSessions()">Refresh</button>
         </div>
       </div>
@@ -397,6 +399,7 @@
                 <p class="text-[11px] text-zinc-500" x-text="x.customer_email || ''"></p></td>
               <td class="text-xs"><p x-text="dateTime(x.started_at)"></p><p class="text-zinc-400" x-text="ago(x.last_activity_at) + (x.state === 'active' ? ' · active' : '')"></p></td>
               <td class="whitespace-nowrap">
+                <span x-show="x.mock" class="badge !text-[9px] !px-1.5 mr-0.5 bg-amber-100 text-amber-800">Mock</span>
                 <template x-for="h in [['has_image', 'Image'], ['has_movie', 'Movie'], ['has_3d', '3D']]">
                   <span class="badge !text-[9px] !px-1.5 mr-0.5" :class="x[h[0]] ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-300'" x-text="h[1]"></span>
                 </template></td>
@@ -414,7 +417,7 @@
         </tbody>
       </table>
       </div>
-      <p class="px-6 py-3 text-[11px] text-zinc-400 border-t border-zinc-100">A session is one design journey: it starts with the first prompt of a New Design and ends when the customer starts another New Design or after <span x-text="idleMinutes"></span> minutes without activity.</p>
+      <p class="px-6 py-3 text-[11px] text-zinc-400 border-t border-zinc-100"><span x-show="!sMock">Mock-mode sessions are hidden and left out of all statistics. </span>A session is one design journey: it starts with the first prompt of a New Design and ends when the customer starts another New Design or after <span x-text="idleMinutes"></span> minutes without activity.</p>
     </section>
   </main>
 
@@ -430,6 +433,7 @@
           <div class="space-y-1">
             <div class="flex flex-wrap items-center gap-3">
               <h1 class="cinzel text-2xl" x-text="sd.session.title"></h1>
+              <span x-show="sd.session.mock" class="badge bg-amber-100 text-amber-800">Mock session — not counted in statistics</span>
               <span class="badge" :class="sd.session.state === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'" x-text="sd.session.state === 'active' ? 'Session active' : ('Session ended · ' + (sd.session.end_reason === 'new_design' ? 'new design started' : 'inactive'))"></span>
             </div>
             <p class="text-sm flex flex-wrap items-center gap-2">

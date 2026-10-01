@@ -91,6 +91,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.Models = ModelConfigStore(Ctx.Db)        # seeds v1 from generation.json + prompts on first start
     Svc = Services(Ctx)
     Sessions.BackfillBagEvents(Ctx)               # bag lines can be removed later; keep their bag_added
+    Sessions.BackfillDesignModes(Ctx)             # mark older sessions mock / live from their requests
     Annotated = BackfillUsageAnnotations(Ctx)     # provider/endpoint on usage recorded before they were captured
     if Annotated:
         Logger.info("Annotated %d earlier usage events with provider/endpoint", Annotated)

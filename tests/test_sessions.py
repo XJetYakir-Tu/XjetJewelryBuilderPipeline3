@@ -9,7 +9,7 @@ import pytest
 
 from p3.geometry import MeasureRing, UsSizeToInnerDiameterMm
 from p3.providers import endpoints
-from tests.conftest import Harness
+from tests.conftest import Harness, MakeLive
 
 AdminKey = "sessions-admin-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
@@ -90,6 +90,10 @@ async def test_idle_session_ends_and_client_events_are_validated(HS):
     assert (await H.Client.post("/api/events", json={"kind": "design_opened", "design_id": "dsg_nope"})).status_code == 404
     assert (await H.Client.post("/api/events", json={"kind": "new_design_clicked"})).json()["ok"]
     assert (await H.Client.post("/api/events", json={"kind": "design_opened", "design_id": Did})).json()["ok"]
+    Dash = (await H.Client.get("/api/admin/dashboard", headers=Admin)).json()
+    assert Dash["sessions"] == 0 and Dash["new_design_clicks"] == 0 and Dash["mock_excluded"]   # mock mode: not counted
+    MakeLive(H)
+    H.Ctx.Db.Execute("UPDATE session_events SET data_json = json_set(data_json, '$.ai_mode', 'live')")
     Dash = (await H.Client.get("/api/admin/dashboard", headers=Admin)).json()
     assert Dash["sessions"] == 1 and Dash["new_design_clicks"] == 1
     assert [F["sessions"] for F in Dash["funnel"]] == [1, 1, 0, 0, 0]
@@ -196,8 +200,9 @@ async def test_session_pipeline_cost_duration_and_flags(HS):
     assert D["cost"]["session"] == 0.0                                  # mock requests are free
     assert {S["kind"] for S in D["pipeline"]["steps"]} == {"design", "movie", "3d"}
     assert all(S["duration_s"] is not None and S["duration_s"] >= 0 for S in D["pipeline"]["steps"])
+    assert D["session"]["mock"] and D["cost"]["user_sessions"] == 0                 # mock: not in user totals
     # Price the same requests as if they had been live (fal) submissions.
-    H.Ctx.Accounts.Db.Execute("UPDATE usage_events SET provider = 'fal', mode = 'live'")
+    MakeLive(H)
     D = await _Session(H, Did)
     Steps = {(S["kind"], S["detail"].startswith("reused")): S for S in D["pipeline"]["steps"]}
     assert Steps[("design", False)]["cost"] == pytest.approx(0.60) and Steps[("design", False)]["requests"] == 4
@@ -208,6 +213,7 @@ async def test_session_pipeline_cost_duration_and_flags(HS):
     assert D["user"]["status"] in ("active", "unused") and D["artifacts"]["image_url"] and D["artifacts"]["movie_url"]
     assert D["last_choice"]["ring_size"] == 7.0 and D["last_choice"]["material_id"] == "silver"
     Row = next(X for X in (await H.Client.get("/api/admin/sessions", headers=Admin)).json()["sessions"] if X["session_id"] == Did)
+    assert Row["mock"] is False
     assert (Row["has_image"], Row["has_movie"], Row["has_3d"]) == (True, True, True) and Row["user_status"]
 
 
@@ -235,3 +241,17 @@ async def test_ai_prices_refresh_and_edit(HS, monkeypatch):
     Bad = await H.Client.put("/api/admin/ai-prices", json={"prices": {"endpoints": {"x": {"per_image": -1}}}}, headers=Admin)
     assert Bad.status_code == 400
     assert (await H.Client.get("/api/admin/ai-prices")).status_code == 403
+
+
+async def test_mock_sessions_are_hidden_from_the_admin_unless_asked(HS):
+    H = HS
+    Batch = await H.NewDesign("Plain band")                                 # made in mock mode
+    L = (await H.Client.get("/api/admin/sessions", headers=Admin)).json()
+    assert L["sessions"] == [] and L["mock_sessions"] == 1
+    All = (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]
+    assert [X["session_id"] for X in All] == [Batch["design_id"]] and All[0]["mock"]
+    D = await _Session(H, Batch["design_id"])                               # still viewable on its own
+    assert D["session"]["mock"]
+    assert H.Ctx.Db.One("SELECT ai_mode FROM designs")["ai_mode"] == "mock"
+    E = H.Ctx.Db.One("SELECT data_json FROM session_events ORDER BY id DESC LIMIT 1")
+    assert E is None or json.loads(E["data_json"])["ai_mode"] == "mock"

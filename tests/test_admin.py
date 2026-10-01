@@ -6,7 +6,7 @@ import re
 import pytest
 
 from p3.providers import endpoints
-from tests.conftest import Harness
+from tests.conftest import Harness, MakeLive
 
 AdminKey = "admin-test-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
@@ -113,6 +113,9 @@ async def test_user_detail_counts_only_recorded_activity(HA):
     await H.Proceed(DesignId, Other["id"])                                     # a failed movie (not charged)
     await H.Idle()
     await H.Client.post("/api/register-token", json={"Token": H.Token})        # a sign-in
+    Mock = (await H.Client.get(f"/api/admin/users/{H.Who.AccountId}", headers=Admin)).json()
+    assert Mock["totals"]["designs"] == 0 and Mock["usage_ledger"] == [] and Mock["sessions"] == []   # mock is not counted
+    MakeLive(H)
 
     D = (await H.Client.get(f"/api/admin/users/{H.Who.AccountId}", headers=Admin)).json()
     T = D["totals"]
@@ -123,14 +126,14 @@ async def test_user_detail_counts_only_recorded_activity(HA):
     assert T["meshes"]["total"] == 0 and T["bag_lines"] == 0
     assert (T["jobs_succeeded"], T["jobs_failed"]) == (9, 1)
     assert (T["generations_used"], T["generations_max"], T["sign_ins"]) == (1, 10, 1)
-    assert T["images"]["by_provider"] == {"mock": 4}
+    assert T["images"]["by_provider"] == {"fal": 4}
     assert D["user"]["last_sign_in_at"] and D["user"]["last_activity_at"]
 
     # Provider ledger: every submission carries provider + endpoint; cost stays empty (not configured).
     Requests = {}
     for Row in D["usage_ledger"]:
         Requests[(Row["kind"], Row["provider"])] = Requests.get((Row["kind"], Row["provider"]), 0) + Row["requests"]
-    assert Requests == {("image", "mock"): 8, ("movie", "mock"): 2}
+    assert Requests == {("image", "fal"): 8, ("movie", "fal"): 2}
     assert len([Row for Row in D["usage_ledger"] if Row["kind"] == "image"]) == 2     # design + refine endpoints
     assert all(R["endpoint"] != "unknown" and R["cost_usd"] is None for R in D["usage_ledger"])
     assert D["cost_reporting"] == "not_configured"

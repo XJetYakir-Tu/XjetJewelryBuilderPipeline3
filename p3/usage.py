@@ -46,9 +46,13 @@ def _Day(Iso: str | None) -> str | None:
     return Iso[:10] if Iso else None
 
 
-def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90) -> dict:
+def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: bool = True) -> dict:
     Db, Url = Ctx.Db, Ctx.AssetUrl
     Designs = Db.All("SELECT * FROM designs WHERE owner_account_id = ? ORDER BY created_at DESC", (AccountId,))
+    if not IncludeMock:
+        from p3.sessions import MockDesignIds
+        Mock = MockDesignIds(Ctx, AccountId)
+        Designs = [D for D in Designs if D["id"] not in Mock]
     Ids = [D["id"] for D in Designs]
     Q = ",".join("?" * len(Ids)) or "NULL"
     Batches = Db.All(f"SELECT * FROM batches WHERE design_id IN ({Q}) ORDER BY created_at", Ids)

@@ -60,7 +60,7 @@ function adminApp() {
     userId: '', d: null, detailError: '', openDesign: null,
     tab: 'sessions', materials: {}, swatches: {}, showChoices: false,
     viewer3d: { id: null, label: '', loading: false, error: '' },
-    dash: null, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '',
+    dash: null, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
     mProblems: [], mMessage: '', mBusy: false, preview: null,
@@ -184,8 +184,8 @@ function adminApp() {
 
     // ── sessions ───────────────────────────────────────────────────────
     async loadSessions() {
-      const r = await this.api('GET', '/api/admin/sessions');
-      this.sessions = r.sessions; this.idleMinutes = r.idle_minutes;
+      const r = await this.api('GET', '/api/admin/sessions' + (this.sMock ? '?include_mock=true' : ''));
+      this.sessions = r.sessions; this.idleMinutes = r.idle_minutes; this.mockSessions = r.mock_sessions;
     },
     get sessionsFiltered() {
       const q = this.sq.trim().toLowerCase();

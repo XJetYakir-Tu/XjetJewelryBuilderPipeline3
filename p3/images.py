@@ -77,9 +77,9 @@ class ImageService:
             assets.WriteAtomic(self.Ctx.Settings.AssetsDir, RefPath, ReferencePng)
         with Db.Transaction() as Conn:
             T = Now()
-            Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, updated_at) "
-                         "VALUES (?,?,?,?,?,?,?)",
-                         (DesignId, Who.AccountId, ProductName(Prompt), Prompt, ClientRequestId, T, T))
+            Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, updated_at, "
+                         "ai_mode) VALUES (?,?,?,?,?,?,?,?)",
+                         (DesignId, Who.AccountId, ProductName(Prompt), Prompt, ClientRequestId, T, T, self.Ctx.Provider.Name))
             self._InsertBatch(Conn, BatchId, DesignId, "initial", None, Prompt, RefPath, None)
         self._StartBatch(BatchId)
         return self.GetBatch(BatchId)

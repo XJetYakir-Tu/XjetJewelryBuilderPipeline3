@@ -85,3 +85,13 @@ def WriteProfile(tmp_path):
         P.write_text(json.dumps(Data), encoding="utf-8")
         return P
     return _Write
+
+
+def MakeLive(H) -> None:
+    """Re-label everything this harness generated as live (fal) activity — the Admin's statistics
+    deliberately leave mock-mode sessions out."""
+    Db = H.Ctx.Db
+    Db.Execute("UPDATE designs SET ai_mode = 'fal'")
+    for T in ("candidates", "movies", "meshes"):
+        Db.Execute(f"UPDATE {T} SET provider_request_id = 'falreq_' || id WHERE provider_request_id LIKE 'mockreq_%'")
+    H.Ctx.Accounts.Db.Execute("UPDATE usage_events SET provider = 'fal', mode = 'live' WHERE provider = 'mock'")
