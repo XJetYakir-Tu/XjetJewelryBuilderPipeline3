@@ -211,10 +211,10 @@ class Production3D:
         Row = Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ?", (MeshId,))
         for R in self._WaitingFor(MeshId):
             self._Finalize(R, Row)
-        # Background, never blocking the numbers already shown: light preview, then the integrity check.
-        if Raw.get("bore_ok"):
-            self.Queue.Enqueue("preview", MeshId, Params={"source": Row["stl_path"], "raw": Raw,
-                                                          "output": f"meshes/{MeshId}/preview.p3pv"})
+        # Background, never blocking the numbers already shown: light preview (always — also when the
+        # model needs review, so it can be looked at), then the integrity check.
+        self.Queue.Enqueue("preview", MeshId, Params={"source": Row["stl_path"], "raw": Raw,
+                                                      "output": f"meshes/{MeshId}/preview.p3pv"})
         self.Queue.Enqueue("integrity", MeshId, Params={"source": Row["stl_path"]})
 
     def _Timings(self, MeshId: str, **New) -> str:
@@ -399,8 +399,9 @@ class Production3D:
         All = HiStages + Stages.List(Db, Sid)
         Job = self._MeasureJob(R["mesh_id"], ("queued",)) if R["status"] == "queued" else None
         Mesh = Db.One("SELECT status FROM meshes WHERE id = ?", (R["mesh_id"],))
-        Raw = Db.One("SELECT status, integrity, preview_path, thumbnail_path, timings_json, faces, bytes, sha256 "
-                     "FROM raw_geometry WHERE mesh_id = ?", (R["mesh_id"],))
+        Raw = Db.One("SELECT status, method_version, integrity, preview_path, thumbnail_path, timings_json, faces, bytes, "
+                     "sha256 FROM raw_geometry WHERE mesh_id = ?", (R["mesh_id"],))
+        Current = bool(Raw and Raw["status"] == "measured" and Raw["method_version"] == FastMethodVersion)
         Bg = Db.All("SELECT kind, status FROM geometry_jobs WHERE mesh_id = ? AND kind IN ('preview','integrity') "
                     "AND status IN ('queued','running')", (R["mesh_id"],))
         return {
@@ -409,7 +410,7 @@ class Production3D:
             "queue": {"ahead": self.Queue.Ahead(Job), "job_id": Job["id"]} if Job else None,
             "can_cancel": bool(Job),
             "can_retry": R["status"] in ("failed", "cancelled")
-                         or (R["status"] == "needs_review" and not (Raw and Raw["status"] == "measured")),
+                         or (R["status"] == "needs_review" and not Current),   # e.g. an improved measurement
             "retry_is_local": bool(Mesh and Mesh["status"] == "ready"),
             "raw": Raw and {"faces": Raw["faces"], "bytes": Raw["bytes"], "sha256": Raw["sha256"],
                             "integrity": Raw["integrity"], "preview_ready": bool(Raw["preview_path"]),

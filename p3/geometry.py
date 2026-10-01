@@ -365,7 +365,8 @@ def MeasureRing(Data: bytes, Fmt: str, TargetInnerDiameterMm: float) -> RingGeom
 #   lengths × s · area × s² · volume × s³ · weight = volume × density.
 # No scaled copy is written during processing — ExportScaledStl builds one only when it is downloaded,
 # from the stored transform, so every export of the same request is identical.
-FastMethodVersion = "ring-measure-once-v3.1"      # v3.1: bore heights from the 5–95% surface span
+FastMethodVersion = "ring-measure-once-v3.2"      # v3.1: bore heights from the 5–95% surface span
+                                                  # v3.2: bore centre searched (heavy heads move the centroid)
 PreviewTargetFaces = 25_000
 
 
@@ -434,8 +435,30 @@ def _ExactSections(Tri, Centre, U, V, Axis, Heights) -> list:
     return Out
 
 
+def _BoreSeed(P, Grid: int = 25, Sample: int = 20_000) -> np.ndarray:
+    """A start point inside the bore. The surface centroid is not always inside it (a heavy head pulls
+    it into the metal), so search a grid over the section for points enclosed by wall in every
+    direction and take the one farthest from any wall (centre of the largest empty circle)."""
+    if len(P) == 0:
+        return np.zeros(2)
+    S = P if len(P) <= Sample else P[np.random.default_rng(5).choice(len(P), Sample, replace=False)]
+    Lo, Hi = S.min(0), S.max(0)
+    Gx, Gy = np.meshgrid(np.linspace(Lo[0], Hi[0], Grid), np.linspace(Lo[1], Hi[1], Grid))
+    Best, BestClear = np.zeros(2), -1.0
+    for C in np.c_[Gx.ravel(), Gy.ravel()]:
+        Rel = S - C
+        Dist = np.hypot(Rel[:, 0], Rel[:, 1])
+        Bin = ((np.arctan2(Rel[:, 1], Rel[:, 0]) + np.pi) / (2 * np.pi) * Directions).astype(int) % Directions
+        if len(np.unique(Bin)) < Directions:                       # not enclosed: outside the bore
+            continue
+        Clear = float(Dist.min())
+        if Clear > BestClear:
+            Best, BestClear = C, Clear
+    return Best
+
+
 def _FitBore(P) -> dict:
-    C2, Radius, Std, Filled = np.zeros(2), None, None, 0
+    C2, Radius, Std, Filled = _BoreSeed(P), None, None, 0
     for _ in range(8):
         if len(P) < Directions:
             break

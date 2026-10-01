@@ -8,6 +8,7 @@ import sys
 import numpy as np
 import pytest
 
+from p3 import geometry as g
 from p3.geometry import MeasureRing, UsSizeToInnerDiameterMm
 from p3.providers import endpoints
 from tests.conftest import Harness, MakeLive
@@ -200,6 +201,23 @@ def test_geometry_matches_an_ideal_ring_in_any_orientation():
     assert math.isclose(P.size_x_mm, 2 * (R + r), rel_tol=0.01) and math.isclose(P.size_z_mm, 2 * r, rel_tol=0.03)
 
 
+def test_bore_is_found_when_a_heavy_head_pulls_the_centroid_outside_it():
+    import tempfile
+    import trimesh
+    from pathlib import Path
+    from p3 import geometry as g
+    Band = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=128, minor_sections=64)
+    Head = trimesh.creation.icosphere(subdivisions=4, radius=8.0)
+    Head.apply_translation([16.0, 0, 0])                                  # surface centroid lands outside the bore
+    M = trimesh.util.concatenate([Band, Head])
+    M.apply_transform(trimesh.transformations.rotation_matrix(0.5, [0.2, 1, 0.4]))
+    Src = Path(tempfile.mkdtemp()) / "head.stl"
+    g.WriteStl(np.asarray(M.triangles, np.float32), Src)
+    Raw = g.MeasureRaw(Src)
+    assert Raw["bore_ok"] and Raw["inner_diameter"] == pytest.approx(15.0, rel=0.005)
+    assert np.linalg.norm(np.array(Raw["bore_origin"]) - M.vertices[:len(Band.vertices)].mean(0)) < 0.1
+
+
 def test_geometry_without_a_bore_needs_review():
     import trimesh
     Buf = io.BytesIO()
@@ -321,7 +339,7 @@ async def test_geometry_failure_retries_locally_without_another_hi3d_call(HS, mo
     assert T3["status"] in ("queued", "measuring")
     await H.Idle()
     assert (await H.Client.get(f"/api/admin/3d/{T3['id']}/status", headers=Admin)).json()["status"] == "measured"
-    assert H.Ctx.Db.One("SELECT method_version FROM raw_geometry")["method_version"] == "ring-measure-once-v3.1"
+    assert H.Ctx.Db.One("SELECT method_version FROM raw_geometry")["method_version"] == g.FastMethodVersion
     assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == 1
 
 

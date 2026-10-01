@@ -214,8 +214,8 @@ function adminApp() {
         this.sd = sd;
         this.showChoices = false;
         for (const t of sd.three_d) this.setLive(t.id, t.live);
-        const latest = sd.three_d.find(t => t.geometry?.production);
-        if (latest && this.viewer3d.id !== latest.id && this.previewReady(latest)) setTimeout(() => this.show3d(latest), 50);
+        const latest = sd.three_d.find(t => this.previewReady(t));       // visual only: also for "needs review"
+        if (latest && this.viewer3d.id !== latest.id) setTimeout(() => this.show3d(latest), 50);
         if (!latest) this.clear3d();
         await this.$nextTick();                 // the <option>s must exist before the selects get their value
         await new Promise(r => setTimeout(r));  // (a freshly created detail block renders its options a tick later)
@@ -259,7 +259,7 @@ function adminApp() {
             this.setLive(id, s);
             if (s.done && !was?.done) reload = true;                      // numbers are ready: show them
             const t = this.sd?.three_d.find(x => x.id === id);
-            if (t && s.raw?.preview_ready && !was?.raw?.preview_ready && t.geometry?.production) this.show3d(t);
+            if (t && s.raw?.preview_ready && !was?.raw?.preview_ready) this.show3d(t);
           } catch (e) { /* transient: keep polling */ }
         }
         if (reload) await this.loadSession(); else this.poll3d();
@@ -543,7 +543,7 @@ function adminApp() {
     },
 
     // ── 3D viewer (three.js; the STL is fetched with the admin key) ─────
-    measured3d() { return !!this.sd?.three_d.some(t => t.geometry?.production); },
+    measured3d() { return !!this.sd?.three_d.some(t => this.previewReady(t)); },
     clear3d() {
       if (this._three) { cancelAnimationFrame(this._three.raf); this._three.renderer.dispose(); this._three.el.innerHTML = ''; this._three = null; }
       this.viewer3d = { id: null, label: '', loading: false, error: '' };
