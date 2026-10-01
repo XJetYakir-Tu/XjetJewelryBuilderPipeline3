@@ -30,6 +30,7 @@ def test_identity_lives_in_its_own_database(H):
 
 def test_account_ids_are_namespaced_and_tokens_are_hashed(H):
     assert re.fullmatch(r"p3local:acct_[0-9a-f]{32}", H.Who.AccountId)
+    assert re.fullmatch(r"[A-Z]{6}", H.Token)                               # P2-style access token
     Raw = (H.Settings.DataDir / "accounts.db").read_bytes()
     assert H.Token.encode() not in Raw                     # plaintext token never stored
     with sqlite3.connect(H.Settings.DataDir / "accounts.db") as Conn:
@@ -53,13 +54,15 @@ async def test_usage_is_reported_to_the_provider(HDevPricing):
     assert H.Ctx.Accounts.UsageSummary(H.Who.AccountId) == {"image": 4, "movie": 1}
     Profile = (await H.Client.get("/api/session")).json()
     assert Profile["usage"] == {"image_requests": 4, "movie_requests": 1}
-    assert Profile["account_id"] == H.Who.AccountId and Profile["balance"] is None
+    assert Profile["account_id"] == H.Who.AccountId
+    assert (Profile["used"], Profile["max"], Profile["remaining"]) == (1, 10, 9)   # one finished movie = one generation
 
 
 async def test_deactivated_token_is_rejected(H):
     assert H.Ctx.Accounts.DeactivateToken(H.Token)
     R = await H.Client.get("/api/designs")
-    assert R.status_code == 401 and R.json()["error"]["code"] == "token_invalid"
+    assert R.status_code == 401 and R.json()["error"]["code"] == "invalid_token"
+    assert R.json()["error"]["message"] == "Access token not recognised or deactivated. Please re-register."
 
 
 class _NoCreditProvider(LocalAccountProvider):
@@ -74,7 +77,7 @@ async def test_credit_policy_is_enforced_through_the_provider(tmp_path):
     try:
         H.Ctx.Accounts.__class__ = _NoCreditProvider
         R = await H.Client.post("/api/designs", data={"prompt": "Plain band"})
-        assert R.status_code == 402 and R.json()["error"]["code"] == "insufficient_credits"
+        assert R.status_code == 402 and R.json()["error"]["code"] == "quota_exhausted"
         assert H.Provider.Submissions == []                 # nothing paid was started
         with sqlite3.connect(H.Settings.DbPath) as Conn:
             assert Conn.execute("SELECT COUNT(*) FROM designs").fetchone()[0] == 0

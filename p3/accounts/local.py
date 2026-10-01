@@ -1,22 +1,36 @@
-"""LocalAccountProvider — P3's own accounts, tokens and usage in accounts.db.
+"""LocalAccountProvider — P3's own accounts, tokens, registration and quota in accounts.db.
 
-Kept in a separate database file from P3's application data so the whole
-account domain can later be replaced by (or migrated into) a shared service
-without touching designs, batches, movies or the bag.
+Behaviour mirrors Pipeline 2's token_store.py (revision 1e871734):
+  * access tokens are 6 uppercase letters (profanity-filtered), entered case-insensitively;
+  * every account has a generation allowance (default 10); only a finished 360° movie uses
+    one generation, and at 0 remaining no new generation may start (P2 _EnforceTokenQuota);
+  * self-service email registration: a pending account + 24 h verification link; verifying
+    activates it and reveals the token; re-registering a pending email re-issues the link,
+    re-registering a verified email sends the access token again.
 
-Tokens are stored as SHA-256 hashes; the plaintext is shown once, when issued.
-Credits are not limited yet (AuthorizeSpend always allows) — the balance policy
-is an open product decision, see docs/ACCOUNTS.md.
+Deliberate differences from P2 (see docs/ACCOUNTS.md): tokens are stored only as SHA-256
+hashes, so the token is minted at verification time and "send it again" issues a NEW token
+(the previous one is retired); legacy "p3_..." tokens issued before this keep working.
+
+Kept in a separate database file from P3's application data so the whole account domain can
+later be replaced by (or migrated into) a shared service without touching designs or the bag.
 """
 
 import hashlib
+import random
+import re
 import secrets
+import string
 import uuid
+from datetime import datetime, timedelta, timezone
 
-from p3.accounts import AuthError, Principal
+from p3.accounts import AuthError, InsufficientCredits, Principal, UsageMovie
 from p3.db import Database, Now
 
 Issuer = "p3local"
+DefaultMaxGenerations = 10
+VerifyTtlHours = 24
+QuotaMessage = "You have reached the maximum number of generations allowed for this access token."
 
 Schema = """
 CREATE TABLE IF NOT EXISTS accounts (
@@ -28,7 +42,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 CREATE TABLE IF NOT EXISTS access_tokens (
-    token_hash    TEXT PRIMARY KEY,          -- sha256(token); plaintext is never stored
+    token_hash    TEXT PRIMARY KEY,          -- sha256(normalised token); plaintext is never stored
     token_hint    TEXT NOT NULL,             -- first characters, for operators
     account_id    TEXT NOT NULL REFERENCES accounts(account_id),
     label         TEXT NOT NULL DEFAULT '',
@@ -48,13 +62,44 @@ CREATE TABLE IF NOT EXISTS usage_events (
 );
 """
 
+# Columns added for P2-style registration and quota; applied to existing accounts.db files.
+_AccountColumns = {
+    "max_generations":   "ALTER TABLE accounts ADD COLUMN max_generations INTEGER NOT NULL DEFAULT 10",
+    "generations_used":  "ALTER TABLE accounts ADD COLUMN generations_used INTEGER NOT NULL DEFAULT 0",
+    "source":            "ALTER TABLE accounts ADD COLUMN source TEXT NOT NULL DEFAULT 'admin'",
+    "verify_hash":       "ALTER TABLE accounts ADD COLUMN verify_hash TEXT",
+    "verify_expires_at": "ALTER TABLE accounts ADD COLUMN verify_expires_at TEXT",
+    "verified_at":       "ALTER TABLE accounts ADD COLUMN verified_at TEXT",
+    "activated_at":      "ALTER TABLE accounts ADD COLUMN activated_at TEXT",
+}
+
+try:
+    from better_profanity import profanity as _Profanity
+    _Profanity.load_censor_words()
+except ImportError:          # optional: tokens are still random, just not word-filtered
+    _Profanity = None
+
+
+def NormalizeToken(Token: str) -> str:
+    """P2 tokens are case-insensitive (6 letters, stored upper-case); legacy p3_ tokens are exact."""
+    Token = (Token or "").strip()
+    return Token if Token.startswith("p3_") else Token.upper()
+
 
 def HashToken(Token: str) -> str:
-    return hashlib.sha256(Token.strip().encode("utf-8")).hexdigest()
+    return hashlib.sha256(NormalizeToken(Token).encode("utf-8")).hexdigest()
+
+
+def _HashSecret(Secret: str) -> str:
+    return hashlib.sha256(("verify:" + (Secret or "").strip()).encode("utf-8")).hexdigest()
 
 
 def NewAccountId() -> str:
     return f"{Issuer}:acct_{uuid.uuid4().hex}"
+
+
+def _Utc() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class LocalAccountProvider:
@@ -62,53 +107,163 @@ class LocalAccountProvider:
 
     def __init__(self, DbPath):
         self.Db = Database(DbPath, SchemaSql=Schema)
+        with self.Db.Transaction() as Conn:
+            Existing = {R[1] for R in Conn.execute("PRAGMA table_info(accounts)")}
+            for Column, Sql in _AccountColumns.items():
+                if Column not in Existing:
+                    Conn.execute(Sql)
+            Conn.execute("CREATE INDEX IF NOT EXISTS accounts_self_email ON accounts(source, email)")
+
+    # ── tokens ───────────────────────────────────────────────────────────
+    def GenerateToken(self) -> str:
+        """A unique 6-letter upper-case token, rejecting profane candidates (as P2)."""
+        Rng = random.SystemRandom()
+        for _ in range(200):
+            Candidate = "".join(Rng.choices(string.ascii_uppercase, k=6))
+            if _Profanity and _Profanity.contains_profanity(Candidate.lower()):
+                continue
+            if not self.Db.One("SELECT 1 AS x FROM access_tokens WHERE token_hash = ?", (HashToken(Candidate),)):
+                return Candidate
+        raise RuntimeError("Could not generate a clean unique token after 200 attempts")
+
+    def _Row(self, Token: str) -> dict | None:
+        return self.Db.One(
+            "SELECT t.token_hash, t.active, t.label, a.* FROM access_tokens t "
+            "JOIN accounts a ON a.account_id = t.account_id WHERE t.token_hash = ?", (HashToken(Token),))
 
     # ── authentication ───────────────────────────────────────────────────
     def Authenticate(self, Token: str | None) -> Principal:
         if not Token or not Token.strip():
             raise AuthError("token_required", "An access token is required.")
-        Row = self.Db.One(
-            "SELECT t.token_hash, t.active, a.account_id, a.display_name, a.status, t.label "
-            "FROM access_tokens t JOIN accounts a ON a.account_id = t.account_id WHERE t.token_hash = ?",
-            (HashToken(Token),))
-        if Row is None or not Row["active"] or Row["status"] != "active":
-            raise AuthError("token_invalid", "This access token is not valid or has been deactivated.")
-        self.Db.Execute("UPDATE access_tokens SET last_used_at = ? WHERE token_hash = ?", (Now(), Row["token_hash"]))
-        return Principal(AccountId=Row["account_id"], DisplayName=Row["display_name"] or Row["label"],
+        Row = self._Row(Token)
+        if Row is None:
+            raise AuthError("token_not_found", "Token not found. Check the code and try again.")
+        if not Row["active"] or Row["status"] != "active":
+            raise AuthError("token_inactive", "This token has been deactivated. Contact XJet.")
+        T = Now()
+        self.Db.Execute("UPDATE access_tokens SET last_used_at = ? WHERE token_hash = ?", (T, Row["token_hash"]))
+        self.Db.Execute("UPDATE accounts SET activated_at = COALESCE(activated_at, ?) WHERE account_id = ?",
+                        (T, Row["account_id"]))
+        return Principal(AccountId=Row["account_id"], DisplayName=Row["display_name"] or "",
                          Issuer=Issuer, Attributes={"token_label": Row["label"]})
 
-    # ── credits / usage ──────────────────────────────────────────────────
+    # ── quota / usage ────────────────────────────────────────────────────
+    def _Quota(self, AccountId: str) -> dict:
+        Row = self.Db.One("SELECT display_name, email, generations_used, max_generations FROM accounts "
+                          "WHERE account_id = ?", (AccountId,))
+        Used, Max = Row["generations_used"], Row["max_generations"]
+        return {"used": Used, "max": Max, "remaining": max(0, Max - Used),
+                "name": Row["display_name"] or "", "email": Row["email"] or ""}
+
     def AuthorizeSpend(self, Who: Principal, Kind: str, Units: int) -> None:
-        # No balance policy yet. A shared provider would check P2-style balances here.
-        return None
+        # P2 rule: no new generation of any kind may start once the allowance is used up.
+        if self._Quota(Who.AccountId)["remaining"] <= 0:
+            raise InsufficientCredits(QuotaMessage)
 
     def RecordUsage(self, AccountId: str, Kind: str, Units: int, RefId: str) -> None:
         self.Db.Execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at) VALUES (?,?,?,?,?)",
                         (AccountId, Kind, int(Units), RefId, Now()))
 
+    def CommitCharge(self, AccountId: str, Kind: str, RefId: str) -> bool:
+        """Charge one generation for a FINISHED 360° movie (P2 IncrementUsage). Once per RefId."""
+        if Kind != UsageMovie:
+            return False
+        with self.Db.Transaction() as Conn:
+            if Conn.execute("SELECT 1 FROM usage_events WHERE kind = 'generation' AND ref_id = ?", (RefId,)).fetchone():
+                return False
+            N = Conn.execute("UPDATE accounts SET generations_used = generations_used + 1 "
+                             "WHERE account_id = ? AND generations_used < max_generations", (AccountId,)).rowcount
+            if N:
+                Conn.execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at) "
+                             "VALUES (?, 'generation', 1, ?, ?)", (AccountId, RefId, Now()))
+            return bool(N)
+
     def UsageSummary(self, AccountId: str) -> dict:
         return {R["kind"]: R["units"] for R in self.Db.All(
-            "SELECT kind, SUM(units) AS units FROM usage_events WHERE account_id = ? GROUP BY kind", (AccountId,))}
+            "SELECT kind, SUM(units) AS units FROM usage_events WHERE account_id = ? AND kind != 'generation' "
+            "GROUP BY kind", (AccountId,))}
 
     def Profile(self, Who: Principal) -> dict:
+        """P2 /api/token-status shape (used, max, remaining, name, email) plus P3 fields."""
+        Q = self._Quota(Who.AccountId)
         Usage = self.UsageSummary(Who.AccountId)
-        return {"label": Who.DisplayName, "account_id": Who.AccountId, "issuer": Who.Issuer,
-                "usage": {"image_requests": Usage.get("image", 0), "movie_requests": Usage.get("movie", 0)},
-                "balance": None}   # None = unlimited (no credit policy configured)
+        return {**Q, "label": Q["name"] or Who.Attributes.get("token_label", ""), "account_id": Who.AccountId,
+                "issuer": Who.Issuer, "balance": Q["remaining"],
+                "usage": {"image_requests": Usage.get("image", 0), "movie_requests": Usage.get("movie", 0)}}
+
+    # ── self-service email registration (P2 /api/register + /verify) ─────
+    def _SelfAccountByEmail(self, Email: str) -> dict | None:
+        return self.Db.One("SELECT * FROM accounts WHERE source = 'self' AND lower(email) = ? "
+                           "ORDER BY created_at DESC LIMIT 1", ((Email or "").strip().lower(),))
+
+    def StartEmailRegistration(self, Name: str, Email: str) -> dict:
+        """Returns {"status": "verification_sent"|"already_registered", "name", "email",
+        "verify_secret" (pending/new) or "token" (already registered: a freshly issued token)}."""
+        Name, Email = (Name or "").strip(), (Email or "").strip()
+        Existing = self._SelfAccountByEmail(Email)
+        if Existing and Existing["verified_at"]:
+            Token = self._RotateToken(Existing["account_id"], "self-registration (re-sent)")
+            return {"status": "already_registered", "name": Existing["display_name"] or "", "email": Email,
+                    "token": Token}
+        Secret = secrets.token_urlsafe(32)
+        Expires = (_Utc() + timedelta(hours=VerifyTtlHours)).isoformat()
+        if Existing:   # pending → re-issue the link (keep the name unless a new one was given)
+            self.Db.Execute("UPDATE accounts SET verify_hash = ?, verify_expires_at = ?, "
+                            "display_name = CASE WHEN ? != '' THEN ? ELSE display_name END WHERE account_id = ?",
+                            (_HashSecret(Secret), Expires, Name, Name, Existing["account_id"]))
+            Name = Name or Existing["display_name"] or ""
+        else:
+            self.Db.Execute("INSERT INTO accounts (account_id, display_name, email, created_at, source, "
+                            "max_generations, verify_hash, verify_expires_at) VALUES (?,?,?,?, 'self', ?,?,?)",
+                            (NewAccountId(), Name, Email, Now(), DefaultMaxGenerations, _HashSecret(Secret), Expires))
+        return {"status": "verification_sent", "name": Name, "email": Email, "verify_secret": Secret}
+
+    def VerifyEmail(self, Secret: str) -> dict:
+        """{"status": "verified"|"already"|"expired"|"invalid", "name", "email", "token" (verified only)}."""
+        Secret = (Secret or "").strip()
+        Row = self.Db.One("SELECT * FROM accounts WHERE verify_hash = ?", (_HashSecret(Secret),)) if Secret else None
+        if Row is None:
+            return {"status": "invalid", "name": "", "email": ""}
+        Base = {"name": Row["display_name"] or "", "email": Row["email"] or ""}
+        if Row["verified_at"]:
+            return {"status": "already", **Base}
+        if Row["verify_expires_at"] and Row["verify_expires_at"] < _Utc().isoformat():
+            return {"status": "expired", **Base}
+        T = Now()
+        self.Db.Execute("UPDATE accounts SET verified_at = ?, activated_at = COALESCE(activated_at, ?) "
+                        "WHERE account_id = ?", (T, T, Row["account_id"]))
+        Token = self._RotateToken(Row["account_id"], "self-registration")
+        return {"status": "verified", "token": Token, **Base}
+
+    def _RotateToken(self, AccountId: str, Label: str) -> str:
+        """Issue a new token for the account and retire any previous ones (tokens are hashed)."""
+        Token = self.GenerateToken()
+        with self.Db.Transaction() as Conn:
+            Conn.execute("UPDATE access_tokens SET active = 0 WHERE account_id = ?", (AccountId,))
+            Conn.execute("INSERT INTO access_tokens (token_hash, token_hint, account_id, label, active, created_at) "
+                         "VALUES (?,?,?,?,1,?)", (HashToken(Token), Token[:3], AccountId, Label, Now()))
+        return Token
 
     # ── administration ───────────────────────────────────────────────────
     def IssueToken(self, Label: str, DisplayName: str | None = None, Email: str | None = None,
-                   AccountId: str | None = None, Token: str | None = None) -> tuple[str, Principal]:
-        """Create (or reuse AccountId for) an account and issue a new token for it."""
-        Token = Token or ("p3_" + secrets.token_urlsafe(24))
+                   AccountId: str | None = None, Token: str | None = None,
+                   MaxGenerations: int = DefaultMaxGenerations) -> tuple[str, Principal]:
+        """Create (or reuse AccountId for) an admin account and issue a token for it."""
+        Token = NormalizeToken(Token) if Token else self.GenerateToken()
         AccountId = AccountId or NewAccountId()
         T = Now()
         with self.Db.Transaction() as Conn:
-            Conn.execute("INSERT OR IGNORE INTO accounts (account_id, display_name, email, created_at) VALUES (?,?,?,?)",
-                         (AccountId, DisplayName or Label, Email, T))
+            Conn.execute("INSERT OR IGNORE INTO accounts (account_id, display_name, email, created_at, max_generations) "
+                         "VALUES (?,?,?,?,?)", (AccountId, DisplayName or Label, Email, T, int(MaxGenerations)))
             Conn.execute("INSERT INTO access_tokens (token_hash, token_hint, account_id, label, active, created_at) "
-                         "VALUES (?,?,?,?,1,?)", (HashToken(Token), Token[:8], AccountId, Label, T))
+                         "VALUES (?,?,?,?,1,?)", (HashToken(Token), Token[:3], AccountId, Label, T))
         return Token, Principal(AccountId=AccountId, DisplayName=DisplayName or Label, Issuer=Issuer)
+
+    def SetQuota(self, AccountId: str, MaxGenerations: int | None = None, ResetUsage: bool = False) -> None:
+        if MaxGenerations is not None:
+            self.Db.Execute("UPDATE accounts SET max_generations = ? WHERE account_id = ?", (int(MaxGenerations), AccountId))
+        if ResetUsage:
+            self.Db.Execute("UPDATE accounts SET generations_used = 0 WHERE account_id = ?", (AccountId,))
 
     # ── migration support (local provider only) ──────────────────────────
     def ImportLegacyToken(self, Token: str, Label: str, Active: bool) -> str:
@@ -130,5 +285,9 @@ class LocalAccountProvider:
 
     def ListAccounts(self) -> list[dict]:
         return self.Db.All(
-            "SELECT a.account_id, a.display_name, a.status, a.created_at, t.token_hint, t.label, t.active, t.last_used_at "
+            "SELECT a.account_id, a.display_name, a.email, a.source, a.status, a.created_at, a.verified_at, "
+            "a.generations_used, a.max_generations, t.token_hint, t.label, t.active, t.last_used_at "
             "FROM accounts a LEFT JOIN access_tokens t ON t.account_id = a.account_id ORDER BY a.created_at")
+
+
+EmailPattern = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")   # P2 _EMAIL_RE

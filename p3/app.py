@@ -24,6 +24,8 @@ from p3.designs import DesignService
 from p3.images import ImageService
 from p3.meshes import MeshService
 from p3.migrations import MigrateToAccounts
+from p3.mail import BuildMailer
+from p3.registration import RegistrationService
 from p3.modes import DefaultFactories, ModeManager, ResolveStartupMode
 from p3.movies import MovieService
 from p3.pricing.service import PricingService
@@ -81,6 +83,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   Accounts=Accounts)
     Svc = Services(Ctx)
     Modes = ModeManager(Ctx, Mode, ModeSource, Factories)
+    Mailer = BuildMailer(S.DataDir)
+    Registration = RegistrationService(Ctx, Mailer)
 
     @asynccontextmanager
     async def Lifespan(_App):
@@ -100,6 +104,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     App_.state.Ctx = Ctx
     App_.state.Services = Svc
     App_.state.Modes = Modes
+    App_.state.Mailer = Mailer
 
     @App_.middleware("http")
     async def _NoStaleUi(Req: Request, CallNext):
@@ -117,7 +122,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.exception_handler(InsufficientCredits)
     async def _NoCredits(_Req: Request, E: InsufficientCredits):
-        return JSONResponse(status_code=402, content={"error": {"code": "insufficient_credits", "message": E.Message}})
+        return JSONResponse(status_code=402, content={"error": {"code": "quota_exhausted", "message": E.Message}})
 
     def Tok(XAccessToken: str | None):
         """Resolve the caller to a Principal (the only way routes learn who is calling)."""
@@ -149,6 +154,23 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.get("/api/session")
     async def Session(x_access_token: str | None = Header(None)):
         return Ctx.Accounts.Profile(Tok(x_access_token))
+
+    # ── sign-in / registration (Pipeline 2 JewelryB2C2 flow) ─────────────
+    @App_.post("/api/register")
+    async def Register(Req: Request, Body_: dict = Body(...)):
+        return Registration.Register(Req, Body_.get("Name", ""), Body_.get("Email", ""))
+
+    @App_.post("/api/register-token")
+    async def RegisterToken(Body_: dict = Body(...)):
+        return Registration.SignInWithToken(Body_.get("Token", ""))
+
+    @App_.get("/api/token-status")
+    async def TokenStatus(x_access_token: str | None = Header(None)):
+        return Ctx.Accounts.Profile(Tok(x_access_token))
+
+    @App_.get("/verify", include_in_schema=False)
+    async def VerifyEmail(Req: Request, token: str = ""):
+        return HTMLResponse(Registration.VerifyPage(Req, token))
 
     @App_.get("/api/catalog")
     async def CatalogRoute():
@@ -262,6 +284,20 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         RequireDeveloper(Ctx, authorization)
         return Modes.Switch(Body_.get("mode"), Body_.get("confirmation"))
 
+    @App_.get("/api/dev/outbox")
+    async def DevOutbox(authorization: str | None = Header(None)):
+        RequireDeveloper(Ctx, authorization)
+        Items = Mailer.List() if hasattr(Mailer, "List") else []
+        return {"mode": Mailer.Mode, "messages": [{K: M[K] for K in ("id", "to", "subject", "sent_at")} for M in Items]}
+
+    @App_.get("/api/dev/outbox/{MessageId}")
+    async def DevOutboxMessage(MessageId: str, authorization: str | None = Header(None)):
+        RequireDeveloper(Ctx, authorization)
+        M = Mailer.Get(MessageId) if hasattr(Mailer, "Get") else None
+        if M is None:
+            raise HttpError(404, "message_not_found", "Message not found.")
+        return M
+
     @App_.get("/api/dev/candidates")
     async def DevCandidates(authorization: str | None = Header(None)):
         RequireDeveloper(Ctx, authorization)
@@ -309,6 +345,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Outer.state.Ctx = Ctx
     Outer.state.Services = Svc
     Outer.state.Modes = Modes
+    Outer.state.Mailer = Mailer
 
     @Outer.get(Base, include_in_schema=False)
     async def _BaseSlash():

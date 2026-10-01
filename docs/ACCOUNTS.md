@@ -28,17 +28,36 @@ var/pipeline3.db  (P3 application data only) — designs.owner_account_id, bag_l
 - **No direct identity-storage access outside `p3/accounts/`.** The one exception is the one-time migration in `p3/migrations.py`. `tests/test_accounts.py::test_only_the_accounts_package_touches_identity_storage` fails if any other module references token or account tables.
 - **Structured, provider-issued IDs.** `AccountId` is `"<issuer>:<id>"`, for example `p3local:acct_9f…`. Application tables store only this string; there are no foreign keys into the identity domain.
 - **Two separate stores.** Identity lives in `var/accounts.db`; application data lives in `var/pipeline3.db`. Neither file contains tables from the other domain (enforced by a test).
-- **Credits behind the provider.** Every paid action calls `AuthorizeSpend(Who, Kind, Units)` *before* anything is created or submitted, and `RecordUsage(AccountId, Kind, Units, RefId)` once per actual provider submission:
+- **Credits behind the provider.** Every paid action calls `AuthorizeSpend(Who, Kind, Units)` *before* anything is created or submitted. `RecordUsage(AccountId, Kind, Units, RefId)` records each provider submission for audit, and `CommitCharge(AccountId, Kind, RefId)` charges the account's allowance. The allowance follows P2 (JewelryB2C2) exactly:
 
-  | Kind | Units | When |
-  |---|---|---|
-  | `image` | 4 per batch | a batch or refinement |
-  | `image` | 1 | a slot retry |
-  | `movie` | 1 | a movie |
-
-  `LocalAccountProvider.AuthorizeSpend` currently always allows. A provider that raises `InsufficientCredits` produces HTTP 402 `insufficient_credits`, and nothing is started (tested).
+  - every account has `max_generations` (default **10**);
+  - **only a finished 360° movie uses one generation**, charged once per movie (`RefId`). Designs, refinements, retries and a reused movie are free, and a failed movie is not charged;
+  - at 0 remaining, every generation start (design, refinement, retry, movie) is refused with HTTP 402 `quota_exhausted` and P2's message: "You have reached the maximum number of generations allowed for this access token." Nothing is submitted (tested).
 - **Background jobs** look up the owner from the design (`designs.owner_account_id`). Usage is therefore recorded correctly even for jobs resumed after a restart.
 - **Tokens are stored hashed** (SHA-256). The plaintext token is shown once, by `python -m p3.cli create-token`.
+
+### Sign-in, registration and the account area (P2 parity)
+
+The customer-facing mechanism reproduces P2's: the same screens, messages, status text and rules.
+
+- **Tokens** are 6 uppercase letters (P2's alphabet, with the same profanity filter) and are case-insensitive on entry. Older `p3_…` tokens issued before this change still authenticate.
+- **Email registration** (`POST /api/register {Name, Email}`): an unknown or pending email gets a 24-hour verification link. An already-verified email gets its access token re-sent. Invalid email returns 400 "Please enter a valid email address."
+- **Verify page** (`GET /verify?token=…`): states are *verified*, *already verified*, *link expired* and *invalid link*. On success the token is shown on the page and emailed, with a "Continue designing" link to `…/JewelryB2C3/#token=XXXXXX`.
+- **Token sign-in** (`POST /api/register-token {Token}`): 404 "Token not found. Check the code and try again." / 403 "This token has been deactivated. Contact XJet." On success the browser goes **straight to the Design screen** with "You're signed in." (or "Your email has been verified successfully." after a `#token=` link).
+- **Status** (`GET /api/token-status`): used / max / remaining / name / email. It feeds the top-right chip (name • coin • remaining), the "N of M generations remaining" line under the composer, and the account panel (identity, generations bar, access token with Copy, My Designs →, Sign out).
+- **Invalid token while signed in**: protected routes return 401 "Access token not recognised or deactivated. Please re-register." The message is shown and, as in P2, the session is kept until the user signs out.
+- **Session persistence**: `localStorage` keys `p3_session:<base>` and `p3_profile:<base>`. These are deliberately *not* P2's `xjet_session` / `xjet_profile`: both apps share the `proto` origin but have separate token stores, so neither app reads or overwrites the other's session.
+
+Documented differences from P2, all caused by P3 storing tokens **hashed**:
+
+| P2 | P3 |
+|---|---|
+| Token created at registration; the verify page can always show it | Token minted at verification; the "already verified" page cannot show it again |
+| "Already registered" re-sends the *same* token | "Already registered" sends a **new** token and retires the old one |
+
+**Mail.** `P3_MAIL_MODE=outbox` (default) writes every email to `var/outbox/` and sends nothing. This is mock-safe. Developers read it at `GET /api/dev/outbox` (requires `P3_ADMIN_KEY`). `P3_MAIL_MODE=smtp` sends through the same relay P2 uses (`SMTP_SERVER`, `SMTP_PORT`, `MAIL_FROM`, `MAIL_FROM_NAME`; no auth/TLS, Reply-To no-reply). Links in emails use `P3_PUBLIC_BASE_URL` (for example `http://proto`) when set, and the request's own origin otherwise.
+
+**Operator CLI:** `python -m p3.cli create-token --name … --email … --max-generations 10`, `set-quota <token> --max-generations N [--reset-usage]`, `list-tokens`, `deactivate-token <token>`.
 
 ### Configuration
 

@@ -87,6 +87,9 @@ class MovieService:
             RelPath = f"designs/{Cand['design_id']}/movies/{MovieId}.mp4"
             assets.WriteAtomic(S.AssetsDir, RelPath, Data)
             Db.Update("movies", MovieId, status="ready", asset_path=RelPath, error=None, error_code=None)
+            # P2 rule: a finished 360° movie uses one generation (charged once, on success only).
+            Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Cand["design_id"],))
+            Ctx.Accounts.CommitCharge(Owner["owner_account_id"], UsageMovie, MovieId)
         except Exception as E:
             Message, Code = FailureFor(E)
             Logger.warning("Movie %s failed (%s): %s", MovieId, Code, E)

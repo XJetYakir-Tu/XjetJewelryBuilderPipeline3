@@ -4,6 +4,8 @@ python-multipart>=0.0.9
 httpx>=0.27
 fal-client>=1.0.3
 Pillow>=10.4
+# P2 parity: 6-letter access tokens are rejected if they spell a profane word
+better-profanity>=0.7
 # Developer-only GLB -> STL conversion
 trimesh>=4.4
 numpy>=1.26

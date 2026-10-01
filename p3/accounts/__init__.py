@@ -26,7 +26,7 @@ class AuthError(Exception):
 class InsufficientCredits(Exception):
     """The account may not spend the requested units (quota / balance policy)."""
 
-    def __init__(self, Message: str = "Your account has no generations left."):
+    def __init__(self, Message: str = "You have reached the maximum number of generations allowed for this access token."):
         super().__init__(Message)
         self.Message = Message
 
@@ -62,6 +62,15 @@ class AccountProvider(Protocol):
 
     def RecordUsage(self, AccountId: str, Kind: str, Units: int, RefId: str) -> None:
         """Record units actually submitted to a provider (called once per submission)."""
+
+    def CommitCharge(self, AccountId: str, Kind: str, RefId: str) -> bool:
+        """Charge the account's allowance for a FINISHED result (P2: one generation per 360° movie)."""
+
+    def StartEmailRegistration(self, Name: str, Email: str) -> dict:
+        """Self-service registration (P2 /api/register semantics). Returns status + secret/token to mail."""
+
+    def VerifyEmail(self, Secret: str) -> dict:
+        """Consume a verification link (P2 /verify): verified | already | expired | invalid."""
 
     def UsageSummary(self, AccountId: str) -> dict:
         """{kind: units} for display."""

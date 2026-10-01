@@ -38,7 +38,7 @@ Then issue yourself an access token and start the server:
 .venv/Scripts/python -m uvicorn p3.app:App --port 8310
 ```
 
-Open http://localhost:8310 and enter the token. Developer mesh tools are at `/dev` (they require `P3_ADMIN_KEY`).
+Open http://localhost:8310, choose **Sign in → Enter it here**, and enter the token. Alternatively, register with an email: in the default `P3_MAIL_MODE=outbox` the verification email is written to `var/outbox/` (and listed at `/api/dev/outbox`) instead of being sent. Developer mesh tools are at `/dev` (they require `P3_ADMIN_KEY`).
 
 ### With or without the `/JewelryB2C3` base path
 

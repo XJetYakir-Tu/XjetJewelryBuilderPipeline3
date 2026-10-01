@@ -13,11 +13,17 @@ from p3.accounts import AuthError, Principal
 from p3.context import Context, HttpError
 
 
+# Pipeline 2 _EnforceTokenQuota message for an unknown or deactivated token on a protected route.
+InvalidTokenMessage = "Access token not recognised or deactivated. Please re-register."
+
+
 def RequirePrincipal(Ctx: Context, Token: str | None) -> Principal:
     try:
         return Ctx.Accounts.Authenticate(Token)
     except AuthError as E:
-        raise HttpError(401, E.Code, E.Message) from E
+        if E.Code == "token_required":
+            raise HttpError(401, "token_required", E.Message) from E
+        raise HttpError(401, "invalid_token", InvalidTokenMessage) from E
 
 
 def RequireDeveloper(Ctx: Context, Authorization: str | None) -> None:

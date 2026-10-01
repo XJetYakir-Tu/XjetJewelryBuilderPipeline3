@@ -11,6 +11,10 @@
 const BASE = (document.querySelector('meta[name="p3-base"]')?.content || '').replace(/\/+$/, '');
 const url = (path) => BASE + path;
 const STORE_KEY = 'p3_state' + (BASE ? ':' + BASE : '');
+// P2 keeps its session in 'xjet_session' / 'xjet_profile'. P3 shares the proto origin with P2 but
+// has its own token store, so it uses its own keys and never reads or overwrites P2's session.
+const SESSION_KEY = 'p3_session' + (BASE ? ':' + BASE : '');
+const PROFILE_KEY = 'p3_profile' + (BASE ? ':' + BASE : '');
 const STUDIO_VIEWS = ['ai-studio', 'review', 'checkout'];
 const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'designers',
                     'terms', 'privacy', 'shipping-returns', 'contact'];
@@ -63,9 +67,28 @@ function p3App() {
     // ── app / session ────────────────────────────────────────────────
     view: 'home',
     health: null,
-    token: '', session: null,
-    signInOpen: false, tokenInput: '', authError: '', _afterSignIn: null,
     catalog: null,
+
+    // ── Session / token accounting (P2 app-p2.js) ─────────────────────
+    userSession: null,                 // {token, quotaUsed, quotaMax, name, email}
+    userProfile: { name: '', email: '' },
+    signInNotice: null,                // {title, text} banner on the Design screen after sign-in
+    showRegModal: false,
+    regMode: 'email',                  // 'email' = self-registration, 'token' = enter existing token
+    regForm: { token: '', name: '', email: '' },
+    regError: '', regInfo: '', regLoading: false,
+    quotaUsed: 0, quotaMax: 10,
+    get quotaRemaining() { return Math.max(0, this.quotaMax - this.quotaUsed); },
+    get token() { return (this.userSession && this.userSession.token) || ''; },
+    get displayName() {
+      if (!this.userSession) return '';
+      return String((this.userProfile && this.userProfile.name) || this.userSession.name || '').trim();
+    },
+    get displayEmail() {
+      if (!this.userSession) return '';
+      return String((this.userProfile && this.userProfile.email) || this.userSession.email || '').trim();
+    },
+    accountPanelOpen: false, tokenCopied: false,
 
     // ── studio: compose ──────────────────────────────────────────────
     userInput: '', uploadedFile: null, uploadedPreview: null, rightsConfirmed: false,
@@ -110,16 +133,32 @@ function p3App() {
       this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
       const lux = this.materialsOf('luxury');
       this.lastMaterialByGroup.luxury = lux.length ? lux[0].id : null;
-      if (st.token) {
-        this.token = st.token;
-        try { this.session = await this.api('GET', '/api/session'); } catch { this.token = ''; }
+      try {
+        const P = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');
+        if (P) this.userProfile = { name: P.name || '', email: P.email || '' };
+      } catch (_) {}
+      // A #token=… link (verification email / verify page) signs the user straight in and takes
+      // precedence over a saved session; otherwise restore the saved session (P2 behaviour).
+      const fromLink = this._loginFromUrlToken();
+      if (!fromLink) {
+        try {
+          const S = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+          if (S && S.token) {
+            this.userSession = S;
+            this.quotaUsed = S.quotaUsed || 0;
+            this.quotaMax = S.quotaMax || 10;
+            if (S.name && !this.userProfile.name) this._saveUserProfile(S.name, null);
+          }
+        } catch (_) { try { localStorage.removeItem(SESSION_KEY); } catch (__) {} }
       }
+      if (this.userSession) await this._refreshQuota();
       try { this.devKey = sessionStorage.getItem('p3_dev_key') || ''; } catch { this.devKey = ''; }
       if (this.devKey) this.loadDevMode();
       const hashView = (location.hash || '').replace('#', '');
       if (PAGE_VIEWS.includes(hashView)) this.view = hashView;
       if (!this.token) return;
       this.refreshBag();
+      if (fromLink) { this._enterDesignAfterSignIn(true); return; }
       if (st.designId && STUDIO_VIEWS.includes(st.view)) {
         try { await this.openDesign(st.designId, { restoreView: st.view }); }
         catch { this.persist({ designId: null }); }
@@ -143,7 +182,7 @@ function p3App() {
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
         const err = data.error || {};
-        if (resp.status === 401 && !opts.noAuth) this.signOut(true);
+        if (resp.status === 402) this._refreshQuota();
         throw new ApiError(resp.status, err.code || 'error', err.message || `Request failed (${resp.status})`);
       }
       return data;
@@ -204,36 +243,149 @@ function p3App() {
 
     // Start Designing (P2 resetAIFlow): sign in if needed, then open a fresh studio.
     resetAIFlow() {
-      if (!this.token) { this.openSignIn(() => this.resetAIFlow()); return; }
+      if (!this.userSession) { this.openRegModal(); return; }
+      this._doResetAIFlow();
+    },
+    _doResetAIFlow() {
       this.startNew();
       this.navigateTo('ai-studio');
+      this._refreshQuota();             // authoritative count every time the Design screen opens
     },
 
-    // ── sign in (operator-issued access token) ────────────────────────
-    openSignIn(after = null) { this._afterSignIn = after; this.authError = ''; this.signInOpen = true; },
-    async signIn() {
-      this.authError = '';
-      const candidate = this.tokenInput.trim();
-      if (!candidate) return;
-      this.token = candidate;
+    // ── Sign-in / registration (P2 JewelryB2C2) ───────────────────────
+    openRegModal(mode = 'email') {
+      this.regMode = mode;
+      this.regError = ''; this.regInfo = '';
+      this.regForm = { token: '', name: '', email: '' };
+      this.showRegModal = true;
+    },
+    async submitEmailRegistration() {
+      this.regLoading = true; this.regError = ''; this.regInfo = '';
       try {
-        this.session = await this.api('GET', '/api/session', null);
-        this.persist({ token: this.token });
-        this.signInOpen = false; this.tokenInput = '';
-        this.refreshBag();
-        const next = this._afterSignIn; this._afterSignIn = null;
-        if (next) next();
-      } catch (e) {
-        this.token = ''; this.authError = e.message;
+        const Name = this.regForm.name.trim(), Email = this.regForm.email.trim();
+        const Result = await this.api('POST', '/api/register', { Name, Email }, { noAuth: true });
+        this._saveUserProfile(Name, Email);
+        // The token is never returned here — it is emailed. Show a confirmation message.
+        this.regInfo = Result.message
+          || "We've sent a verification email to your inbox. Please verify your email to save your designs and continue creating your jewelry.";
+      } catch (E) {
+        this.regError = E.message;
+      } finally {
+        this.regLoading = false;
       }
     },
-    signOut(expired = false) {
-      this.stopPolling();
-      this.token = ''; this.session = null; this.design = null; this.cust = null; this.bag = null; this.designs = [];
-      saveStore({});
-      if (STUDIO_VIEWS.includes(this.view)) this.view = 'home';
-      if (expired) this.openSignIn();
+    async submitRegistration() {
+      this.regLoading = true; this.regError = '';
+      try {
+        const Token = this.regForm.token.toUpperCase().trim();
+        const Result = await this.api('POST', '/api/register-token', { Token, Name: '', Email: '' }, { noAuth: true });
+        this._setSession({ token: Token, quotaUsed: Result.used, quotaMax: Result.max, name: Result.name || '' });
+        if (Result.name) this._saveUserProfile(Result.name, null);
+        this.showRegModal = false;
+        this.regForm = { token: '', name: '', email: '' };
+        this._enterDesignAfterSignIn(false);   // land on the Design screen, as P2 does
+        this.refreshBag();
+      } catch (E) {
+        this.regError = E.message;
+      } finally {
+        this.regLoading = false;
+      }
     },
+    _setSession(S) {
+      this.userSession = S;
+      this.quotaUsed = S.quotaUsed || 0;
+      this.quotaMax = S.quotaMax || 10;
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify(S)); } catch (_) {}
+    },
+    // Log in from a #token=… fragment (the "Continue designing" link). A fragment is never sent to
+    // the server, so the token stays out of access logs. Returns true when a token was present.
+    _loginFromUrlToken() {
+      let UrlToken = '';
+      try {
+        const Params = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+        UrlToken = (Params.get('token') || '').trim();
+        if (!UrlToken) return false;
+        Params.delete('token');
+        const Frag = Params.toString();
+        history.replaceState(history.state, '', location.pathname + location.search + (Frag ? '#' + Frag : ''));
+      } catch (_) { return false; }
+      if (!UrlToken.startsWith('p3_')) UrlToken = UrlToken.toUpperCase();
+      this._setSession({ token: UrlToken, quotaUsed: 0, quotaMax: 10 });
+      return true;
+    },
+    // Pull the authoritative quota (P2 _refreshQuota): on load, when the Design screen opens,
+    // after generations, and on a quota error.
+    async _refreshQuota() {
+      if (!this.userSession) return;
+      let Q = null;
+      try { Q = await this.api('GET', '/api/token-status'); } catch (_) { Q = null; }
+      if (!Q || !this.userSession) return;
+      this.quotaUsed = Q.used; this.quotaMax = Q.max;
+      Object.assign(this.userSession, { quotaUsed: Q.used, quotaMax: Q.max });
+      if (Q.name) this.userSession.name = Q.name;
+      if (Q.email) this.userSession.email = Q.email;
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify(this.userSession)); } catch (_) {}
+      if ((Q.name && !this.userProfile.name) || (Q.email && !this.userProfile.email)) {
+        this._saveUserProfile(Q.name || null, Q.email || null);
+      }
+    },
+    _saveUserProfile(name, email) {
+      this.userProfile = { name: name || this.userProfile.name || '', email: email || this.userProfile.email || '' };
+      try { localStorage.setItem(PROFILE_KEY, JSON.stringify(this.userProfile)); } catch (_) {}
+    },
+    // Where a freshly signed-in user lands: the Design screen, with a clear confirmation.
+    _enterDesignAfterSignIn(fromVerification = false) {
+      this.showRegModal = false;
+      this.closePreview();
+      this._doResetAIFlow();
+      this.signInNotice = {
+        title: fromVerification ? 'Your email has been verified successfully.' : "You're signed in.",
+        text: 'You can now continue designing your jewelry.',
+      };
+      this.loadDesigns();
+    },
+    dismissSignInNotice() {
+      this.signInNotice = null;
+      this.$nextTick(() => { const t = document.getElementById('p3-composer-input'); if (t) t.focus(); });
+    },
+    logout() {
+      try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+      this.stopPolling();
+      this.userSession = null; this.quotaUsed = 0; this.quotaMax = 10;
+      this.signInNotice = null;
+      this.design = null; this.cust = null; this.bag = null; this.designs = []; this.designsError = '';
+      this.persist({ designId: null, view: 'home' });
+      this.navigateTo('home');
+    },
+
+    // ── Account panel (opens from the token coin / balance line) ───────
+    toggleAccountPanel() {
+      this.accountPanelOpen = !this.accountPanelOpen;
+      this.tokenCopied = false;
+      if (this.accountPanelOpen) this._refreshQuota();
+    },
+    closeAccountPanel() { this.accountPanelOpen = false; this.tokenCopied = false; },
+    async copyAccessToken() {
+      const t = this.token;
+      if (!t) return;
+      try { await navigator.clipboard.writeText(t); }
+      catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = t; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch (__) {}
+        document.body.removeChild(ta);
+      }
+      this.tokenCopied = true;
+      setTimeout(() => { this.tokenCopied = false; }, 2000);
+    },
+    openMyDesignsFromAccount() {
+      this.closeAccountPanel();
+      if (this.view !== 'ai-studio') this._doResetAIFlow();
+      this.sidebarOpen = true;
+      this.loadDesigns();
+    },
+    signOutFromAccount() { this.closeAccountPanel(); this.logout(); },
 
     // ── catalog helpers ───────────────────────────────────────────────
     group(id) { return this.catalog?.groups.find(g => g.id === id); },
@@ -387,6 +539,7 @@ function p3App() {
     stopPolling() { if (this._poll) { clearInterval(this._poll); this._poll = null; } },
 
     onBatchUpdated(b) {
+      if (!this.anyActive(b)) this._refreshQuota();
       // Refresh My Designs thumbnails once a batch has images to show.
       if (this.sidebarOpen && !this.anyActive(b)) this.loadDesigns();
       if (b.id === this.pendingRefineBatchId && !this.anyActive(b)) {
@@ -541,6 +694,7 @@ function p3App() {
         try {
           const fresh = await this.api('GET', `/api/customizations/${custId}`);
           if (this.cust?.id === custId) {
+            if (fresh.movie?.status === 'ready' && this.cust.movie?.status !== 'ready') this._refreshQuota();
             this.cust.movie = fresh.movie;
           }
         } catch { /* retry next tick */ }

@@ -140,11 +140,33 @@
                 <span class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full bg-black text-white text-[10px] font-bold flex items-center justify-center px-0.5" x-text="bagCount"></span>
             </button>
             <button x-show="view === 'home'" @click="resetAIFlow()" class="btn-gold px-6 py-3 text-[11px] uppercase tracking-[0.16em] font-semibold stream-glow transition hidden sm:inline-flex">Start Designing</button>
-            <span x-show="session" x-cloak class="hidden md:inline text-[12px] font-medium text-zinc-700 max-w-[160px] truncate" :title="session?.label" x-text="session?.label"></span>
-            <button x-show="view === 'home' || !token" @click="token ? signOut() : openSignIn()"
-                    class="tap-lg text-[11px] uppercase tracking-widest transition text-[#6F6F6F] hover:text-[#1A1A1A]"
-                    x-text="token ? 'Sign out' : 'Sign in'"></button>
-            <button x-show="view !== 'home' && token" @click="navigateTo('home')" class="tap-lg text-[14px] uppercase tracking-widest transition text-[#6F6F6F] hover:text-[#1A1A1A]">Exit</button>
+            <!-- Quota coin — visible when logged in; prefixed with the signed-in user's name when known.
+                 Click opens the account panel (name, email, access token, usage). -->
+            <button type="button" x-show="userSession" @click="toggleAccountPanel()"
+                    class="relative hidden md:flex items-center gap-1 select-none group rounded-md px-1.5 py-1 -my-1 transition hover:bg-zinc-100"
+                    :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="Account and generations">
+                <span x-show="displayName" x-text="displayName" class="text-[12px] font-medium text-zinc-700 max-w-[160px] truncate" :title="displayName"></span>
+                <span x-show="displayName" class="text-[11px] text-zinc-400 px-0.5" aria-hidden="true">•</span>
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#9A7230" stroke-width="0.5"/>
+                    <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#9A7230" stroke-width="0.7" opacity="0.45"/>
+                    <circle cx="8.5" cy="8.5" r="1.4" fill="#7A5A10" opacity="0.5"/>
+                </svg>
+                <span x-text="quotaRemaining" class="text-sm font-semibold tabular-nums" style="color:#C9A96E;"></span>
+                <svg class="w-3 h-3 text-zinc-400 transition-transform" :class="accountPanelOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                <div x-show="!accountPanelOpen" class="absolute top-full right-0 mt-2 px-3 py-1.5 bg-zinc-900 text-white text-[11px] rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-[300]">
+                    <span x-text="(displayName ? displayName + ' • ' : '') + quotaRemaining + ' of ' + quotaMax + ' generations remaining — click for details'"></span>
+                    <div class="absolute -top-1 right-2.5 w-2 h-2 bg-zinc-900 rotate-45"></div>
+                </div>
+            </button>
+            <!-- Sign in / Sign out — homepage only -->
+            <button x-show="view === 'home'"
+                    @click="userSession ? logout() : openRegModal()"
+                    class="tap-lg text-[11px] uppercase tracking-widest transition"
+                    style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'"
+                    x-text="userSession ? 'Sign out' : 'Sign in'"></button>
+            <!-- Exit — all non-home screens; returns to the homepage -->
+            <button x-show="view !== 'home'" @click="navigateTo('home')" class="tap-lg text-[14px] uppercase tracking-widest transition" style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'">Exit</button>
         </div>
     </nav>
 
@@ -603,8 +625,8 @@
                                     <div class="flex gap-3 flex-row-reverse">
                                         <div class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0 font-semibold mt-0.5 brand-font" style="background:#EEEEEE; color:#555;">U</div>
                                         <div class="px-4 py-3 rounded-2xl text-[14px] max-w-[80%] leading-relaxed" style="background:#F0F0F0; color:#333; border:1px solid #E5E5E5;">
-                                            <span x-show="bubbleBatch.kind === 'refine'" class="block text-[10px] uppercase tracking-[0.14em] font-semibold mb-1" style="color:#9B7040;">Refinement of the selected design</span>
-                                            <span x-text="bubbleBatch.user_text"></span>
+                                            <span x-show="bubbleBatch?.kind === 'refine'" class="block text-[10px] uppercase tracking-[0.14em] font-semibold mb-1" style="color:#9B7040;">Refinement of the selected design</span>
+                                            <span x-text="bubbleBatch?.user_text"></span>
                                         </div>
                                     </div>
 
@@ -622,26 +644,26 @@
                                                 <span class="w-2 h-2 rounded-full animate-pulse motion-reduce:animate-none shrink-0" style="background:#C9A96E;"></span>
                                                 <span x-text="waitStatus"></span>
                                             </div>
-                                            <p class="mt-3 text-[12px]" style="color:#8F8F8F;" x-text="readyCount(waitBatch) + ' of ' + waitBatch.desired_count + ' designs ready'"></p>
+                                            <p class="mt-3 text-[12px]" style="color:#8F8F8F;" x-text="readyCount(waitBatch) + ' of ' + waitBatch?.desired_count + ' designs ready'"></p>
                                         </div>
                                     </template>
 
                                     <div x-show="!waitVariant" class="flex flex-col gap-4">
                                     <p x-show="!viewBatchGenerating" class="text-[15px] sm:text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#A9791F;"
-                                       x-text="viewBatch.kind === 'refine' ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite'"></p>
+                                       x-text="viewBatch?.kind === 'refine' ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite'"></p>
 
-                                    <div x-show="viewBatch.status === 'partial'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
-                                        <span class="flex-1" x-text="readyCount(viewBatch) + ' of ' + viewBatch.desired_count + ' designs are ready — some options could not be created.'"></span>
+                                    <div x-show="viewBatch?.status === 'partial'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
+                                        <span class="flex-1" x-text="readyCount(viewBatch) + ' of ' + viewBatch?.desired_count + ' designs are ready — some options could not be created.'"></span>
                                         <button @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold" style="color:#8A561B;">Retry missing</button>
                                     </div>
-                                    <div x-show="viewBatch.status === 'failed'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FDECEC; border:1px solid #F1B7B7; color:#8A2424;">
+                                    <div x-show="viewBatch?.status === 'failed'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FDECEC; border:1px solid #F1B7B7; color:#8A2424;">
                                         <span class="flex-1">None of the designs could be created.</span>
                                         <button @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold">Try again</button>
                                     </div>
 
                                     <!-- Four candidates (2x2) -->
                                     <div class="grid grid-cols-2 gap-3 sm:gap-4 w-full mx-auto" style="max-width:min(640px, max(320px, calc(100dvh - 300px)));">
-                                        <template x-for="c in viewBatch.candidates" :key="c.id">
+                                        <template x-for="c in (viewBatch?.candidates || [])" :key="c.id">
                                             <div class="cand-card relative aspect-square rounded-2xl overflow-hidden bg-white border border-zinc-200"
                                                  :class="{'is-ready': c.status === 'ready', 'is-selected': c.id === selectedId, 'shimmer': c.status === 'pending' || c.status === 'generating'}"
                                                  @click="select(c)" role="button" :aria-pressed="c.id === selectedId" :aria-label="'Design option ' + (c.slot + 1)">
@@ -670,7 +692,7 @@
                                         </template>
                                     </div>
 
-                                    <h2 class="brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design.title"></h2>
+                                    <h2 class="brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design?.title"></h2>
 
                                     </div>
                                 </div>
@@ -682,6 +704,21 @@
                                      style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;" role="note">
                                     <svg class="w-3.5 h-3.5 shrink-0 mt-[1px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:#B08040;"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5m0-8h.01"/></svg>
                                     <span>At this stage, XJet Atelier supports <span class="font-semibold">Ring design only</span>. More jewelry categories are coming soon.</span>
+                                </div>
+
+
+                                <!-- Post-sign-in / email-verification notice. Confirms success and makes
+                                     the next step obvious with a single primary CTA (see _enterDesignAfterSignIn). -->
+                                <div x-show="signInNotice" x-cloak class="w-full px-4 py-3 rounded-xl flex flex-col sm:flex-row sm:items-center gap-3 text-[13px]"
+                                     style="background:#FBF7EF; border:1px solid #C9A96E; color:#3A2E12;">
+                                    <div class="flex items-start gap-3 flex-1 min-w-0">
+                                        <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#8A561B;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                        <div class="leading-snug">
+                                            <div class="font-semibold" x-text="signInNotice && signInNotice.title"></div>
+                                            <div x-text="signInNotice && signInNotice.text"></div>
+                                        </div>
+                                    </div>
+                                    <button @click="dismissSignInNotice()" class="btn-gold shrink-0 w-full sm:w-auto px-4 py-2.5">Continue Designing</button>
                                 </div>
 
                                 <!-- Reference image (new designs only) -->
@@ -726,6 +763,20 @@
                                     </button>
                                 </div>
                                 <p x-show="composeError" class="text-[13px] px-1" style="color:#A1261D;" x-text="composeError"></p>
+
+                                <!-- Generations remaining — anchored right under the prompt input -->
+                                <div x-show="userSession" class="w-full flex items-center justify-end px-1 -mt-1">
+                                    <button type="button" @click="toggleAccountPanel()"
+                                            class="tap-lg flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition hover:bg-zinc-100 max-w-full"
+                                            :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="Account and generations">
+                                        <svg width="13" height="13" viewBox="0 0 17 17" fill="none" aria-hidden="true" class="shrink-0">
+                                            <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#9A7230" stroke-width="0.5"/>
+                                            <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#9A7230" stroke-width="0.7" opacity="0.45"/>
+                                        </svg>
+                                        <span class="text-[11px] font-medium text-zinc-600 truncate" x-text="(displayName ? displayName + ' • ' : '') + quotaRemaining + ' of ' + quotaMax + ' generations remaining'"></span>
+                                        <svg class="w-3 h-3 text-zinc-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                                    </button>
+                                </div>
 
                                 <!-- Result actions: Start new · Refine selected · Customize (proceed) -->
                                 <div x-show="design" class="w-full flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3">
@@ -827,9 +878,9 @@
 
                 <div class="flex-1 relative overflow-hidden" style="min-height:320px;">
                     <div class="absolute inset-0 flex items-center justify-center overflow-hidden p-4">
-                        <img x-show="mediaTab === 'image' || movieStatus !== 'ready'" :src="cust.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="'filter:' + tint">
+                        <img x-show="mediaTab === 'image' || movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="'filter:' + tint">
                         <template x-if="mediaTab === 'movie' && movieStatus === 'ready'">
-                            <video :src="cust.movie.movie_url" autoplay loop muted playsinline class="max-w-full max-h-full object-contain" :style="'filter:' + tint"></video>
+                            <video :src="cust?.movie.movie_url" autoplay loop muted playsinline class="max-w-full max-h-full object-contain" :style="'filter:' + tint"></video>
                         </template>
                     </div>
                     <!-- While the movie is being made (or if it failed) the static image stays visible underneath. -->
@@ -842,12 +893,12 @@
                     <div x-show="mediaTab === 'movie' && movieFailed" class="absolute inset-x-0 bottom-4 flex justify-center px-4">
                         <div class="flex flex-col sm:flex-row items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 border shadow-sm text-center" style="border-color:#F1B7B7;">
                             <span class="text-[11px] uppercase tracking-widest" style="color:#c03030;">Movie generation failed</span>
-                            <span class="text-[11px]" style="color:#777;" x-text="cust.movie?.error"></span>
+                            <span class="text-[11px]" style="color:#777;" x-text="cust?.movie?.error"></span>
                             <button @click="retryMovie()" class="btn-outline px-4 py-1.5">Retry Movie</button>
                         </div>
                     </div>
                     <button x-show="mediaTab === 'image' || movieStatus === 'ready'"
-                            @click="mediaTab === 'movie' ? openPreview('video', cust.movie.movie_url) : openPreview('image', cust.image_url)"
+                            @click="mediaTab === 'movie' ? openPreview('video', cust?.movie.movie_url) : openPreview('image', cust?.image_url)"
                             class="tap absolute top-3 right-3 z-10 p-2 rounded-lg bg-white/80 backdrop-blur border transition hover:bg-white text-[#6F6F6F] hover:text-[#1A1A1A]"
                             style="border-color:#DCDCDC;" title="Enlarge preview" aria-label="Enlarge preview">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
@@ -887,7 +938,7 @@
                                     <div x-show="groupOpen[g.id] && g.id === 'fashion'" x-transition class="mt-1 flex flex-col gap-1 pl-2">
                                         <template x-for="m in g.materials" :key="m.id">
                                             <button @click="chooseMaterial(m.id)"
-                                                    :class="cust.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
+                                                    :class="cust?.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
                                                     class="border rounded-sm px-4 py-2.5 flex items-center gap-3 transition w-full text-left">
                                                 <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="m.id === 'vermeil' ? 'background:linear-gradient(135deg,#D4A840 0%,#C0C0C0 100%)' : 'background-color:' + m.swatch"></div>
                                                 <div>
@@ -901,7 +952,7 @@
                                     <div x-show="groupOpen[g.id] && g.id === 'luxury'" x-transition class="mt-1 grid grid-cols-3 gap-1 pl-2">
                                         <template x-for="m in g.materials" :key="m.id">
                                             <button @click="chooseMaterial(m.id)"
-                                                    :class="cust.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
+                                                    :class="cust?.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
                                                     class="border rounded-sm p-2 flex flex-col items-center gap-1.5 transition text-center">
                                                 <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="'background-color:' + m.swatch"></div>
                                                 <div class="text-[10px] font-medium text-zinc-700 leading-tight" x-text="m.label"></div>
@@ -922,13 +973,13 @@
                         <div class="flex flex-wrap gap-2">
                             <template x-for="size in (catalog?.ring_sizes.values || [])" :key="size">
                                 <button @click="setSize(size)"
-                                        :class="cust.ring_size == size ? 'bg-black text-white border-black' : 'border-zinc-200 text-zinc-600 hover:border-zinc-500'"
+                                        :class="cust?.ring_size == size ? 'bg-black text-white border-black' : 'border-zinc-200 text-zinc-600 hover:border-zinc-500'"
                                         class="w-11 h-11 border text-xs font-medium transition rounded-sm" x-text="size"></button>
                             </template>
                         </div>
                         <p class="text-[10px] text-zinc-500 mt-2">
-                            <span x-show="cust.ring_size != null">Selected: US <strong class="text-zinc-700" x-text="cust.ring_size"></strong> · size does not change the price</span>
-                            <span x-show="cust.ring_size == null">Choose your size to add this ring to your bag.</span>
+                            <span x-show="cust?.ring_size != null">Selected: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> · size does not change the price</span>
+                            <span x-show="cust?.ring_size == null">Choose your size to add this ring to your bag.</span>
                         </p>
                     </div>
 
@@ -936,7 +987,7 @@
                     <div class="border border-zinc-100 rounded-sm p-5 space-y-3 bg-zinc-50/50">
                         <div class="flex justify-between text-sm"><span class="text-zinc-500">Metal</span><span class="font-medium text-zinc-800" x-text="currentMaterial?.label"></span></div>
                         <div class="flex justify-between text-sm"><span class="text-zinc-500">Collection</span><span class="font-medium text-zinc-800" x-text="currentGroup === 'fashion' ? 'Fashion Jewelry' : 'Luxury'"></span></div>
-                        <div class="flex justify-between text-sm"><span class="text-zinc-500">Ring Size</span><span class="font-medium text-zinc-800" x-text="cust.ring_size != null ? 'US ' + cust.ring_size : '—'"></span></div>
+                        <div class="flex justify-between text-sm"><span class="text-zinc-500">Ring Size</span><span class="font-medium text-zinc-800" x-text="cust?.ring_size != null ? 'US ' + cust?.ring_size : '—'"></span></div>
                     </div>
 
                     <!-- Price -->
@@ -947,12 +998,12 @@
                             <span x-show="priceAvailable" class="text-[10px] text-zinc-500 uppercase tracking-widest">Per piece</span>
                         </div>
                         <p x-show="priceAvailable" class="text-[11px] text-zinc-500 mt-1.5 leading-snug">
-                            Based on an assumed volume of <span x-text="cust.quote?.assumed_volume_cm3"></span> cm³ ·
-                            est. <span x-text="cust.quote?.estimated_weight_g"></span> g of metal (assumed, not measured)
+                            Based on an assumed volume of <span x-text="cust?.quote?.assumed_volume_cm3"></span> cm³ ·
+                            est. <span x-text="cust?.quote?.estimated_weight_g"></span> g of metal (assumed, not measured)
                         </p>
                         <p x-show="isLuxury" class="text-[11px] text-zinc-500 mt-1.5">Luxury gold can be previewed now and will be available to order soon.</p>
-                        <p x-show="!isLuxury && cust.quote && cust.quote.pricing_status !== 'available'" class="text-[11px] text-zinc-500 mt-1.5">Fashion pricing is not configured on this server yet.</p>
-                        <span x-show="priceAvailable && !cust.quote?.profile_approved" class="inline-block mt-2 text-[9px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing — not a real price</span>
+                        <p x-show="!isLuxury && cust?.quote && cust?.quote.pricing_status !== 'available'" class="text-[11px] text-zinc-500 mt-1.5">Fashion pricing is not configured on this server yet.</p>
+                        <span x-show="priceAvailable && !cust?.quote?.profile_approved" class="inline-block mt-2 text-[9px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing — not a real price</span>
                     </div>
 
                     <!-- Quantity -->
@@ -960,19 +1011,19 @@
                         <span class="text-[14px] uppercase tracking-widest text-zinc-500">Quantity</span>
                         <div class="flex items-center gap-3">
                             <button @click="setQuantity(-1)" class="tap w-8 h-8 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-sm leading-none" aria-label="Decrease quantity">−</button>
-                            <span class="text-sm font-medium text-zinc-800 w-4 text-center" x-text="cust.quantity || 1"></span>
+                            <span class="text-sm font-medium text-zinc-800 w-4 text-center" x-text="cust?.quantity || 1"></span>
                             <button @click="setQuantity(1)" class="tap w-8 h-8 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-sm leading-none" aria-label="Increase quantity">+</button>
                         </div>
                     </div>
-                    <p x-show="cust.line_total != null && cust.quantity > 1" class="text-[12px] text-zinc-500 -mt-3 text-right" x-text="'Total ' + money(cust.line_total || 0, cust.quote?.currency)"></p>
+                    <p x-show="cust?.line_total != null && cust?.quantity > 1" class="text-[12px] text-zinc-500 -mt-3 text-right" x-text="'Total ' + money(cust?.line_total || 0, cust?.quote?.currency)"></p>
 
                     <!-- Bag actions -->
                     <div class="space-y-3">
-                        <button @click="addToBag()" :disabled="!cust.can_add_to_bag || quotePending" class="btn-black w-full py-4 shadow-lg disabled:hover:bg-black">
+                        <button @click="addToBag()" :disabled="!cust?.can_add_to_bag || quotePending" class="btn-black w-full py-4 shadow-lg disabled:hover:bg-black">
                             <span x-text="bagButtonText"></span>
-                            <svg x-show="cust.can_add_to_bag && !quotePending" class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
+                            <svg x-show="cust?.can_add_to_bag && !quotePending" class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                         </button>
-                        <p x-show="!cust.can_add_to_bag && bagBlockedText" class="text-[11px] text-zinc-500 text-center" x-text="bagBlockedText"></p>
+                        <p x-show="!cust?.can_add_to_bag && bagBlockedText" class="text-[11px] text-zinc-500 text-center" x-text="bagBlockedText"></p>
                         <p x-show="bagMessage" class="text-[12px] text-center" style="color:#146C43;" x-text="bagMessage"></p>
                         <p x-show="custError" class="text-[12px] text-center" style="color:#A1261D;" x-text="custError"></p>
 
@@ -1042,7 +1093,7 @@
                                     </tr></thead>
                                     <tbody>
                                         <template x-for="row in sizeGuideRows(kind)" :key="row.us">
-                                            <tr class="border-b border-zinc-50 hover:bg-zinc-50 cursor-pointer transition" :class="cust.ring_size == row.us ? 'bg-zinc-100 font-semibold' : ''" @click="pickGuideSize(row.us)">
+                                            <tr class="border-b border-zinc-50 hover:bg-zinc-50 cursor-pointer transition" :class="cust?.ring_size == row.us ? 'bg-zinc-100 font-semibold' : ''" @click="pickGuideSize(row.us)">
                                                 <td class="py-2 font-mono text-zinc-700" x-text="row.m"></td>
                                                 <td class="py-2 text-zinc-700" x-text="row.us"></td>
                                                 <td class="py-2 text-zinc-500" x-text="row.uk"></td>
@@ -1168,21 +1219,166 @@
         </div>
     </div>
 
-    <!-- ── Sign-in modal (operator-issued access token) ── -->
-    <div x-show="signInOpen" x-cloak class="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center p-4" @click.self="signInOpen = false" @keydown.escape.window="signInOpen = false">
-        <div class="bg-white max-w-md w-full rounded-xl shadow-2xl p-8">
-            <span class="text-[10px] uppercase tracking-[0.3em] font-semibold" style="color:#C9A96E;">XJet Atelier</span>
-            <h3 class="brand-font text-2xl mt-2 mb-2 text-zinc-900">Sign in</h3>
-            <p class="text-[13px] text-zinc-500 mb-5">Enter the access token you were given to start designing.</p>
-            <input type="password" x-model="tokenInput" @keydown.enter="signIn()" placeholder="Access token" autocomplete="off"
-                   class="w-full rounded-lg text-[14px] px-4 py-3 border border-zinc-200 focus:border-zinc-900 transition">
-            <p x-show="authError" class="text-[12px] mt-2" style="color:#A1261D;" x-text="authError"></p>
-            <div class="flex gap-3 mt-6">
-                <button @click="signInOpen = false" class="btn-outline flex-1 py-3">Cancel</button>
-                <button @click="signIn()" :disabled="!tokenInput.trim()" class="btn-gold flex-1 py-3">Enter</button>
+    <!-- ── Account panel — opens from the token coin (header) / balance line (composer).
+         Who is signed in, how to reach them, their access token, and live usage. ── -->
+    <template x-teleport="body">
+        <div x-show="accountPanelOpen && userSession" x-cloak class="fixed inset-0 z-[400]" @keydown.escape.window="closeAccountPanel()">
+            <!-- click-away layer -->
+            <div class="absolute inset-0" @click="closeAccountPanel()"></div>
+            <div role="dialog" aria-modal="true" aria-label="Your account"
+                 class="absolute left-4 right-4 top-[68px] sm:left-auto sm:right-6 sm:top-[60px] sm:w-[360px] bg-white rounded-2xl overflow-hidden fade-in"
+                 style="border:1px solid #E5E5E5; box-shadow:0 18px 48px rgba(0,0,0,0.14);">
+                <!-- Identity -->
+                <div class="px-5 pt-5 pb-4 flex items-start gap-3" style="background:#FBF7EF; border-bottom:1px solid #EFE6D6;">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 brand-font text-[15px] font-semibold"
+                         style="background:linear-gradient(135deg,#C9A96E,#9A7230); color:#1A1A1A;"
+                         x-text="(displayName || 'X').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()"></div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-[15px] font-semibold truncate" style="color:#1A1A1A;" x-text="displayName || 'Your account'"></div>
+                        <div class="text-[12px] truncate" style="color:#6F6F6F;" x-show="displayEmail" x-text="displayEmail"></div>
+                        <div class="text-[12px] italic" style="color:#9A9A9A;" x-show="!displayEmail">No email on record</div>
+                    </div>
+                    <button type="button" @click="closeAccountPanel()" class="tap-lg p-1 -m-1 rounded-md transition hover:bg-black/5" aria-label="Close" style="color:#8F8F8F;">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+
+                <div class="px-5 py-4 flex flex-col gap-4">
+                    <!-- Generations -->
+                    <div>
+                        <div class="flex items-baseline justify-between mb-1.5">
+                            <span class="text-[10px] uppercase tracking-[0.2em] font-semibold" style="color:#9A7235;">Generations</span>
+                            <span class="text-[12px]" style="color:#6F6F6F;">
+                                <span class="font-semibold tabular-nums" style="color:#1A1A1A;" x-text="quotaRemaining"></span>
+                                of <span class="tabular-nums" x-text="quotaMax"></span> remaining
+                            </span>
+                        </div>
+                        <div class="h-1.5 rounded-full overflow-hidden" style="background:#EFEAE0;">
+                            <div class="h-full rounded-full transition-all duration-500"
+                                 :style="{ width: (quotaMax ? Math.round(100 * quotaRemaining / quotaMax) : 0) + '%', background: quotaRemaining === 0 ? '#B4443A' : 'linear-gradient(90deg,#C1995A,#8A561B)' }"></div>
+                        </div>
+                        <div class="text-[11px] mt-1.5 leading-snug" style="color:#8F8F8F;">
+                            <span x-show="quotaRemaining > 0">Each 360° spin video you create uses one generation. Designs you save don't count.</span>
+                            <span x-show="quotaRemaining === 0" style="color:#B4443A;">You've used all your generations. Contact us to extend your allowance.</span>
+                        </div>
+                    </div>
+
+                    <!-- Access token -->
+                    <div>
+                        <div class="text-[10px] uppercase tracking-[0.2em] font-semibold mb-1.5" style="color:#9A7235;">Access token</div>
+                        <div class="flex items-center gap-2">
+                            <code class="flex-1 px-3 py-2 rounded-lg text-[14px] font-semibold tracking-[0.18em] tabular-nums truncate"
+                                  style="background:#F6F6F6; border:1px solid #E5E5E5; color:#1A1A1A;" x-text="userSession && userSession.token"></code>
+                            <button type="button" @click="copyAccessToken()" class="btn-outline shrink-0 px-3 py-2 !text-[11px]" :class="tokenCopied ? '!border-[#8A561B] !text-[#8A561B]' : ''">
+                                <span x-text="tokenCopied ? 'Copied ✓' : 'Copy'"></span>
+                            </button>
+                        </div>
+                        <div class="text-[11px] mt-1.5 leading-snug" style="color:#8F8F8F;">Use this token to sign in on another device. It's tied to your account and its generation allowance — keep it private.</div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex items-center justify-between gap-3 pt-1" style="border-top:1px solid #EFEFEF;">
+                        <button type="button" @click="openMyDesignsFromAccount()" class="text-[12px] font-medium pt-3 transition hover:underline" style="color:#1A1A1A;">My Designs →</button>
+                        <button type="button" @click="signOutFromAccount()" class="text-[12px] pt-3 transition hover:underline" style="color:#8F8F8F;">Sign out</button>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+    </template>
+
+
+    <!-- ── Token Registration Modal ─────────────────────────────────────────── -->
+    <template x-teleport="body">
+        <div x-show="showRegModal" x-cloak
+             class="fixed inset-0 z-[200] flex items-center justify-center"
+             style="background:rgba(0,0,0,0.75);">
+            <div class="bg-white w-full max-w-md mx-4 p-8 shadow-2xl" @click.stop>
+
+                <!-- Header -->
+                <div class="mb-6 text-center">
+                    <p class="text-[10px] uppercase tracking-[0.25em] text-zinc-400 mb-2">XJet Atelier Access</p>
+                    <h2 class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel',serif;">Welcome</h2>
+                    <p x-show="regMode === 'email'" class="text-[12px] text-zinc-500 mt-2 leading-relaxed">Register with your email to receive an access token and begin designing your custom jewellery.</p>
+                    <p x-show="regMode === 'token'" class="text-[12px] text-zinc-500 mt-2 leading-relaxed">Enter your access token to begin designing your custom jewellery.</p>
+                </div>
+
+                <!-- Error banner -->
+                <div x-show="regError" class="mb-4 px-4 py-3 border text-sm"
+                     style="background:#fff5f5;border-color:#fca5a5;color:#dc2626;"
+                     x-text="regError"></div>
+
+                <!-- Email registration confirmation — on-brand muted gold, not mint green -->
+                <div x-show="regInfo" class="mb-4 px-4 py-3 border text-sm text-center"
+                     style="background:#FBF7EF;border-color:#C9A96E;color:#3A2E12;"
+                     x-text="regInfo"></div>
+
+                <!-- Email registration form -->
+                <form x-show="regMode === 'email' && !regInfo" @submit.prevent="submitEmailRegistration()">
+                    <div class="mb-4">
+                        <label class="block text-[10px] uppercase tracking-widest text-zinc-400 mb-1.5">Name <span class="text-zinc-300 normal-case tracking-normal">(optional)</span></label>
+                        <input x-model="regForm.name" type="text" :disabled="regLoading"
+                               placeholder="Your name"
+                               class="w-full border border-zinc-300 px-4 py-3 text-sm focus:border-black focus:outline-none transition"
+                               :class="regLoading ? 'opacity-50' : ''">
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-[10px] uppercase tracking-widest text-zinc-400 mb-1.5">Email</label>
+                        <input x-model="regForm.email" type="email" required :disabled="regLoading"
+                               placeholder="you@example.com"
+                               class="w-full border border-zinc-300 px-4 py-3 text-sm focus:border-black focus:outline-none transition"
+                               :class="regLoading ? 'opacity-50' : ''">
+                    </div>
+                    <button type="submit" :disabled="regLoading"
+                            class="btn-gold w-full py-3.5 text-[11px] uppercase tracking-[0.2em] transition stream-glow">
+                        <span x-show="!regLoading" class="inline-flex items-center">Send Verification Link
+                            <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
+                        </span>
+                        <span x-show="regLoading">Sending…</span>
+                    </button>
+                    <p class="text-center text-[13px] text-zinc-600 mt-5">
+                        Already have a token?
+                        <button type="button" @click="regError=''; regMode='token'"
+                                class="font-semibold text-black underline underline-offset-2 decoration-2 hover:text-amber-600 transition">Enter it here</button>
+                    </p>
+                </form>
+
+                <!-- Existing-token form -->
+                <form x-show="regMode === 'token' && !regInfo" @submit.prevent="submitRegistration()">
+                    <div class="mb-6">
+                        <label class="block text-[10px] uppercase tracking-widest text-zinc-400 mb-1.5">Access Token</label>
+                        <input x-model="regForm.token"
+                               type="text" required maxlength="6"
+                               placeholder="e.g. XAJKLM"
+                               @input="regForm.token = regForm.token.toUpperCase()"
+                               :disabled="regLoading"
+                               class="w-full border border-zinc-300 px-4 py-3 text-sm uppercase tracking-widest font-mono focus:border-black focus:outline-none transition"
+                               :class="regLoading ? 'opacity-50' : ''">
+                    </div>
+                    <button type="submit"
+                            :disabled="regLoading"
+                            class="btn-gold w-full py-3.5 text-[11px] uppercase tracking-[0.2em] transition stream-glow">
+                        <span x-show="!regLoading" class="inline-flex items-center">Enter Atelier
+                            <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
+                        </span>
+                        <span x-show="regLoading">Verifying…</span>
+                    </button>
+                    <p class="text-center text-[11px] text-zinc-400 mt-4">
+                        Need a token?
+                        <button type="button" @click="regError=''; regMode='email'"
+                                class="underline hover:text-black transition">Register with email</button>
+                    </p>
+                </form>
+
+                <!-- Post-registration: go to the token-entry form (matches the label) -->
+                <button x-show="regInfo" @click="regInfo=''; regError=''; regMode='token'"
+                        class="btn-gold w-full py-3.5 transition stream-glow">
+                    Enter Access Token
+                    <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
+                </button>
+
+            </div>
+        </div>
+    </template>
 
     <!-- ── Fullscreen zoomable preview overlay (P2) ── -->
     <template x-if="previewOpen">
