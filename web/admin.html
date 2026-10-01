@@ -101,7 +101,7 @@
       </div>
       <div class="overflow-x-auto">
       <table class="w-full">
-        <thead><tr><th>Token</th><th>Name</th><th>Email</th><th>Used / Max</th><th>Status</th><th>Created</th><th>Last activity</th><th class="text-right">Actions</th></tr></thead>
+        <thead><tr><th>Token</th><th>Name</th><th>Email</th><th>Used / Max</th><th class="text-right">Sessions</th><th class="text-right whitespace-nowrap" title="Live sessions only, estimated at list prices; mock requests are $0.">AI cost</th><th>Status</th><th>Created</th><th>Last activity</th><th class="text-right">Actions</th></tr></thead>
           <template x-for="u in filtered" :key="u.account_id">
             <tbody>
             <tr class="hover:bg-zinc-50 cursor-pointer" :class="['inactive','removed'].includes(u.status) ? 'opacity-50' : ''" @click="go('#/users/' + encodeURIComponent(u.account_id))">
@@ -109,6 +109,8 @@
               <td x-text="u.name || '—'"></td>
               <td class="text-zinc-600" x-text="u.email || '—'"></td>
               <td :class="u.used >= u.max ? 'text-red-600 font-semibold' : ''" x-text="u.used + ' / ' + u.max"></td>
+              <td class="text-right tabular-nums" x-text="u.sessions ?? '—'"></td>
+              <td class="text-right tabular-nums" x-text="money(u.ai_cost)"></td>
               <td><span class="badge" :class="statusClass(u.status)" x-text="statusLabel(u.status)"></span></td>
               <td class="text-zinc-500" x-text="date(u.created_at)"></td>
               <td class="text-zinc-500" x-text="ago(u.last_activity_at)"></td>
@@ -121,7 +123,7 @@
               </td>
             </tr>
             <tr x-show="editing === u.account_id" x-cloak class="bg-zinc-50">
-              <td colspan="8" class="!py-4" @click.stop>
+              <td colspan="10" class="!py-4" @click.stop>
                 <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_140px_auto_auto] gap-3 items-end">
                   <div><label class="lbl block mb-1">Name *</label><input class="inp" x-model="edit.Name"></div>
                   <div><label class="lbl block mb-1">Email *</label><input class="inp" type="email" x-model="edit.Email"></div>
@@ -136,7 +138,7 @@
             </tr>
             </tbody>
           </template>
-          <tbody x-show="!filtered.length"><tr><td colspan="8" class="text-center text-zinc-400 !py-10">No users.</td></tr></tbody>
+          <tbody x-show="!filtered.length"><tr><td colspan="10" class="text-center text-zinc-400 !py-10">No users.</td></tr></tbody>
       </table>
       </div>
     </section>
@@ -441,7 +443,8 @@
     <template x-if="sd">
     <div class="space-y-6">
       <!-- Summary: customer, account status, AI cost -->
-      <section class="card p-6 space-y-4">
+      <section class="card p-6 space-y-4 relative">
+        <p class="absolute top-2 right-3 text-[10px] text-zinc-400 tabular-nums" :title="sd.cost.basis">AI cost · this session <span class="font-semibold text-zinc-700" x-text="money(sd.cost.session)"></span></p>
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div class="space-y-1">
             <div class="flex flex-wrap items-center gap-3">
@@ -456,11 +459,6 @@
               <span class="text-[11px] text-zinc-400" x-show="sd.user" x-text="sd.user ? sd.user.used + ' / ' + sd.user.max + ' generations used' : ''"></span>
             </p>
             <p class="text-sm text-zinc-500 italic" x-text="'“' + sd.session.prompt + '”'"></p>
-          </div>
-          <div class="grid grid-cols-2 gap-4 text-right">
-            <div><p class="lbl">AI cost · this session</p><p class="text-2xl font-semibold tabular-nums" x-text="money(sd.cost.session)"></p></div>
-            <div><p class="lbl" x-text="'AI cost · user total (' + sd.cost.user_sessions + ' sessions)'"></p><p class="text-2xl font-semibold tabular-nums" x-text="money(sd.cost.user_total)"></p></div>
-            <p class="col-span-2 text-[10px] text-zinc-400 max-w-[360px] justify-self-end" x-text="sd.cost.basis"></p>
           </div>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm pt-3 border-t border-zinc-100">

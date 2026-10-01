@@ -146,6 +146,23 @@ def Dashboard(Ctx: Context) -> dict:
     }
 
 
+def UserCost(Ctx: Context, AccountId: str, Prices, AllUsage: list | None = None) -> dict:
+    """Live (non-mock) sessions of one user and their estimated AI cost at list prices."""
+    if AllUsage is None:
+        try:
+            AllUsage = Ctx.Accounts.AdminActivity(AccountId)["usage"]
+        except AccountNotFound:
+            AllUsage = []
+    Total, N = 0.0, 0
+    MockIds = Sessions.MockDesignIds(Ctx, AccountId)
+    for D in Ctx.Db.All("SELECT id FROM designs WHERE owner_account_id = ?", (AccountId,)):
+        if D["id"] in MockIds:
+            continue
+        Total += Sessions.Pipeline(Ctx, D["id"], AllUsage, Prices)["total_cost"]
+        N += 1
+    return {"sessions": N, "ai_cost": round(Total, 4)}
+
+
 def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
     Summary = (Sessions.Summaries(Ctx, [DesignId]) or [None])[0]
     if Summary is None:
@@ -170,13 +187,6 @@ def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
     except AccountNotFound:
         AllUsage, User = [], None
     Flow = Sessions.Pipeline(Ctx, DesignId, AllUsage, Prices)
-    UserTotal, UserSessions = 0.0, 0
-    MockIds = Sessions.MockDesignIds(Ctx, Owner)
-    for D in Ctx.Db.All("SELECT id FROM designs WHERE owner_account_id = ?", (Owner,)):
-        if D["id"] in MockIds:
-            continue
-        UserTotal += Sessions.Pipeline(Ctx, D["id"], AllUsage, Prices)["total_cost"]
-        UserSessions += 1
     Movie = next((M for B in Batches for C in B["candidates"] if C["selected"] for M in C["movies"] if M["status"] == "ready"), None) \
         or next((M for B in Batches for C in B["candidates"] for M in C["movies"] if M["status"] == "ready"), None)
     Keep = ("material_id", "ring_size", "quantity", "unit_price", "pricing_version", "pricing_status")
@@ -190,7 +200,7 @@ def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
         "session": Summary,
         "user": User,
         "pipeline": Flow,
-        "cost": {"session": Flow["total_cost"], "user_total": round(UserTotal, 4), "user_sessions": UserSessions,
+        "cost": {"session": Flow["total_cost"],
                  "basis": "Estimated at list prices (Admin → AI Prompts & Params → AI prices); mock requests are $0.",
                  "price_list_version": Prices.Current()["version"]},
         "artifacts": {"image_url": Summary["thumbnail_url"], "movie_url": Movie["url"] if Movie else None},
@@ -235,7 +245,9 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
     @App_.get("/api/admin/users")
     async def ListUsers(include_removed: bool = False, authorization: str | None = Header(None)):
         Admin(authorization)
-        return {"users": Ctx.Accounts.AdminList(IncludeRemoved=include_removed)}
+        Users = Ctx.Accounts.AdminList(IncludeRemoved=include_removed)
+        return {"users": [{**U, **UserCost(Ctx, U["account_id"], Prices)} for U in Users],
+                "cost_basis": "Live sessions only, estimated at list prices; mock requests are $0."}
 
     @App_.post("/api/admin/users")
     async def CreateUser(Body_: dict = Body(...), authorization: str | None = Header(None)):

@@ -224,7 +224,9 @@ async def test_session_pipeline_cost_duration_and_flags(HS):
     assert D["cost"]["session"] == 0.0                                  # mock requests are free
     assert {S["kind"] for S in D["pipeline"]["steps"]} == {"design", "movie", "3d"}
     assert all(S["duration_s"] is not None and S["duration_s"] >= 0 for S in D["pipeline"]["steps"])
-    assert D["session"]["mock"] and D["cost"]["user_sessions"] == 0                 # mock: not in user totals
+    U = next(X for X in (await H.Client.get("/api/admin/users", headers=Admin)).json()["users"]
+             if X["account_id"] == D["session"]["account_id"])
+    assert D["session"]["mock"] and (U["sessions"], U["ai_cost"]) == (0, 0.0)       # mock: not in user totals
     # Price the same requests as if they had been live (fal) submissions.
     MakeLive(H)
     D = await _Session(H, Did)
@@ -233,7 +235,9 @@ async def test_session_pipeline_cost_duration_and_flags(HS):
     assert Steps[("movie", False)]["cost"] == pytest.approx(6 * 0.04)                 # 6 s at 768P
     assert Steps[("3d", False)]["cost"] == pytest.approx(90 * 0.02)                   # 2048quality, no texture/PBR
     assert Steps[("3d", True)]["cost"] == 0.0                                         # reused raw mesh
-    assert D["cost"]["session"] == pytest.approx(0.60 + 0.24 + 1.80) == pytest.approx(D["cost"]["user_total"])
+    U = next(X for X in (await H.Client.get("/api/admin/users", headers=Admin)).json()["users"]
+             if X["account_id"] == D["session"]["account_id"])
+    assert D["cost"]["session"] == pytest.approx(0.60 + 0.24 + 1.80) == pytest.approx(U["ai_cost"]) and U["sessions"] == 1
     assert D["user"]["status"] in ("active", "unused") and D["artifacts"]["image_url"] and D["artifacts"]["movie_url"]
     assert D["last_choice"]["ring_size"] == 7.0 and D["last_choice"]["material_id"] == "silver"
     Row = next(X for X in (await H.Client.get("/api/admin/sessions", headers=Admin)).json()["sessions"] if X["session_id"] == Did)
