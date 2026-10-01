@@ -56,9 +56,12 @@ async def test_email_registration_verify_and_sign_in(HS):
     S = (await H.Client.get("/api/token-status", headers={"X-Access-Token": Token})).json()
     assert (S["used"], S["max"], S["remaining"], S["name"], S["email"]) == (0, 10, 10, "Dana", "dana@example.com")
 
-    # Clicking the link again: already verified (token is hashed, so it is not revealed again).
+    # Clicking the link again: "Already verified" shows the same token again (P2).
     Again = await H.Client.get(f"/verify?token={Secret}", headers=Anon)
-    assert "Already verified" in Again.text and Token not in Again.text
+    assert "Already verified" in Again.text and f'<div class="token">{Token}</div>' in Again.text
+    assert "a copy is on its way" not in Again.text
+    # The verify page stores the session under P3's key so returning signs the user in (P2 xjet_session).
+    assert 'localStorage.setItem("p3_session"' in Page.text and f'token: "{Token}"' in Page.text
 
 
 async def test_register_rules_match_pipeline2(HS):
@@ -69,21 +72,27 @@ async def test_register_rules_match_pipeline2(HS):
 
     await H.Client.post("/api/register", json={"Name": "Lee", "Email": "lee@example.com"}, headers=Anon)
     First = _Link(_Outbox(H)[0]["html"], r'/verify\?token=([A-Za-z0-9_\-]+)"')
+    Pending = H.Ctx.Accounts.Db.One("SELECT delivery_token FROM accounts WHERE email = 'lee@example.com'")["delivery_token"]
+    assert re.fullmatch(r"[A-Z]{6}", Pending)                                # minted at registration (P2)
+    R = await H.Client.post("/api/register-token", json={"Token": Pending}, headers=Anon)
+    assert R.status_code == 403                                              # unusable until verified (P2 is_active=0)
     R = await H.Client.post("/api/register", json={"Name": "", "Email": "LEE@example.com"}, headers=Anon)   # pending → re-send
-    assert R.json()["status"] == "verification_sent"
+    assert R.json() == {"status": "verification_sent",
+                        "message": "We've re-sent your verification email. Please verify your email to "
+                                   "save your designs and continue creating your jewelry."}
     Second = _Link(_Outbox(H)[0]["html"], r'/verify\?token=([A-Za-z0-9_\-]+)"')
     assert Second != First and "Hi Lee," in _Outbox(H)[0]["html"]           # name kept from first registration
     assert "Invalid link" in (await H.Client.get(f"/verify?token={First}", headers=Anon)).text   # superseded link
 
     Page = (await H.Client.get(f"/verify?token={Second}", headers=Anon)).text
     OldToken = _Link(Page, r'<div class="token">([A-Z]{6})</div>')
+    assert OldToken == Pending
     R = await H.Client.post("/api/register", json={"Name": "", "Email": "lee@example.com"}, headers=Anon)   # verified
     assert R.json() == {"status": "already_registered",
                         "message": "You're already registered — we've re-sent your access token to your email."}
-    NewToken = _Link(_Outbox(H)[0]["html"], r">([A-Z]{6})</span>")
-    assert NewToken != OldToken                                              # hashed tokens: a fresh one is sent
-    assert (await H.Client.post("/api/register-token", json={"Token": NewToken})).json()["ok"]
-    assert (await H.Client.post("/api/register-token", json={"Token": OldToken})).status_code == 403
+    Resent = _Link(_Outbox(H)[0]["html"], r">([A-Z]{6})</span>")
+    assert Resent == OldToken                                                # register-once: the SAME token (P2)
+    assert (await H.Client.post("/api/register-token", json={"Token": Resent})).json()["ok"]
 
 
 async def test_token_errors_use_pipeline2_messages(HS):
@@ -173,3 +182,28 @@ def test_legacy_p3_tokens_still_authenticate(tmp_path):
     H = Harness(tmp_path)
     Token, Who = H.Ctx.Accounts.IssueToken("legacy", Token="p3_LegacyMixedCase_Value")
     assert H.Ctx.Accounts.Authenticate("p3_LegacyMixedCase_Value").AccountId == Who.AccountId
+
+
+def test_smtp_mailer_matches_pipeline2_and_records_delivery(tmp_path, monkeypatch):
+    from p3 import mail
+    Sent = []
+
+    class FakeSmtp:
+        def __init__(self, Host, Port, timeout=None): Sent.append({"host": Host, "port": Port})
+        def __enter__(self): return self
+        def __exit__(self, *A): return False
+        def send_message(self, Msg): Sent[-1]["msg"] = Msg; return {}
+
+    monkeypatch.setattr(mail.smtplib, "SMTP", FakeSmtp)
+    monkeypatch.setattr(mail.socket, "getaddrinfo", lambda *A: [(None, None, None, None, ("52.0.0.1", 0))])
+    monkeypatch.setenv("P3_MAIL_MODE", "smtp")
+    M = mail.BuildMailer(tmp_path)
+    Subject, Body = mail.TokenEmail("Dana", "GMXDYR", "http://proto/JewelryB2C3/#token=GMXDYR")
+    M.Send("dana@example.com", Subject, Body)
+    Msg = Sent[0]["msg"]
+    assert (Sent[0]["host"], Sent[0]["port"]) == ("52.0.0.1", 25)                 # IPv4-preferred relay, port 25
+    assert Msg["From"] == "XJet Atelier <no-reply@xjet3d.com>" and Msg["To"] == "dana@example.com"
+    assert Msg["Reply-To"] == "no-reply@xjet3d.com" and Msg["Auto-Submitted"] == "auto-generated"
+    assert Msg["Subject"] == "Your XJet Atelier access token"
+    Rec = M.List()[0]
+    assert Rec["delivery"].startswith("smtp accepted") and "GMXDYR" in Rec["html"]

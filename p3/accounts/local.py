@@ -4,13 +4,15 @@ Behaviour mirrors Pipeline 2's token_store.py (revision 1e871734):
   * access tokens are 6 uppercase letters (profanity-filtered), entered case-insensitively;
   * every account has a generation allowance (default 10); only a finished 360° movie uses
     one generation, and at 0 remaining no new generation may start (P2 _EnforceTokenQuota);
-  * self-service email registration: a pending account + 24 h verification link; verifying
-    activates it and reveals the token; re-registering a pending email re-issues the link,
-    re-registering a verified email sends the access token again.
+  * self-service email registration, exactly as P2: registering mints the account's 6-letter
+    token immediately but keeps it inactive (unusable, unrevealed) behind a 24 h verification
+    link; verifying activates it and reveals it; re-registering a pending email re-issues the
+    link; re-registering a verified email re-sends the SAME token.
 
-Deliberate differences from P2 (see docs/ACCOUNTS.md): tokens are stored only as SHA-256
-hashes, so the token is minted at verification time and "send it again" issues a NEW token
-(the previous one is retired); legacy "p3_..." tokens issued before this keep working.
+Authentication looks tokens up by SHA-256 hash. Self-registered accounts also keep their token
+on the account row (accounts.delivery_token), because — as in P2, which stores tokens in
+plaintext — the token must be re-sent by email and shown again on an already-verified link.
+Legacy "p3_..." tokens issued before this keep working.
 
 Kept in a separate database file from P3's application data so the whole account domain can
 later be replaced by (or migrated into) a shared service without touching designs or the bag.
@@ -71,6 +73,7 @@ _AccountColumns = {
     "verify_expires_at": "ALTER TABLE accounts ADD COLUMN verify_expires_at TEXT",
     "verified_at":       "ALTER TABLE accounts ADD COLUMN verified_at TEXT",
     "activated_at":      "ALTER TABLE accounts ADD COLUMN activated_at TEXT",
+    "delivery_token":    "ALTER TABLE accounts ADD COLUMN delivery_token TEXT",   # self-registration only
 }
 
 try:
@@ -197,51 +200,63 @@ class LocalAccountProvider:
                            "ORDER BY created_at DESC LIMIT 1", ((Email or "").strip().lower(),))
 
     def StartEmailRegistration(self, Name: str, Email: str) -> dict:
-        """Returns {"status": "verification_sent"|"already_registered", "name", "email",
-        "verify_secret" (pending/new) or "token" (already registered: a freshly issued token)}."""
+        """P2 RegisterEndpoint storage rules. Returns {"status": "verification_sent"|"verification_resent"|
+        "already_registered", "name", "email", "verify_secret" (new/pending) or "token" (verified)}."""
         Name, Email = (Name or "").strip(), (Email or "").strip()
         Existing = self._SelfAccountByEmail(Email)
-        if Existing and Existing["verified_at"]:
-            Token = self._RotateToken(Existing["account_id"], "self-registration (re-sent)")
+        if Existing and Existing["verified_at"]:          # register-once: re-send the existing token
+            Token = Existing["delivery_token"] or self._RotateToken(Existing["account_id"], "self-registration")
             return {"status": "already_registered", "name": Existing["display_name"] or "", "email": Email,
                     "token": Token}
         Secret = secrets.token_urlsafe(32)
         Expires = (_Utc() + timedelta(hours=VerifyTtlHours)).isoformat()
-        if Existing:   # pending → re-issue the link (keep the name unless a new one was given)
-            self.Db.Execute("UPDATE accounts SET verify_hash = ?, verify_expires_at = ?, "
-                            "display_name = CASE WHEN ? != '' THEN ? ELSE display_name END WHERE account_id = ?",
-                            (_HashSecret(Secret), Expires, Name, Name, Existing["account_id"]))
-            Name = Name or Existing["display_name"] or ""
-        else:
-            self.Db.Execute("INSERT INTO accounts (account_id, display_name, email, created_at, source, "
-                            "max_generations, verify_hash, verify_expires_at) VALUES (?,?,?,?, 'self', ?,?,?)",
-                            (NewAccountId(), Name, Email, Now(), DefaultMaxGenerations, _HashSecret(Secret), Expires))
+        if Existing:   # pending → re-issue the link (P2 RefreshVerification keeps the stored name)
+            self.Db.Execute("UPDATE accounts SET verify_hash = ?, verify_expires_at = ? WHERE account_id = ?",
+                            (_HashSecret(Secret), Expires, Existing["account_id"]))
+            return {"status": "verification_resent", "name": Name or Existing["display_name"] or "",
+                    "email": Email, "verify_secret": Secret}
+        # P2 CreateSelfRegistration: the token is minted now, inactive until the email is verified.
+        AccountId, Token, T = NewAccountId(), self.GenerateToken(), Now()
+        with self.Db.Transaction() as Conn:
+            Conn.execute("INSERT INTO accounts (account_id, display_name, email, created_at, source, max_generations, "
+                         "verify_hash, verify_expires_at, delivery_token) VALUES (?,?,?,?, 'self', ?,?,?,?)",
+                         (AccountId, Name, Email, T, DefaultMaxGenerations, _HashSecret(Secret), Expires, Token))
+            Conn.execute("INSERT INTO access_tokens (token_hash, token_hint, account_id, label, active, created_at) "
+                         "VALUES (?,?,?, 'self-registration', 0, ?)", (HashToken(Token), Token[:3], AccountId, T))
         return {"status": "verification_sent", "name": Name, "email": Email, "verify_secret": Secret}
 
     def VerifyEmail(self, Secret: str) -> dict:
-        """{"status": "verified"|"already"|"expired"|"invalid", "name", "email", "token" (verified only)}."""
+        """P2 VerifyRegistration. {"status": "verified"|"already"|"expired"|"invalid", "name", "email",
+        "token" (verified / already)}."""
         Secret = (Secret or "").strip()
         Row = self.Db.One("SELECT * FROM accounts WHERE verify_hash = ?", (_HashSecret(Secret),)) if Secret else None
         if Row is None:
             return {"status": "invalid", "name": "", "email": ""}
         Base = {"name": Row["display_name"] or "", "email": Row["email"] or ""}
         if Row["verified_at"]:
-            return {"status": "already", **Base}
+            return {"status": "already", "token": Row["delivery_token"], **Base}
         if Row["verify_expires_at"] and Row["verify_expires_at"] < _Utc().isoformat():
             return {"status": "expired", **Base}
         T = Now()
-        self.Db.Execute("UPDATE accounts SET verified_at = ?, activated_at = COALESCE(activated_at, ?) "
-                        "WHERE account_id = ?", (T, T, Row["account_id"]))
-        Token = self._RotateToken(Row["account_id"], "self-registration")
+        Token = Row["delivery_token"]
+        with self.Db.Transaction() as Conn:
+            Conn.execute("UPDATE accounts SET verified_at = ?, activated_at = COALESCE(activated_at, ?) "
+                         "WHERE account_id = ?", (T, T, Row["account_id"]))
+            if Token:
+                Conn.execute("UPDATE access_tokens SET active = 1 WHERE token_hash = ?", (HashToken(Token),))
+        if not Token:     # pending registration created before tokens were minted at registration
+            Token = self._RotateToken(Row["account_id"], "self-registration")
         return {"status": "verified", "token": Token, **Base}
 
     def _RotateToken(self, AccountId: str, Label: str) -> str:
-        """Issue a new token for the account and retire any previous ones (tokens are hashed)."""
+        """Issue a new active token for a self-registered account (retiring older ones) and keep it
+        on the account for re-sending. Only used for accounts that pre-date delivery_token."""
         Token = self.GenerateToken()
         with self.Db.Transaction() as Conn:
             Conn.execute("UPDATE access_tokens SET active = 0 WHERE account_id = ?", (AccountId,))
             Conn.execute("INSERT INTO access_tokens (token_hash, token_hint, account_id, label, active, created_at) "
                          "VALUES (?,?,?,?,1,?)", (HashToken(Token), Token[:3], AccountId, Label, Now()))
+            Conn.execute("UPDATE accounts SET delivery_token = ? WHERE account_id = ?", (Token, AccountId))
         return Token
 
     # ── administration ───────────────────────────────────────────────────

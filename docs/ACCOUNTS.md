@@ -48,14 +48,9 @@ The customer-facing mechanism reproduces P2's: the same screens, messages, statu
 - **Invalid token while signed in**: protected routes return 401 "Access token not recognised or deactivated. Please re-register." The message is shown and, as in P2, the session is kept until the user signs out.
 - **Session persistence**: `localStorage` keys `p3_session:<base>` and `p3_profile:<base>`. These are deliberately *not* P2's `xjet_session` / `xjet_profile`: both apps share the `proto` origin but have separate token stores, so neither app reads or overwrites the other's session.
 
-Documented differences from P2, all caused by P3 storing tokens **hashed**:
+**Token lifecycle (identical to P2 `token_store.py`).** Registering a new email mints the account's 6-letter token immediately, but it stays inactive: unusable and unrevealed until the link is clicked. Verifying activates it and shows it, and "Already verified" shows the same token again. Re-registering a verified email re-sends that same token by email. Authentication looks tokens up by SHA-256 hash. Self-registered accounts also keep their token on the account row (`accounts.delivery_token`), because P2's flow must re-send and re-show it; P2 itself stores tokens in plaintext. Operator-issued tokens (`p3.cli create-token`) are stored as hashes only.
 
-| P2 | P3 |
-|---|---|
-| Token created at registration; the verify page can always show it | Token minted at verification; the "already verified" page cannot show it again |
-| "Already registered" re-sends the *same* token | "Already registered" sends a **new** token and retires the old one |
-
-**Mail.** `P3_MAIL_MODE=outbox` (default) writes every email to `var/outbox/` and sends nothing. This is mock-safe. Developers read it at `GET /api/dev/outbox` (requires `P3_ADMIN_KEY`). `P3_MAIL_MODE=smtp` sends through the same relay P2 uses (`SMTP_SERVER`, `SMTP_PORT`, `MAIL_FROM`, `MAIL_FROM_NAME`; no auth/TLS, Reply-To no-reply). Links in emails use `P3_PUBLIC_BASE_URL` (for example `http://proto`) when set, and the request's own origin otherwise.
+**Mail.** `P3_MAIL_MODE=smtp` sends through the same relay and sender as P2: `SMTP_SERVER` (default `xjet3d-com.mail.protection.outlook.com`), `SMTP_PORT` 25, IPv4 preferred, no auth/TLS, From "XJet Atelier <no-reply@xjet3d.com>", Reply-To no-reply, `Auto-Submitted`. The relay whitelists the office's public IP, which tron and proto share. As in P2, email is sent in the background after the response, and a relay failure is logged rather than shown. Each message (and the relay's verdict) is also recorded in `var/outbox/`, readable only through the developer endpoint `GET /api/dev/outbox` (admin key). `P3_MAIL_MODE=outbox` (default for local development) records without sending. Links use `P3_PUBLIC_BASE_URL` (for example `http://proto`) when set, and the request's own origin otherwise. The deployed tron instance runs `P3_MAIL_MODE=smtp`.
 
 **Operator CLI:** `python -m p3.cli create-token --name … --email … --max-generations 10`, `set-quota <token> --max-generations N [--reset-usage]`, `list-tokens`, `deactivate-token <token>`.
 

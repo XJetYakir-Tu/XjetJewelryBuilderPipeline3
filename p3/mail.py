@@ -79,12 +79,12 @@ class OutboxMailer:
     def __init__(self, OutboxDir: Path):
         self.Dir = Path(OutboxDir)
 
-    def Send(self, To: str, Subject: str, HtmlBody: str) -> str:
+    def Send(self, To: str, Subject: str, HtmlBody: str, Delivery: str = "outbox") -> str:
         self.Dir.mkdir(parents=True, exist_ok=True)
         Stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         Id = f"{Stamp}-{uuid.uuid4().hex[:8]}"
         (self.Dir / f"{Id}.json").write_text(json.dumps(
-            {"id": Id, "to": To, "subject": Subject, "html": HtmlBody, "sent_at": Stamp, "delivery": "outbox"},
+            {"id": Id, "to": To, "subject": Subject, "html": HtmlBody, "sent_at": Stamp, "delivery": Delivery},
             indent=2), encoding="utf-8")
         Logger.info("Outbox mail %s to %s: %s", Id, To, Subject)
         return Id
@@ -103,10 +103,15 @@ class OutboxMailer:
 
 
 class SmtpMailer:
-    """P2 SendMailUtils.MailSender equivalent (xjet3d Exchange Online relay, no auth)."""
+    """P2 SendMailUtils.MailSender equivalent (xjet3d Exchange Online relay, no auth).
+
+    Each sent message is also recorded in the developer outbox (var/outbox, readable only via
+    the admin-key /api/dev/outbox) with the relay's verdict, so delivery can be diagnosed.
+    """
     Mode = "smtp"
 
-    def __init__(self):
+    def __init__(self, Record: "OutboxMailer | None" = None):
+        self.Record = Record
         self.Server = os.environ.get("SMTP_SERVER", "xjet3d-com.mail.protection.outlook.com")
         self.Port = int(os.environ.get("SMTP_PORT", "25"))
         self.PreferIpv4 = os.environ.get("SMTP_PREFER_IPV4", "true").lower() in ("1", "true", "yes")
@@ -124,13 +129,28 @@ class SmtpMailer:
         Msg.set_content("This email requires an HTML-capable mail client.")
         Msg.add_alternative(HtmlBody, subtype="html")
         Host = socket.getaddrinfo(self.Server, None, socket.AF_INET)[0][4][0] if self.PreferIpv4 else self.Server
-        with smtplib.SMTP(Host, self.Port, timeout=30) as Smtp:          # relay whitelists the IP: no auth/TLS
-            Smtp.send_message(Msg)
+        try:
+            with smtplib.SMTP(Host, self.Port, timeout=30) as Smtp:      # relay whitelists the IP: no auth/TLS
+                Refused = Smtp.send_message(Msg)
+        except Exception as E:
+            if self.Record:
+                self.Record.Send(To, Subject, HtmlBody, Delivery=f"smtp FAILED: {type(E).__name__}: {E}")
+            raise
+        Verdict = f"smtp refused: {Refused}" if Refused else f"smtp accepted by {self.Server}:{self.Port}"
+        if self.Record:
+            self.Record.Send(To, Subject, HtmlBody, Delivery=Verdict)
+        Logger.info("SMTP mail to %s: %s — %s", To, Subject, Verdict)
         return Msg["Message-ID"]
+
+    def List(self, Limit: int = 50) -> list[dict]:
+        return self.Record.List(Limit) if self.Record else []
+
+    def Get(self, Id: str) -> dict | None:
+        return self.Record.Get(Id) if self.Record else None
 
 
 def BuildMailer(DataDir: Path):
     Mode = os.environ.get("P3_MAIL_MODE", "outbox").strip().lower()
     if Mode == "smtp":
-        return SmtpMailer()
+        return SmtpMailer(Record=OutboxMailer(Path(DataDir) / "outbox"))
     return OutboxMailer(Path(DataDir) / "outbox")

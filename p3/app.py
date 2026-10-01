@@ -9,7 +9,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import Body, FastAPI, File, Form, Header, Request, UploadFile
+from fastapi import BackgroundTasks, Body, FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -157,8 +157,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     # ── sign-in / registration (Pipeline 2 JewelryB2C2 flow) ─────────────
     @App_.post("/api/register")
-    async def Register(Req: Request, Body_: dict = Body(...)):
-        return Registration.Register(Req, Body_.get("Name", ""), Body_.get("Email", ""))
+    async def Register(Req: Request, Background: BackgroundTasks, Body_: dict = Body(...)):
+        return Registration.Register(Req, Body_.get("Name", ""), Body_.get("Email", ""), Background.add_task)
 
     @App_.post("/api/register-token")
     async def RegisterToken(Body_: dict = Body(...)):
@@ -169,8 +169,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Ctx.Accounts.Profile(Tok(x_access_token))
 
     @App_.get("/verify", include_in_schema=False)
-    async def VerifyEmail(Req: Request, token: str = ""):
-        return HTMLResponse(Registration.VerifyPage(Req, token))
+    async def VerifyEmail(Req: Request, Background: BackgroundTasks, token: str = ""):
+        return HTMLResponse(Registration.VerifyPage(Req, token, Background.add_task))
 
     @App_.get("/api/catalog")
     async def CatalogRoute():
@@ -288,7 +288,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def DevOutbox(authorization: str | None = Header(None)):
         RequireDeveloper(Ctx, authorization)
         Items = Mailer.List() if hasattr(Mailer, "List") else []
-        return {"mode": Mailer.Mode, "messages": [{K: M[K] for K in ("id", "to", "subject", "sent_at")} for M in Items]}
+        return {"mode": Mailer.Mode, "messages": [{K: M.get(K) for K in ("id", "to", "subject", "sent_at", "delivery")} for M in Items]}
 
     @App_.get("/api/dev/outbox/{MessageId}")
     async def DevOutboxMessage(MessageId: str, authorization: str | None = Header(None)):

@@ -5,6 +5,8 @@ through p3.mail (an outbox by default), and links point at this deployment's bas
 """
 
 import html
+import json
+import logging
 import os
 
 from fastapi import Request
@@ -14,6 +16,8 @@ from p3.accounts.local import EmailPattern
 from p3.context import Context, HttpError
 from p3.mail import TokenEmail, VerificationEmail
 from p3.settings import WebDir
+
+Log = logging.getLogger("p3.registration")
 
 
 def PublicOrigin(Request_: Request) -> str:
@@ -28,23 +32,37 @@ class RegistrationService:
         self.Ctx = Ctx
         self.Mailer = Mailer
 
+    def _Send(self, To: str, Subject: str, Body: str) -> None:
+        """Runs as a background task after the response (P2 BackgroundTasks): a relay failure is
+        logged, never shown to the customer — exactly as in P2."""
+        try:
+            Id = self.Mailer.Send(To, Subject, Body)
+            Log.info("Registration email sent via %s to %s: %s (%s)", self.Mailer.Mode, To, Subject, Id)
+        except Exception:
+            Log.exception("Registration email to %s FAILED (%s)", To, Subject)
+
+    def _Queue(self, Defer, To: str, Mail: tuple[str, str]) -> None:
+        (Defer or (lambda F, *A: F(*A)))(self._Send, To, *Mail)
+
     def _StudioUrl(self, Request_: Request) -> str:
         return f"{PublicOrigin(Request_)}{self.Ctx.Settings.BasePath}/"
 
     # POST /api/register  {Name, Email}
-    def Register(self, Request_: Request, Name: str, Email: str) -> dict:
+    def Register(self, Request_: Request, Name: str, Email: str, Defer=None) -> dict:
         Email = (Email or "").strip()
         if not EmailPattern.match(Email):
             raise HttpError(400, "invalid_email", "Please enter a valid email address.")
         R = self.Ctx.Accounts.StartEmailRegistration(Name, Email)
         if R["status"] == "already_registered":
-            Subject, Body = TokenEmail(R["name"], R["token"], f"{self._StudioUrl(Request_)}#token={R['token']}")
-            self.Mailer.Send(Email, Subject, Body)
+            self._Queue(Defer, Email, TokenEmail(R["name"], R["token"], f"{self._StudioUrl(Request_)}#token={R['token']}"))
             return {"status": "already_registered",
                     "message": "You're already registered — we've re-sent your access token to your email."}
         Link = f"{PublicOrigin(Request_)}{self.Ctx.Settings.BasePath}/verify?token={R['verify_secret']}"
-        Subject, Body = VerificationEmail(R["name"], Link)
-        self.Mailer.Send(Email, Subject, Body)
+        self._Queue(Defer, Email, VerificationEmail(R["name"], Link))
+        if R["status"] == "verification_resent":
+            return {"status": "verification_sent",
+                    "message": "We've re-sent your verification email. Please verify your email to "
+                               "save your designs and continue creating your jewelry."}
         return {"status": "verification_sent",
                 "message": "We've sent a verification email to your inbox. Please verify your "
                            "email to save your designs and continue creating your jewelry."}
@@ -61,12 +79,11 @@ class RegistrationService:
         return {"ok": True, "used": P["used"], "max": P["max"], "remaining": P["remaining"], "name": P["name"]}
 
     # GET /verify?token=
-    def VerifyPage(self, Request_: Request, Secret: str) -> str:
+    def VerifyPage(self, Request_: Request, Secret: str, Defer=None) -> str:
         R = self.Ctx.Accounts.VerifyEmail(Secret)
         Studio = self._StudioUrl(Request_)
         if R["status"] == "verified":
-            Subject, Body = TokenEmail(R["name"], R["token"], f"{Studio}#token={R['token']}")
-            self.Mailer.Send(R["email"], Subject, Body)
+            self._Queue(Defer, R["email"], TokenEmail(R["name"], R["token"], f"{Studio}#token={R['token']}"))
         return RenderVerifyPage(R["status"], R.get("token"), R["name"], Studio, self.Ctx.Settings.BasePath)
 
 
@@ -74,24 +91,40 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
     """P2 templates/verify.html, rendered without a template engine (all values escaped)."""
     E = lambda V: html.escape(V or "", quote=True)
     Ok = Status in ("verified", "already")
-    if Status == "verified":
+    if Ok and Token:
+        # P2 templates/verify.html, word for word. The session key is web/app.js's (P2 uses
+        # 'xjet_session'; P3 keeps its own key because both apps share the proto origin).
+        SessionKey = "p3_session" + (":" + BasePath if BasePath else "")
+        Js = lambda V: json.dumps(V).replace("<", "\\u003c")
         Body = f"""
-      <h1>Email verified</h1>
-      <p>{E(Name) + ', your' if Name else 'Your'} email has been verified successfully.
+      <h1>{'Email verified' if Status == 'verified' else 'Already verified'}</h1>
+      <p>
+        {E(Name) + ', your' if Name else 'Your'} email has been verified successfully.
         You're signed in — the button below takes you straight back to your design so you can
-        continue creating your jewelry.</p>
+        continue creating your jewelry.
+      </p>
       <a class="btn" href="{E(StudioUrl)}#token={E(Token)}">Continue designing →</a>
       <p style="margin-top:1.75rem;">Your personal access token (you only need it to sign in on
-         another device — a copy is on its way to your inbox):</p>
+         another device{' — a copy is on its way to your inbox' if Status == 'verified' else ''}):</p>
       <div class="token">{E(Token)}</div>
-      <p>Keep it safe — it's tied to your account and its generation quota.</p>"""
-    elif Status == "already":
-        # Tokens are stored hashed, so an already-used link cannot reveal the token again.
+      <p>Keep it safe — it's tied to your account and its generation quota.</p>
+      <script>
+        // Auto-store the session so returning to XJet Atelier signs the user in.
+        // The app refreshes the real quota numbers from the backend on load.
+        try {{
+          localStorage.setItem({Js(SessionKey)}, JSON.stringify({{
+            token: {Js(Token)},
+            name: {Js(Name or "")},
+            quotaUsed: 0, quotaMax: 10
+          }}));
+        }} catch (e) {{ /* private-mode / storage disabled — token is shown above anyway */ }}
+      </script>"""
+    elif Ok:
+        # Only for an account verified before tokens were kept for re-sending: nothing to reveal.
         Body = f"""
       <h1>Already verified</h1>
-      <p>{E(Name) + ', your' if Name else 'Your'} email has already been verified. Your access token
-        was sent to your inbox — use it to sign in, or register again with the same email to
-        receive a new one.</p>
+      <p>{E(Name) + ', your' if Name else 'Your'} email has already been verified. Register again with the
+        same email to receive your access token.</p>
       <a class="btn" href="{E(StudioUrl)}">Continue designing →</a>"""
     elif Status == "expired":
         Body = f"""
