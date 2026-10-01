@@ -218,6 +218,41 @@ def test_bore_is_found_when_a_heavy_head_pulls_the_centroid_outside_it():
     assert np.linalg.norm(np.array(Raw["bore_origin"]) - M.vertices[:len(Band.vertices)].mean(0)) < 0.1
 
 
+def test_bore_of_an_open_crossover_ring_where_no_flat_slice_is_closed():
+    import tempfile
+    import trimesh
+    from pathlib import Path
+    from p3 import geometry as g
+    Parts = []
+    for K, Dz in enumerate((2.2, -2.2, 2.2, -2.2)):                      # quarter-bands at alternating heights
+        T = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=48)
+        Ang = np.mod(np.arctan2(T.triangles_center[:, 1], T.triangles_center[:, 0]) - K * np.pi / 2, 2 * np.pi)
+        T.update_faces((Ang < np.pi / 2 + 0.05) | (Ang > 2 * np.pi - 0.05))
+        T.apply_translation([0, 0, Dz])
+        Parts.append(T)
+    M = trimesh.util.concatenate(Parts)
+    M.apply_transform(trimesh.transformations.rotation_matrix(0.4, [1, 0.5, 0.2]))
+    Src = Path(tempfile.mkdtemp()) / "cross.stl"
+    g.WriteStl(np.asarray(M.triangles, np.float32), Src)
+    Raw = g.MeasureRaw(Src)
+    assert Raw["bore_ok"] and Raw["inner_diameter"] == pytest.approx(15.0, rel=0.01), Raw.get("bore_fit")
+    assert max(S["bins_filled"] for S in Raw["bore_slices"]) < g.Directions * 0.9      # no single slice is closed
+
+
+def test_a_small_pocket_is_never_taken_for_the_bore():
+    import tempfile
+    import trimesh
+    from pathlib import Path
+    from p3 import geometry as g
+    Box = trimesh.creation.box(extents=(20, 20, 4))
+    Pocket = trimesh.creation.cylinder(radius=1.0, height=4.4, sections=64)  # a small through-hole, not a bore
+    Pocket.invert()
+    M = trimesh.util.concatenate([Box, Pocket])
+    Src = Path(tempfile.mkdtemp()) / "pocket.stl"
+    g.WriteStl(np.asarray(M.triangles, np.float32), Src)
+    assert not g.MeasureRaw(Src)["bore_ok"]
+
+
 def test_geometry_without_a_bore_needs_review():
     import trimesh
     Buf = io.BytesIO()

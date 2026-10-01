@@ -365,8 +365,10 @@ def MeasureRing(Data: bytes, Fmt: str, TargetInnerDiameterMm: float) -> RingGeom
 #   lengths × s · area × s² · volume × s³ · weight = volume × density.
 # No scaled copy is written during processing — ExportScaledStl builds one only when it is downloaded,
 # from the stored transform, so every export of the same request is identical.
-FastMethodVersion = "ring-measure-once-v3.2"      # v3.1: bore heights from the 5–95% surface span
+FastMethodVersion = "ring-measure-once-v3.3"      # v3.1: bore heights from the 5–95% surface span
                                                   # v3.2: bore centre searched (heavy heads move the centroid)
+                                                  # v3.3: bore = inner wall of 9 heights combined (open designs)
+BoreMinShare = 0.35        # a ring bore spans at least this share of the ring's smaller in-plane size
 PreviewTargetFaces = 25_000
 
 
@@ -433,6 +435,13 @@ def _ExactSections(Tri, Centre, U, V, Axis, Heights) -> list:
         P3 = (P0[:, None] * (1 - Wt) + P1[:, None] * Wt).reshape(-1, 3)
         Out.append(np.c_[P3 @ U, P3 @ V])
     return Out
+
+
+def _Bins(P, C) -> int:
+    if len(P) == 0:
+        return 0
+    Rel = P - np.asarray(C)
+    return int(len(np.unique(((np.arctan2(Rel[:, 1], Rel[:, 0]) + np.pi) / (2 * np.pi) * Directions).astype(int) % Directions)))
 
 
 def _BoreSeed(P, Grid: int = 25, Sample: int = 20_000) -> np.ndarray:
@@ -508,10 +517,18 @@ def MeasureRaw(Source) -> dict:
     Cum = np.cumsum(Wa[Order], dtype=np.float64)
     Zlo, Zhi = (float(Zc[Order[min(np.searchsorted(Cum, Q * Cum[-1]), len(Order) - 1)]]) for Q in (0.05, 0.95))
     del Zc, Wa, Order, Cum
-    Heights = [Zlo + (Zhi - Zlo) * F for F in (0.3, 0.5, 0.7)]
-    Slices = [{"height": float(H), **_FitBore(P)}
-              for H, P in zip(Heights, _ExactSections(Tri, Centre, U, V, Axis, Heights))]
-    Good = [S for S in Slices if S["radius"] and S["bins_filled"] >= Directions * 0.9]
+    # The bore a finger must pass through, seen along the axis: the inner wall from 9 heights across the
+    # band, combined. Works for open / crossover designs where no single flat slice has a closed wall;
+    # for a closed band it is the narrowest bore.
+    Heights = [Zlo + (Zhi - Zlo) * F for F in np.linspace(0.1, 0.9, 9)]
+    Secs = _ExactSections(Tri, Centre, U, V, Axis, Heights)
+    Comb = np.concatenate([P for P in Secs if len(P)]) if any(len(P) for P in Secs) else np.zeros((0, 2))
+    Fit = _FitBore(Comb)
+    Slices = [{"height": float(H), "points": int(len(P)), "bins_filled": _Bins(P, Fit["centre"])} for H, P in zip(Heights, Secs)]
+    del Secs, Comb
+    MinExtent = float(min(Hi3[0] - Lo3[0], Hi3[1] - Lo3[1]))
+    Good = bool(Fit["radius"] and Fit["bins_filled"] >= Directions * 0.9
+                and 2 * Fit["radius"] >= BoreMinShare * MinExtent)      # never a small pocket in the head
     Closed = abs(Mo["v1"] - Mo["v2"]) <= 1e-6 * max(Mo["v1"], 1e-30)
     Out = {
         "method_version": FastMethodVersion, "faces": int(len(Tri)),
@@ -519,12 +536,13 @@ def MeasureRaw(Source) -> dict:
         "volume": float(Mo["v1"]), "volume_alt_reference": float(Mo["v2"]), "area": float(Mo["area"]),
         "closed_heuristic": bool(Closed),
         "frame": {"centre": Centre.tolist(), "u": U.tolist(), "v": V.tolist(), "axis": Axis.tolist()},
-        "bore_ok": bool(Good), "bore_slices": Slices,
+        "bore_ok": Good, "bore_slices": Slices,
+        "bore_fit": {"radius": Fit["radius"], "std": Fit["std"], "bins_filled": Fit["bins_filled"], "centre": Fit["centre"]},
     }
     if Good:
-        Best = min(Good, key=lambda S: S["radius"])               # narrowest height = sizing diameter
-        Bc = Centre + Best["centre"][0] * U + Best["centre"][1] * V + Best["height"] * Axis
-        Out.update({"inner_diameter": 2 * Best["radius"], "roundness": Best["std"] / Best["radius"],
+        Mid = (Zlo + Zhi) / 2
+        Bc = Centre + Fit["centre"][0] * U + Fit["centre"][1] * V + Mid * Axis
+        Out.update({"inner_diameter": 2 * Fit["radius"], "roundness": Fit["std"] / Fit["radius"],
                     "bore_origin": Bc.tolist()})
     return Out
 
