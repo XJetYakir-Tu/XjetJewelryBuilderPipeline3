@@ -20,7 +20,8 @@
     {
       "id": "vermeil", "group": "fashion", "label": "Vermeil",
       "cpp_metal": "14K Gold Vermeil", "density_g_cm3": 10.36, "requires_plating": true,
-      "swatch": "#B9923F", "tint": "sepia(0.65) hue-rotate(4deg) saturate(1.85) brightness(0.97)"
+      "swatch": "#B9923F", "recolor": "tint",
+      "tint": "sepia(0.72) hue-rotate(-3deg) saturate(1.45) brightness(1.08) contrast(1.08)"
     },
     {
       "id": "gold_10k_yellow", "group": "luxury", "label": "10K Yellow Gold",
