@@ -1,5 +1,6 @@
 """Saved designs: list and full state (for reload recovery)."""
 
+from p3.accounts import Principal
 from p3.context import Context
 from p3.customize import CustomizeService
 from p3.images import ImageService
@@ -11,9 +12,9 @@ class DesignService:
         self.Images = Images
         self.Customize = Customize
 
-    def List(self, Token: str) -> list[dict]:
+    def List(self, Who: Principal) -> list[dict]:
         Out = []
-        for D in self.Ctx.Db.All("SELECT * FROM designs WHERE token = ? ORDER BY updated_at DESC LIMIT 100", (Token,)):
+        for D in self.Ctx.Db.All("SELECT * FROM designs WHERE owner_account_id = ? ORDER BY updated_at DESC LIMIT 100", (Who.AccountId,)):
             Thumb = None
             if D["selected_candidate_id"]:
                 C = self.Ctx.Db.One("SELECT asset_path FROM candidates WHERE id = ?", (D["selected_candidate_id"],))
@@ -27,8 +28,8 @@ class DesignService:
                         "updated_at": D["updated_at"], "created_at": D["created_at"]})
         return Out
 
-    def Get(self, Token: str, DesignId: str) -> dict:
-        D = self.Images.RequireDesign(Token, DesignId)
+    def Get(self, Who: Principal, DesignId: str) -> dict:
+        D = self.Images.RequireDesign(Who, DesignId)
         Batches = [self.Images.GetBatch(B["id"]) for B in self.Ctx.Db.All(
             "SELECT id FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))]
         Customization = None

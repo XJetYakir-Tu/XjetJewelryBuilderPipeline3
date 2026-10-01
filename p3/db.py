@@ -3,6 +3,10 @@
 Unlike Pipeline 2's in-memory job registry, every batch, candidate, movie and
 mesh job is a durable row carrying its provider request id, so a restarted
 server can reconcile remote work instead of losing it (spec section 9).
+
+This file holds Pipeline 3 APPLICATION data only. Accounts, tokens and usage
+live behind p3.accounts (its own accounts.db); application rows reference the
+owner only by owner_account_id, a namespaced provider-issued id.
 """
 
 import json
@@ -13,26 +17,41 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-Schema = """
-CREATE TABLE IF NOT EXISTS access_tokens (
-    token       TEXT PRIMARY KEY,
-    label       TEXT NOT NULL DEFAULT '',
-    active      INTEGER NOT NULL DEFAULT 1,
-    created_at  TEXT NOT NULL
-);
+SchemaVersion = 1
 
+DesignsTable = """
 CREATE TABLE IF NOT EXISTS designs (
     id                     TEXT PRIMARY KEY,
-    token                  TEXT NOT NULL REFERENCES access_tokens(token),
+    owner_account_id       TEXT NOT NULL,
     title                  TEXT NOT NULL,
     prompt                 TEXT NOT NULL,
     selected_candidate_id  TEXT,
     client_request_id      TEXT,
     created_at             TEXT NOT NULL,
     updated_at             TEXT NOT NULL,
-    UNIQUE (token, client_request_id)
+    UNIQUE (owner_account_id, client_request_id)
 );
+"""
 
+BagLinesTable = """
+CREATE TABLE IF NOT EXISTS bag_lines (
+    id                TEXT PRIMARY KEY,
+    owner_account_id  TEXT NOT NULL,
+    design_id         TEXT NOT NULL REFERENCES designs(id),
+    candidate_id      TEXT NOT NULL REFERENCES candidates(id),
+    customization_id  TEXT NOT NULL REFERENCES customizations(id),
+    material_id       TEXT NOT NULL,
+    ring_size         REAL NOT NULL,
+    quantity          INTEGER NOT NULL,
+    unit_price        REAL NOT NULL,
+    currency          TEXT NOT NULL,
+    pricing_version   TEXT NOT NULL,
+    quote_json        TEXT NOT NULL,
+    created_at        TEXT NOT NULL
+);
+"""
+
+Schema = DesignsTable + """
 CREATE TABLE IF NOT EXISTS batches (
     id                   TEXT PRIMARY KEY,
     design_id            TEXT NOT NULL REFERENCES designs(id),
@@ -115,30 +134,9 @@ CREATE TABLE IF NOT EXISTS meshes (
     updated_at           TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS bag_lines (
-    id                TEXT PRIMARY KEY,
-    token             TEXT NOT NULL REFERENCES access_tokens(token),
-    design_id         TEXT NOT NULL REFERENCES designs(id),
-    candidate_id      TEXT NOT NULL REFERENCES candidates(id),
-    customization_id  TEXT NOT NULL REFERENCES customizations(id),
-    material_id       TEXT NOT NULL,
-    ring_size         REAL NOT NULL,
-    quantity          INTEGER NOT NULL,
-    unit_price        REAL NOT NULL,
-    currency          TEXT NOT NULL,
-    pricing_version   TEXT NOT NULL,
-    quote_json        TEXT NOT NULL,
-    created_at        TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS usage_events (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    token       TEXT NOT NULL,
-    kind        TEXT NOT NULL,
-    ref_id      TEXT NOT NULL,
-    units       INTEGER NOT NULL,
-    created_at  TEXT NOT NULL
-);
+""" + BagLinesTable + """
+CREATE INDEX IF NOT EXISTS designs_owner ON designs(owner_account_id, updated_at);
+CREATE INDEX IF NOT EXISTS bag_lines_owner ON bag_lines(owner_account_id, created_at);
 """
 
 
@@ -153,13 +151,15 @@ def NewId(Prefix: str) -> str:
 class Database:
     """Thin sqlite3 wrapper. One connection per call; writes serialized by a lock."""
 
-    def __init__(self, DbPath: Path):
+    def __init__(self, DbPath: Path, SchemaSql: str | None = None):
         self.DbPath = Path(DbPath)
         self.DbPath.parent.mkdir(parents=True, exist_ok=True)
         self._WriteLock = threading.RLock()
         with self.Connect() as Conn:
             Conn.execute("PRAGMA journal_mode=WAL")
-            Conn.executescript(Schema)
+            Conn.executescript(Schema if SchemaSql is None else SchemaSql)
+            if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
+                Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
 
     @contextmanager
     def Connect(self):
@@ -199,10 +199,6 @@ class Database:
         Fields["updated_at"] = Now()
         Cols = ", ".join(f"{K} = ?" for K in Fields)
         self.Execute(f"UPDATE {Table} SET {Cols} WHERE id = ?", (*Fields.values(), RowId))
-
-    def RecordUsage(self, Token: str, Kind: str, RefId: str, Units: int) -> None:
-        self.Execute("INSERT INTO usage_events (token, kind, ref_id, units, created_at) VALUES (?,?,?,?,?)",
-                     (Token, Kind, RefId, Units, Now()))
 
 
 def Dumps(Obj) -> str:

@@ -12,6 +12,7 @@ import logging
 import sqlite3
 
 from p3 import assets
+from p3.accounts import Principal, UsageMovie
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.providers import endpoints
@@ -33,7 +34,7 @@ class MovieService:
             (CandidateId, Version))
         return Row
 
-    def Ensure(self, Token: str, CandidateId: str) -> dict:
+    def Ensure(self, Who: Principal, CandidateId: str) -> dict:
         """Start the movie for a ready candidate, or return the live/ready one."""
         Db = self.Ctx.Db
         Version = self.Ctx.Gen.Movie.Version
@@ -41,6 +42,7 @@ class MovieService:
                       "AND status IN ('queued','running','ready')", (CandidateId, Version))
         if Live:
             return self.ToJson(Live)
+        self.Ctx.Accounts.AuthorizeSpend(Who, UsageMovie, 1)
         MovieId = NewId("mov")
         T = Now()
         try:
@@ -50,10 +52,10 @@ class MovieService:
             # Lost a race with a concurrent Proceed: reuse the winner.
             return self.ToJson(Db.One("SELECT * FROM movies WHERE candidate_id = ? AND config_version = ? "
                                       "AND status IN ('queued','running','ready')", (CandidateId, Version)))
-        self.Ctx.Runner.Spawn(f"movie:{MovieId}", self._Drive(MovieId, Token))
+        self.Ctx.Runner.Spawn(f"movie:{MovieId}", self._Drive(MovieId))
         return self.ToJson(Db.One("SELECT * FROM movies WHERE id = ?", (MovieId,)))
 
-    async def _Drive(self, MovieId: str, Token: str | None) -> None:
+    async def _Drive(self, MovieId: str) -> None:
         Ctx = self.Ctx
         Db = Ctx.Db
         S = Ctx.Settings
@@ -73,8 +75,8 @@ class MovieService:
                 Arguments = {"image_url": ImageUrl, **Ctx.Gen.Movie.Params}
                 RequestId = await Ctx.Provider.Submit(Movie["endpoint"], Arguments)
                 Db.Update("movies", MovieId, status="running", provider_request_id=RequestId)
-                if Token:
-                    Db.RecordUsage(Token, "movie", MovieId, 1)
+                Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Cand["design_id"],))
+                Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageMovie, 1, MovieId)
             Result = await PollUntilDone(Ctx.Provider, Movie["endpoint"], RequestId,
                                          Ctx.Gen.Movie.RequestTimeoutS, S.PollIntervalS, S.MaxTransientPollErrors)
             Url = (Result.get("video") or {}).get("url")
@@ -95,7 +97,7 @@ class MovieService:
         Resumed = Interrupted = 0
         for M in Db.All("SELECT id, provider_request_id FROM movies WHERE status IN ('queued','running')"):
             if M["provider_request_id"]:
-                self.Ctx.Runner.Spawn(f"movie:{M['id']}", self._Drive(M["id"], None))
+                self.Ctx.Runner.Spawn(f"movie:{M['id']}", self._Drive(M["id"]))
                 Resumed += 1
             else:
                 Db.Update("movies", M["id"], status="interrupted", error_code="interrupted",

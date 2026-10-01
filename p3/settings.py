@@ -43,6 +43,7 @@ class Settings:
     MockLatencyS: float
     PollIntervalS: float
     MaxTransientPollErrors: int
+    AccountProvider: str = "local"   # P3_ACCOUNT_PROVIDER; see docs/ACCOUNTS.md
 
     @property
     def DbPath(self) -> Path:
@@ -74,6 +75,7 @@ def LoadSettings(**Overrides) -> Settings:
         MockLatencyS=float(os.environ.get("P3_MOCK_LATENCY_S", "1.5")),
         PollIntervalS=float(os.environ.get("P3_POLL_INTERVAL_S", "2.0")),
         MaxTransientPollErrors=int(os.environ.get("P3_MAX_TRANSIENT_POLL_ERRORS", "10")),
+        AccountProvider=os.environ.get("P3_ACCOUNT_PROVIDER", "local").strip().lower(),
     )
     Values.update(Overrides)
     S = Settings(**Values)

@@ -12,7 +12,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from p3 import assets
-from p3.auth import RequireDeveloper, RequireToken, SessionJson
+from p3.accounts import BuildProvider as BuildAccountProvider, InsufficientCredits
+from p3.auth import RequireDeveloper, RequirePrincipal
 from p3.config import LoadCatalog, LoadGenerationConfig
 from p3.context import Context, HttpError
 from p3.customize import CustomizeService
@@ -20,6 +21,7 @@ from p3.db import Database
 from p3.designs import DesignService
 from p3.images import ImageService
 from p3.meshes import MeshService
+from p3.migrations import MigrateToAccounts
 from p3.movies import MovieService
 from p3.pricing.service import PricingService
 from p3.settings import LoadSettings, Settings, WebDir
@@ -69,9 +71,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
         Logger.warning("P3_DATA_DIR is %d characters long; generated asset paths may exceed the Windows "
                        "260-character limit and fail to save. Use a shorter data directory.", len(str(S.AssetsDir)))
     Catalog = LoadCatalog()
+    # Identity is a separate domain (own provider + own storage); app data keys rows by account id only.
+    Accounts = BuildAccountProvider(S.AccountProvider, S.DataDir)
+    Migrated = MigrateToAccounts(S.DbPath, Accounts)    # one-time, pre-accounts databases only
     Ctx = Context(Settings=S, Db=Database(S.DbPath), Provider=ProviderObj or BuildProvider(S),
                   Gen=LoadGenerationConfig(), Catalog=Catalog,
-                  Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing))
+                  Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing),
+                  Accounts=Accounts)
     Svc = Services(Ctx)
 
     @asynccontextmanager
@@ -79,6 +85,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
         Summary = Svc.Reconcile()
         Logger.info("Startup reconciliation: %s (provider=%s)", Summary, Ctx.Provider.Name)
         _App.state.Reconciliation = Summary
+        if Migrated:
+            Logger.warning("Account migration on startup: %s", Migrated)
         yield
         await Ctx.Runner.Shutdown()
 
@@ -99,8 +107,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
     async def _HttpError(_Req: Request, E: HttpError):
         return JSONResponse(status_code=E.Status, content={"error": {"code": E.Code, "message": E.Message}})
 
-    def Tok(XAccessToken: str | None) -> str:
-        return RequireToken(Ctx, XAccessToken)
+    @App_.exception_handler(InsufficientCredits)
+    async def _NoCredits(_Req: Request, E: InsufficientCredits):
+        return JSONResponse(status_code=402, content={"error": {"code": "insufficient_credits", "message": E.Message}})
+
+    def Tok(XAccessToken: str | None):
+        """Resolve the caller to a Principal (the only way routes learn who is calling)."""
+        return RequirePrincipal(Ctx, XAccessToken)
 
     # ── pages / static ───────────────────────────────────────────────────
     @App_.get("/", include_in_schema=False)
@@ -127,7 +140,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
 
     @App_.get("/api/session")
     async def Session(x_access_token: str | None = Header(None)):
-        return SessionJson(Ctx, Tok(x_access_token))
+        return Ctx.Accounts.Profile(Tok(x_access_token))
 
     @App_.get("/api/catalog")
     async def CatalogRoute():
@@ -147,7 +160,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
     async def CreateDesign(prompt: str = Form(...), client_request_id: str | None = Form(None),
                            rights_confirmed: bool = Form(False), reference: UploadFile | None = File(None),
                            x_access_token: str | None = Header(None)):
-        Token = Tok(x_access_token)
+        Who = Tok(x_access_token)
         ReferencePng = None
         if reference is not None and reference.filename:
             if not rights_confirmed:
@@ -158,7 +171,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
                 ReferencePng = assets.NormalizeReferenceImage(Raw)
             except assets.AssetError as E:
                 raise HttpError(400, "invalid_reference", str(E))
-        return Svc.Images.CreateInitial(Token, prompt, ReferencePng, client_request_id)
+        return Svc.Images.CreateInitial(Who, prompt, ReferencePng, client_request_id)
 
     @App_.get("/api/designs")
     async def ListDesigns(x_access_token: str | None = Header(None)):
@@ -206,11 +219,11 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
 
     @App_.post("/api/candidates/{CandidateId}/movie")
     async def EnsureMovie(CandidateId: str, x_access_token: str | None = Header(None)):
-        Token = Tok(x_access_token)
-        Cand, _Batch = Svc.Images._OwnedCandidate(Token, CandidateId)
+        Who = Tok(x_access_token)
+        Cand, _Batch = Svc.Images._OwnedCandidate(Who, CandidateId)
         if Cand["status"] != "ready":
             raise HttpError(409, "candidate_not_ready", "That image is not ready yet.")
-        return Svc.Movies.Ensure(Token, CandidateId)
+        return Svc.Movies.Ensure(Who, CandidateId)
 
     # ── bag ──────────────────────────────────────────────────────────────
     @App_.get("/api/bag")

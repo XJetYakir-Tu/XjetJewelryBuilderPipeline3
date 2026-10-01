@@ -10,7 +10,6 @@ import httpx
 import pytest
 
 from p3.app import CreateApp
-from p3.auth import CreateToken
 from p3.providers.mock import MockProvider
 from p3.settings import ConfigDir, LoadSettings
 
@@ -29,7 +28,7 @@ class Harness:
         self.App = CreateApp(self.Settings, self.Provider)
         self.Ctx = self.App.state.Ctx
         self.Svc = self.App.state.Services
-        self.Token = CreateToken(self.Ctx, "test")
+        self.Token, self.Who = self.Ctx.Accounts.IssueToken("test")
         self.Client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.App), base_url="http://p3.test",
                                         headers={"X-Access-Token": self.Token})
 

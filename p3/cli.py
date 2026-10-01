@@ -1,4 +1,4 @@
-"""Operator CLI (acts on Pipeline 3's own database only).
+"""Operator CLI (acts on Pipeline 3's own data only; tokens go through the account provider).
 
   python -m p3.cli create-token --label "QA tester"
   python -m p3.cli list-tokens
@@ -10,15 +10,9 @@ import argparse
 import asyncio
 import io
 
-from p3.auth import CreateToken
-from p3.db import Database
+from p3.accounts import BuildProvider
+from p3.migrations import MigrateToAccounts
 from p3.settings import LoadSettings
-
-
-class _Ctx:
-    def __init__(self):
-        self.Settings = LoadSettings()
-        self.Db = Database(self.Settings.DbPath)
 
 
 def Main(Argv=None) -> int:
@@ -31,16 +25,20 @@ def Main(Argv=None) -> int:
     Args = Parser.parse_args(Argv)
     if Args.cmd == "check-provider":
         return CheckProvider()
-    Ctx = _Ctx()
-    print(f"# database: {Ctx.Settings.DbPath}")
+    S = LoadSettings()
+    Accounts = BuildProvider(S.AccountProvider, S.DataDir)
+    MigrateToAccounts(S.DbPath, Accounts)     # keeps pre-accounts tokens working even before the server starts
+    print(f"# account provider: {S.AccountProvider} ({S.DataDir})")
     if Args.cmd == "create-token":
-        print(CreateToken(Ctx, Args.label))
+        Token, Who = Accounts.IssueToken(Args.label)
+        print(Token)
+        print(f"# account: {Who.AccountId}  (the token is shown only once)")
     elif Args.cmd == "list-tokens":
-        for R in Ctx.Db.All("SELECT token, label, active, created_at FROM access_tokens ORDER BY created_at"):
-            print(f"{R['token']}\t{'active' if R['active'] else 'inactive'}\t{R['created_at']}\t{R['label']}")
+        for R in Accounts.ListAccounts():
+            State = "active" if R["active"] else "inactive"
+            print(f"{R['token_hint']}...\t{State}\t{R['account_id']}\t{R['created_at']}\t{R['label']}")
     elif Args.cmd == "deactivate-token":
-        N = Ctx.Db.Execute("UPDATE access_tokens SET active = 0 WHERE token = ?", (Args.token,))
-        print("deactivated" if N else "not found")
+        print("deactivated" if Accounts.DeactivateToken(Args.token) else "not found")
     return 0
 
 

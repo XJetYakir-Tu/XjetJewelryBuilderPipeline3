@@ -15,6 +15,7 @@ import logging
 import secrets
 
 from p3 import assets
+from p3.accounts import Principal, UsageImage
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.naming import ProductName
@@ -56,16 +57,17 @@ class ImageService:
         self.Ctx = Ctx
 
     # ── creation ─────────────────────────────────────────────────────────
-    def CreateInitial(self, Token: str, Prompt: str, ReferencePng: bytes | None,
+    def CreateInitial(self, Who: Principal, Prompt: str, ReferencePng: bytes | None,
                       ClientRequestId: str | None) -> dict:
         """Create a design and its first four-candidate batch. Idempotent per ClientRequestId."""
         Db = self.Ctx.Db
         Prompt = ValidateText(Prompt, "design")
         if ClientRequestId:
-            Existing = Db.One("SELECT id FROM designs WHERE token = ? AND client_request_id = ?",
-                              (Token, ClientRequestId))
+            Existing = Db.One("SELECT id FROM designs WHERE owner_account_id = ? AND client_request_id = ?",
+                              (Who.AccountId, ClientRequestId))
             if Existing:
                 return self._FirstBatch(Existing["id"])
+        self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, self.Ctx.Gen.Images.CandidatesPerBatch)
         DesignId = NewId("dsg")
         BatchId = NewId("bat")
         RefPath = None
@@ -74,18 +76,18 @@ class ImageService:
             assets.WriteAtomic(self.Ctx.Settings.AssetsDir, RefPath, ReferencePng)
         with Db.Transaction() as Conn:
             T = Now()
-            Conn.execute("INSERT INTO designs (id, token, title, prompt, client_request_id, created_at, updated_at) "
+            Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, updated_at) "
                          "VALUES (?,?,?,?,?,?,?)",
-                         (DesignId, Token, ProductName(Prompt), Prompt, ClientRequestId, T, T))
+                         (DesignId, Who.AccountId, ProductName(Prompt), Prompt, ClientRequestId, T, T))
             self._InsertBatch(Conn, BatchId, DesignId, "initial", None, Prompt, RefPath, None)
-        self._StartBatch(BatchId, Token)
+        self._StartBatch(BatchId)
         return self.GetBatch(BatchId)
 
-    def CreateRefinement(self, Token: str, DesignId: str, ParentCandidateId: str, Instruction: str,
+    def CreateRefinement(self, Who: Principal, DesignId: str, ParentCandidateId: str, Instruction: str,
                          ClientRequestId: str | None) -> dict:
         Db = self.Ctx.Db
         Instruction = ValidateText(Instruction, "refinement")
-        self.RequireDesign(Token, DesignId)
+        self.RequireDesign(Who, DesignId)
         if ClientRequestId:
             Existing = Db.One("SELECT id FROM batches WHERE design_id = ? AND client_request_id = ?",
                               (DesignId, ClientRequestId))
@@ -101,12 +103,13 @@ class ImageService:
             raise HttpError(409, "reference_unavailable",
                             "The selected image could not be loaded for refinement. "
                             "Please pick another image or try again.")
+        self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, self.Ctx.Gen.Images.CandidatesPerBatch)
         BatchId = NewId("bat")
         with Db.Transaction() as Conn:
             self._InsertBatch(Conn, BatchId, DesignId, "refine", ParentCandidateId, Instruction,
                               Parent["asset_path"], ClientRequestId)
             Conn.execute("UPDATE designs SET updated_at = ? WHERE id = ?", (Now(), DesignId))
-        self._StartBatch(BatchId, Token)
+        self._StartBatch(BatchId)
         return self.GetBatch(BatchId)
 
     def _InsertBatch(self, Conn, BatchId, DesignId, Kind, ParentId, UserText, RefPath, ClientRequestId):
@@ -127,25 +130,28 @@ class ImageService:
             Conn.execute("INSERT INTO candidates (id, batch_id, slot, status, seed, created_at, updated_at) "
                          "VALUES (?,?,?,?,?,?,?)", (NewId("cand"), BatchId, Slot, "pending", Seed, T, T))
 
-    def _StartBatch(self, BatchId: str, Token: str) -> None:
+    def _StartBatch(self, BatchId: str) -> None:
         for C in self.Ctx.Db.All("SELECT id FROM candidates WHERE batch_id = ? AND status = 'pending'", (BatchId,)):
-            self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"], Token))
+            self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"]))
 
     # ── retry ────────────────────────────────────────────────────────────
-    def RetryCandidate(self, Token: str, CandidateId: str) -> dict:
-        Cand, Batch = self._OwnedCandidate(Token, CandidateId)
+    def RetryCandidate(self, Who: Principal, CandidateId: str) -> dict:
+        Cand, Batch = self._OwnedCandidate(Who, CandidateId)
         if Cand["status"] != "failed":
             raise HttpError(409, "not_failed", "Only a failed image can be retried.")
+        self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, 1)
         self._ResetForRetry(CandidateId)
-        self.Ctx.Runner.Spawn(f"cand:{CandidateId}", self._Drive(CandidateId, Token))
+        self.Ctx.Runner.Spawn(f"cand:{CandidateId}", self._Drive(CandidateId))
         return self.GetBatch(Batch["id"])
 
-    def RetryFailed(self, Token: str, BatchId: str) -> dict:
-        Batch = self._OwnedBatch(Token, BatchId)
+    def RetryFailed(self, Who: Principal, BatchId: str) -> dict:
+        Batch = self._OwnedBatch(Who, BatchId)
         Failed = self.Ctx.Db.All("SELECT id FROM candidates WHERE batch_id = ? AND status = 'failed'", (BatchId,))
+        if Failed:
+            self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, len(Failed))
         for C in Failed:
             self._ResetForRetry(C["id"])
-            self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"], Token))
+            self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"]))
         return self.GetBatch(Batch["id"])
 
     def _ResetForRetry(self, CandidateId: str) -> None:
@@ -153,7 +159,7 @@ class ImageService:
                            error=None, error_code=None, duplicate_retries=0, seed=_NewSeed())
 
     # ── background driver ────────────────────────────────────────────────
-    async def _Drive(self, CandidateId: str, Token: str | None) -> None:
+    async def _Drive(self, CandidateId: str) -> None:
         Ctx = self.Ctx
         Db = Ctx.Db
         S = Ctx.Settings
@@ -170,8 +176,9 @@ class ImageService:
                         RequestId = await Ctx.Provider.Submit(Batch["endpoint"], Arguments)
                         Db.Update("candidates", CandidateId, status="generating",
                                   provider_request_id=RequestId, attempts=Cand["attempts"] + 1)
-                        if Token:
-                            Db.RecordUsage(Token, "image", CandidateId, 1)
+                        Owner = Db.One("SELECT d.owner_account_id FROM batches b JOIN designs d ON d.id = b.design_id "
+                                       "WHERE b.id = ?", (Batch["id"],))
+                        Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageImage, 1, CandidateId)
                     Result = await PollUntilDone(Ctx.Provider, Batch["endpoint"], RequestId,
                                                  Ctx.Gen.Images.RequestTimeoutS, S.PollIntervalS,
                                                  S.MaxTransientPollErrors)
@@ -249,11 +256,10 @@ class ImageService:
         """
         Db = self.Ctx.Db
         Resumed = Interrupted = 0
-        for C in Db.All("SELECT c.id, c.provider_request_id, d.token FROM candidates c "
-                        "JOIN batches b ON b.id = c.batch_id JOIN designs d ON d.id = b.design_id "
+        for C in Db.All("SELECT c.id, c.provider_request_id FROM candidates c "
                         "WHERE c.status IN ('pending', 'generating')"):
             if C["provider_request_id"]:
-                self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"], None))
+                self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"]))
                 Resumed += 1
             else:
                 Db.Update("candidates", C["id"], status="failed", error_code="interrupted",
@@ -262,9 +268,9 @@ class ImageService:
         return {"resumed": Resumed, "interrupted": Interrupted}
 
     # ── reads / ownership ────────────────────────────────────────────────
-    def RequireDesign(self, Token: str, DesignId: str) -> dict:
+    def RequireDesign(self, Who: Principal, DesignId: str) -> dict:
         D = self.Ctx.Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
-        if D is None or D["token"] != Token:
+        if D is None or D["owner_account_id"] != Who.AccountId:
             raise HttpError(404, "design_not_found", "Design not found.")
         return D
 
@@ -277,18 +283,18 @@ class ImageService:
             raise HttpError(409, "candidate_not_ready", "That image is not ready yet.")
         return C
 
-    def _OwnedBatch(self, Token: str, BatchId: str) -> dict:
+    def _OwnedBatch(self, Who: Principal, BatchId: str) -> dict:
         B = self.Ctx.Db.One("SELECT b.* FROM batches b JOIN designs d ON d.id = b.design_id "
-                            "WHERE b.id = ? AND d.token = ?", (BatchId, Token))
+                            "WHERE b.id = ? AND d.owner_account_id = ?", (BatchId, Who.AccountId))
         if B is None:
             raise HttpError(404, "batch_not_found", "Batch not found.")
         return B
 
-    def _OwnedCandidate(self, Token: str, CandidateId: str) -> tuple[dict, dict]:
+    def _OwnedCandidate(self, Who: Principal, CandidateId: str) -> tuple[dict, dict]:
         C = self.Ctx.Db.One("SELECT * FROM candidates WHERE id = ?", (CandidateId,))
         if C is None:
             raise HttpError(404, "candidate_not_found", "Image not found.")
-        return C, self._OwnedBatch(Token, C["batch_id"])
+        return C, self._OwnedBatch(Who, C["batch_id"])
 
     def _FirstBatch(self, DesignId: str) -> dict:
         B = self.Ctx.Db.One("SELECT id FROM batches WHERE design_id = ? ORDER BY created_at LIMIT 1", (DesignId,))

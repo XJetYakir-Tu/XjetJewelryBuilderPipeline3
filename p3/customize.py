@@ -12,6 +12,7 @@ Purchase rules are enforced here, not just in the browser (spec 4.6):
 
 import json
 
+from p3.accounts import Principal
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.images import ImageService
@@ -27,17 +28,17 @@ class CustomizeService:
         self.Movies = Movies
 
     # ── selection ────────────────────────────────────────────────────────
-    def Select(self, Token: str, DesignId: str, CandidateId: str | None) -> dict:
-        self.Images.RequireDesign(Token, DesignId)
+    def Select(self, Who: Principal, DesignId: str, CandidateId: str | None) -> dict:
+        self.Images.RequireDesign(Who, DesignId)
         if CandidateId is not None:
             self.Images.RequireReadyCandidate(DesignId, CandidateId)
         self.Ctx.Db.Update("designs", DesignId, selected_candidate_id=CandidateId)
         return {"design_id": DesignId, "selected_candidate_id": CandidateId}
 
     # ── proceed ──────────────────────────────────────────────────────────
-    def Proceed(self, Token: str, DesignId: str, CandidateId: str) -> dict:
+    def Proceed(self, Who: Principal, DesignId: str, CandidateId: str) -> dict:
         """Lock in the selected candidate for Customize and start (or reuse) its movie."""
-        self.Images.RequireDesign(Token, DesignId)
+        self.Images.RequireDesign(Who, DesignId)
         self.Images.RequireReadyCandidate(DesignId, CandidateId)
         Db = self.Ctx.Db
         Db.Update("designs", DesignId, selected_candidate_id=CandidateId)
@@ -48,13 +49,13 @@ class CustomizeService:
             Db.Execute("INSERT OR IGNORE INTO customizations (id, design_id, candidate_id, material_id, ring_size, "
                        "quantity, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
                        (NewId("cus"), DesignId, CandidateId, self.Ctx.Catalog.DefaultMaterialId, None, 1, T, T))
-        self.Movies.Ensure(Token, CandidateId)
+        self.Movies.Ensure(Who, CandidateId)
         Row = Db.One("SELECT * FROM customizations WHERE design_id = ? AND candidate_id = ?",
                      (DesignId, CandidateId))
         return self.ToJson(Row)
 
-    def Update(self, Token: str, CustomizationId: str, Changes: dict) -> dict:
-        Row = self._Owned(Token, CustomizationId)
+    def Update(self, Who: Principal, CustomizationId: str, Changes: dict) -> dict:
+        Row = self._Owned(Who, CustomizationId)
         Fields = {}
         if "material_id" in Changes:
             if self.Ctx.Catalog.Get(Changes["material_id"]) is None:
@@ -74,12 +75,12 @@ class CustomizeService:
             self.Ctx.Db.Update("customizations", CustomizationId, **Fields)
         return self.ToJson(self.Ctx.Db.One("SELECT * FROM customizations WHERE id = ?", (Row["id"],)))
 
-    def Get(self, Token: str, CustomizationId: str) -> dict:
-        return self.ToJson(self._Owned(Token, CustomizationId))
+    def Get(self, Who: Principal, CustomizationId: str) -> dict:
+        return self.ToJson(self._Owned(Who, CustomizationId))
 
-    def _Owned(self, Token: str, CustomizationId: str) -> dict:
+    def _Owned(self, Who: Principal, CustomizationId: str) -> dict:
         Row = self.Ctx.Db.One("SELECT c.* FROM customizations c JOIN designs d ON d.id = c.design_id "
-                              "WHERE c.id = ? AND d.token = ?", (CustomizationId, Token))
+                              "WHERE c.id = ? AND d.owner_account_id = ?", (CustomizationId, Who.AccountId))
         if Row is None:
             raise HttpError(404, "customization_not_found", "Customization not found.")
         return Row
@@ -109,8 +110,8 @@ class CustomizeService:
         }
 
     # ── bag ──────────────────────────────────────────────────────────────
-    def AddToBag(self, Token: str, CustomizationId: str) -> dict:
-        Row = self._Owned(Token, CustomizationId)
+    def AddToBag(self, Who: Principal, CustomizationId: str) -> dict:
+        Row = self._Owned(Who, CustomizationId)
         Quote = self.Ctx.Pricing.QuoteFor(Row["material_id"])
         CanAdd, Reason = self.Purchasability(Row, Quote)
         if not CanAdd:
@@ -120,24 +121,24 @@ class CustomizeService:
             raise HttpError(409, Reason, Messages[Reason])
         LineId = NewId("bag")
         self.Ctx.Db.Execute(
-            "INSERT INTO bag_lines (id, token, design_id, candidate_id, customization_id, material_id, ring_size, "
+            "INSERT INTO bag_lines (id, owner_account_id, design_id, candidate_id, customization_id, material_id, ring_size, "
             "quantity, unit_price, currency, pricing_version, quote_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (LineId, Token, Row["design_id"], Row["candidate_id"], Row["id"], Row["material_id"], Row["ring_size"],
+            (LineId, Who.AccountId, Row["design_id"], Row["candidate_id"], Row["id"], Row["material_id"], Row["ring_size"],
              Row["quantity"], Quote.unit_price, Quote.currency, Quote.pricing_version, Dumps(Quote.ToJson()), Now()))
-        return self.Bag(Token)
+        return self.Bag(Who)
 
-    def RemoveFromBag(self, Token: str, LineId: str) -> dict:
-        if self.Ctx.Db.Execute("DELETE FROM bag_lines WHERE id = ? AND token = ?", (LineId, Token)) == 0:
+    def RemoveFromBag(self, Who: Principal, LineId: str) -> dict:
+        if self.Ctx.Db.Execute("DELETE FROM bag_lines WHERE id = ? AND owner_account_id = ?", (LineId, Who.AccountId)) == 0:
             raise HttpError(404, "bag_line_not_found", "Bag line not found.")
-        return self.Bag(Token)
+        return self.Bag(Who)
 
-    def Bag(self, Token: str) -> dict:
+    def Bag(self, Who: Principal) -> dict:
         CurrentVersion = self.Ctx.Pricing.ProfileVersion
         Lines = []
         Totals: dict[str, float] = {}
         for L in self.Ctx.Db.All("SELECT b.*, c.asset_path, d.title FROM bag_lines b "
                                  "JOIN candidates c ON c.id = b.candidate_id JOIN designs d ON d.id = b.design_id "
-                                 "WHERE b.token = ? ORDER BY b.created_at", (Token,)):
+                                 "WHERE b.owner_account_id = ? ORDER BY b.created_at", (Who.AccountId,)):
             Mat = self.Ctx.Catalog.Get(L["material_id"])
             Total = round(L["unit_price"] * L["quantity"], 2)
             Totals[L["currency"]] = round(Totals.get(L["currency"], 0) + Total, 2)

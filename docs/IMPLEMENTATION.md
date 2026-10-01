@@ -16,6 +16,8 @@ This document separates three things:
 > - **UI caching.** `/`, `/dev` and `/static/*` are served with `Cache-Control: no-cache`, so browsers revalidate (304) instead of running an outdated `app.js` after an update.
 > - **Luxury order.** Row 1 is 10K / 14K / 18K Yellow Gold; row 2 is 10K / 14K / 18K Rose Gold (`config/materials.json` order plus a fixed 3-column grid).
 
+> - **Accounts boundary (2026-10-01).** Identity, tokens and usage moved behind `p3/accounts` into their own `accounts.db`. Application rows store `owner_account_id`, and a credit check runs before every paid action. This replaces the token-based access described in §3. See [ACCOUNTS.md](ACCOUNTS.md) for the future shared-auth integration point with P2.
+
 ## 1. Isolation from Pipeline 2
 
 - This is an independent Git repository with its own remote. Nothing here imports, links to, or reads Pipeline 2 at runtime.

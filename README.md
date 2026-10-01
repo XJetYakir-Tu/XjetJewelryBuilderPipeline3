@@ -11,6 +11,7 @@ This repository is independent of the commercial Pipeline 2 (`XjetJewelryBuilder
 - Spec (planning baseline): [docs/PIPELINE_3_SPEC.md](docs/PIPELINE_3_SPEC.md)
 - What was built, the decisions made, and the open items: [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)
 - Pricing rules and what still needs approval: [docs/PRICING.md](docs/PRICING.md)
+- Accounts, tokens and credits, and the future shared-auth integration point: [docs/ACCOUNTS.md](docs/ACCOUNTS.md)
 
 ## Setup (Windows, Python 3.13)
 
@@ -74,4 +75,4 @@ All provider calls in the tests are mocked; no test uses the network.
 
 ## Runtime data
 
-The SQLite database and generated assets live in `var/` (gitignored), or wherever `P3_DATA_DIR` points. Customer assets are in `var/assets/`. Developer meshes are in `var/dev/` and are never served statically.
+The SQLite databases and generated assets live in `var/` (gitignored), or wherever `P3_DATA_DIR` points. Identity is kept apart from application data: `var/accounts.db` holds accounts, hashed tokens and usage, and `var/pipeline3.db` holds designs, batches, movies and the bag. Customer assets are in `var/assets/`. Developer meshes are in `var/dev/` and are never served statically.

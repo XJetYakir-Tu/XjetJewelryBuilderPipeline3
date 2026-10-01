@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 
+from p3.accounts import AccountProvider
 from p3.config import Catalog, GenerationConfig
 from p3.db import Database
 from p3.pricing.service import PricingService
@@ -29,6 +30,7 @@ class Context:
     Gen: GenerationConfig
     Catalog: Catalog
     Pricing: PricingService
+    Accounts: AccountProvider
     Runner: TaskRunner = field(default_factory=TaskRunner)
     ImageSemaphore: asyncio.Semaphore | None = None
     _Locks: dict = field(default_factory=dict)

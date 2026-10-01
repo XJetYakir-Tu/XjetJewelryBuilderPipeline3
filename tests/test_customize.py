@@ -167,10 +167,9 @@ async def test_bag_rejects_fashion_when_pricing_unavailable(H):
 
 
 async def test_customizations_are_owner_scoped(H):
-    from p3.auth import CreateToken
     DesignId, Cand = await _Ready(H)
     Cus = await H.Proceed(DesignId, Cand["id"])
-    Other = {"X-Access-Token": CreateToken(H.Ctx, "other")}
+    Other = {"X-Access-Token": H.Ctx.Accounts.IssueToken("other")[0]}
     assert (await H.Client.get(f"/api/customizations/{Cus['id']}", headers=Other)).status_code == 404
     assert (await H.Client.get(f"/api/designs/{DesignId}", headers=Other)).status_code == 404
     assert (await H.Client.post("/api/bag", json={"customization_id": Cus["id"]}, headers=Other)).status_code == 404
