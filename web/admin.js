@@ -36,6 +36,7 @@ const THREE_D = {
   needs_review: ['Needs review', 'bg-amber-100 text-amber-800'], failed: ['Failed', 'bg-red-100 text-red-700'],
   cancelled: ['Cancelled', 'bg-zinc-100 text-zinc-600'],
 };
+const GL = { renderer: null, failed: false, scene: null, camera: null, light: null, mesh: null, controls: null, io: null, raf: 0 };
 const STAGE_SHORT = { waiting_hi3d: 'Waiting for Hi3D', generating_3d: 'Generating 3D', downloading_stl: 'Download',
   queued: 'Queued', calculating_geometry: 'Geometry', exporting: 'Scaled STL' };
 const EVENTS = {
@@ -544,39 +545,66 @@ function adminApp() {
 
     // ── 3D viewer (three.js; the STL is fetched with the admin key) ─────
     measured3d() { return !!this.sd?.three_d.some(t => this.previewReady(t)); },
+    // One WebGL renderer for the whole page, kept outside Alpine's reactive state and reused for every
+    // model (browsers allow only ~16 contexts; making a new one per view used them all up).
     clear3d() {
-      if (this._three) { cancelAnimationFrame(this._three.raf); this._three.renderer.dispose(); this._three.el.innerHTML = ''; this._three = null; }
-      this.viewer3d = { id: null, label: '', loading: false, error: '' };
+      if (GL.raf) cancelAnimationFrame(GL.raf);
+      GL.raf = 0;
+      if (GL.mesh) { GL.scene.remove(GL.mesh); GL.mesh.geometry.dispose(); GL.mesh.material.dispose(); GL.mesh = null; }
+      if (GL.controls) { GL.controls.dispose(); GL.controls = null; }
+      if (GL.io) { GL.io.disconnect(); GL.io = null; }
+      this.viewer3d = { id: null, label: '', loading: false, error: this.viewer3d?.error && !GL.renderer ? this.viewer3d.error : '' };
+    },
+    glRenderer() {
+      if (GL.renderer) return GL.renderer;
+      if (GL.failed) return null;
+      try {
+        GL.renderer = new THREE.WebGLRenderer({ antialias: true });
+        GL.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+        GL.renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); });
+        GL.scene = new THREE.Scene(); GL.scene.background = new THREE.Color(0xfafafa);
+        GL.scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 1.1));
+        GL.light = new THREE.DirectionalLight(0xffffff, 0.9); GL.scene.add(GL.light);
+        GL.camera = new THREE.PerspectiveCamera(35, 1, 0.01, 1000);
+        return GL.renderer;
+      } catch (e) { GL.failed = true; GL.renderer = null; return null; }
     },
     async show3d(t) {
       if (!window.THREE || !THREE.STLLoader || !THREE.OrbitControls) { this.viewer3d.error = '3D viewer library not loaded'; return; }
       this.clear3d();
+      const renderer = this.glRenderer();
+      if (!renderer) {                                 // WebGL off / unavailable: keep the Hi3D image instead
+        this.viewer3d = { id: null, label: '', loading: false,
+          error: '3D viewer unavailable — this browser could not start WebGL (graphics acceleration off?). Showing the Hi3D image.' };
+        return;
+      }
       this.viewer3d = { id: t.id, label: 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '' };
       try {
         const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: { Authorization: 'Bearer ' + this.key } });   // light, visual only
         if (!r.ok) throw new Error('Preview download failed (' + r.status + ')');
         const buf = await r.arrayBuffer();
+        if (this.viewer3d.id !== t.id) return;        // another model was opened meanwhile
         const geo = this.parsePreview(buf) || new THREE.STLLoader().parse(buf);
         geo.computeVertexNormals(); geo.center(); geo.computeBoundingSphere();
         const el = this.$refs.viewer; if (!el) return;
         const w = el.clientWidth || 300, h = el.clientHeight || 300, R = geo.boundingSphere.radius || 10;
-        const scene = new THREE.Scene(); scene.background = new THREE.Color(0xfafafa);
-        const camera = new THREE.PerspectiveCamera(35, w / h, R / 100, R * 100);
+        renderer.setSize(w, h);
+        if (renderer.domElement.parentNode !== el) { el.innerHTML = ''; el.appendChild(renderer.domElement); }
+        const camera = GL.camera;
+        camera.aspect = w / h; camera.near = R / 100; camera.far = R * 100; camera.updateProjectionMatrix();
         camera.position.set(R * 0.8, R * 1.2, R * 4.2);          // ring axis is Z: look at the ring's face, slightly from above
-        const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(w, h); renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-        el.innerHTML = ''; el.appendChild(renderer.domElement);
-        scene.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: new THREE.Color(this.swatch(t.material_id)), metalness: 0.6, roughness: 0.35 })));
-        scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 1.1));
-        const d = new THREE.DirectionalLight(0xffffff, 0.9); d.position.set(R, R * 2, R * 3); scene.add(d);
-        const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 1.5;
-        this._three = { renderer, el, raf: 0 };
-        // Draw only while the viewer is on screen and the tab is visible (a 100k+ face model is heavy).
+        GL.light.position.set(R, R * 2, R * 3);
+        GL.mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: new THREE.Color(this.swatch(t.material_id)), metalness: 0.6, roughness: 0.35 }));
+        GL.scene.add(GL.mesh);
+        const controls = GL.controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 1.5;
+        // Draw only while the viewer is on screen and the tab is visible.
         let onScreen = true;
-        const io = new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; }); io.observe(el);
+        GL.io = new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; }); GL.io.observe(el);
         const tick = () => {
-          if (!this._three) { io.disconnect(); return; }
-          if (onScreen && !document.hidden) { controls.update(); renderer.render(scene, camera); }
-          this._three.raf = requestAnimationFrame(tick);
+          if (!GL.controls || !el.isConnected) { GL.raf = 0; return; }
+          if (onScreen && !document.hidden) { controls.update(); renderer.render(GL.scene, camera); }
+          GL.raf = requestAnimationFrame(tick);
         };
         tick();
         this.viewer3d.loading = false;

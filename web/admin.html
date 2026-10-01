@@ -483,7 +483,7 @@
             <template x-if="thumb() && !viewer3d.id"><img :src="thumb()" alt="Hi3D thumbnail" class="absolute inset-0 w-full h-full object-contain"></template>
             <div x-ref="viewer" class="absolute inset-0"></div>
             <span x-show="!measured3d() && !thumb()" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-400">Not generated — use Generate 3D below</span>
-            <span x-show="measured3d() && !viewer3d.id && thumb()" class="absolute inset-x-0 bottom-2 text-center text-[11px] text-zinc-500">Hi3D thumbnail · light 3D preview is being prepared…</span>
+            <span x-show="measured3d() && !viewer3d.id && thumb() && !viewer3d.error" class="absolute inset-x-0 bottom-2 text-center text-[11px] text-zinc-500">Hi3D thumbnail · light 3D preview is being prepared…</span>
             <span x-show="measured3d() && viewer3d.loading" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-400">Loading 3D…</span>
             <span x-show="viewer3d.error" class="absolute inset-x-0 bottom-2 text-center text-[11px] text-red-600" x-text="viewer3d.error"></span>
           </div></div>
