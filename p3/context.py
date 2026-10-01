@@ -46,4 +46,5 @@ class Context:
         return self.ImageSemaphore
 
     def AssetUrl(self, RelPath: str | None) -> str | None:
-        return f"/assets/{RelPath}" if RelPath else None
+        # Always under the base path, so a deployment behind /JewelryB2C3 never emits root URLs.
+        return f"{self.Settings.BasePath}/assets/{RelPath}" if RelPath else None

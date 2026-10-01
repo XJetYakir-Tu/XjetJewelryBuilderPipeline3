@@ -38,16 +38,37 @@ Then issue yourself an access token and start the server:
 .venv/Scripts/python -m uvicorn p3.app:App --port 8310
 ```
 
-Open http://localhost:8310 and enter the token. Developer mesh tools are at http://localhost:8310/dev (they require `P3_ADMIN_KEY`).
+Open http://localhost:8310 and enter the token. Developer mesh tools are at `/dev` (they require `P3_ADMIN_KEY`).
+
+### With or without the `/JewelryB2C3` base path
+
+| `.env` | Site | API / static / assets / dev |
+|---|---|---|
+| `P3_BASE_PATH=/JewelryB2C3` (deployment layout; recommended locally too) | http://localhost:8310/JewelryB2C3/ — `/` and `/JewelryB2C3` redirect there | `/JewelryB2C3/api/…`, `/JewelryB2C3/static/…`, `/JewelryB2C3/assets/…`, `/JewelryB2C3/dev` |
+| unset / empty | http://localhost:8310/ | `/api/…`, `/static/…`, `/assets/…`, `/dev` |
+
+With a base path, nothing is served at the root. That matters behind proto, where root `/api/`, `/static/`, `/admin/` and `/debug` belong to Pipeline 2. The server injects the prefix into the pages (`<meta name="p3-base">`), every browser request goes through one prefixed helper, and every URL the API returns already includes the prefix. `tests/test_base_path.py` fails if any URL escapes it.
 
 ## Mock vs. live mode
 
-The site always shows which mode it is in:
+The Home screen always shows the mode as a **Mock Mode** or **Live AI** pill. Every screen also shows the amber banner (mock) or the green chip (live):
 
 - **Mock** (default): an amber "Mock mode" banner plus a **Mock** chip in the nav. Images, movies and meshes are simulated placeholders, nothing is sent to any AI provider, and nothing is charged.
 - **Live**: a green **Live AI** chip in the nav. Requests go to fal.ai and are billed.
 
-`GET /api/health` reports `"mode": "mock" | "live"`.
+`GET /api/health` reports `"mode"` and `"mode_source"`.
+
+**Developer switch (internal).** Click **Developer** in the Home footer and enter `P3_ADMIN_KEY`; a panel then shows **AI Mode: Mock** or **AI Mode: Live → Switch to Mock**.
+- Switching to Mock is one click.
+- Switching to Live opens a billing warning and requires typing the exact confirmation sentence. It needs `FAL_KEY` in the server configuration.
+- Switching is refused while generations are running.
+- Customers never see this panel; the API behind it (`/api/dev/mode`) requires the developer key.
+
+**What wins at startup:**
+1. The last developer switch, saved in `var/runtime.json`.
+2. Otherwise `P3_PROVIDER` from `.env`.
+
+A saved "live" choice without a `FAL_KEY` starts in mock and says so. To go back to following `.env`, delete `var/runtime.json`.
 
 ## Going live (paid)
 

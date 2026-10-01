@@ -30,6 +30,9 @@ class ProviderStatus:
 class Provider(Protocol):
     Name: str
 
+    def Owns(self, RequestId: str) -> bool:
+        """True if this provider issued RequestId (mock and live ids are never mixed up)."""
+
     async def Upload(self, Data: bytes, ContentType: str) -> str: ...
     async def Submit(self, Endpoint: str, Arguments: dict) -> str: ...
     async def Status(self, Endpoint: str, RequestId: str) -> ProviderStatus: ...

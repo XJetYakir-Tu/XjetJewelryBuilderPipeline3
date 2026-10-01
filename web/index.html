@@ -2,19 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="p3-base" content="{{BASE}}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XJET Atelier — Custom AI Jewelry, Designed by You</title>
     <meta name="description" content="Design custom rings with AI at XJET Atelier. Describe your vision, choose from four designs, refine it, and preview it in a 360° movie.">
     <meta name="robots" content="noindex">
     <meta name="theme-color" content="#111111">
-    <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/images/favicon-32.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/static/images/apple-touch-icon.png">
+    <link rel="icon" type="image/svg+xml" href="{{BASE}}/static/images/favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{BASE}}/static/images/favicon-32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{BASE}}/static/images/apple-touch-icon.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>tailwind.config = { theme: { extend: { screens: { '3xl': '1920px', '4xl': '2560px' } } } }</script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
-    <script src="/static/app.js"></script>
+    <script src="{{BASE}}/static/app.js"></script>
     <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
 
     <!-- Visual system carried over from Pipeline 2 (index-p2.html) -->
@@ -176,9 +177,16 @@
                         <svg class="w-3.5 h-3.5 shrink-0 mt-[2px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:#B08040;"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5m0-8h.01"/></svg>
                         <span><span class="font-semibold text-zinc-800">Currently supported: Rings only.</span> More jewelry categories will be added in future releases.</span>
                     </p>
+                    <!-- Current AI provider mode (always visible on Home) -->
+                    <p x-show="health" x-cloak class="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
+                       :style="isLive ? 'background:#ECFDF3;color:#146C43;border:1px solid #B7E4C7' : 'background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8'"
+                       data-testid="home-ai-mode">
+                        <span class="w-1.5 h-1.5 rounded-full" :class="isLive ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                        <span x-text="isLive ? 'Live AI' : 'Mock Mode'"></span>
+                    </p>
                 </div>
                 <div class="md:w-1/2 relative overflow-hidden md:min-h-0 hidden md:flex items-center justify-center" style="background:#ffffff;">
-                    <img src="/static/images/Angel.JPG" alt="" class="w-[55%] h-auto object-contain" style="mix-blend-mode:multiply; opacity:0.92; max-height:82%;" onerror="this.style.display='none'">
+                    <img src="{{BASE}}/static/images/Angel.JPG" alt="" class="w-[55%] h-auto object-contain" style="mix-blend-mode:multiply; opacity:0.92; max-height:82%;" onerror="this.style.display='none'">
                     <div class="absolute inset-0 pointer-events-none" style="background:linear-gradient(to right,rgba(255,255,255,0.22) 0%,transparent 22%)"></div>
                 </div>
             </section>
@@ -238,7 +246,7 @@
                         </ul>
                         <p class="text-[10px] uppercase tracking-widest text-zinc-400">Powered by XJet's advanced metal 3D printing technology.</p>
                     </div>
-                    <div class="md:w-1/2"><img src="/static/images/Ink.JPG" alt="" class="rounded-lg shadow-2xl w-full object-cover" onerror="this.style.display='none'"></div>
+                    <div class="md:w-1/2"><img src="{{BASE}}/static/images/Ink.JPG" alt="" class="rounded-lg shadow-2xl w-full object-cover" onerror="this.style.display='none'"></div>
                 </div>
             </section>
 
@@ -298,6 +306,7 @@
                         <button @click="navigateTo('terms')" class="tap-lg hover:text-white transition">Terms of Service</button>
                         <button @click="navigateTo('privacy')" class="tap-lg hover:text-white transition">Privacy</button>
                         <button @click="navigateTo('contact')" class="tap-lg hover:text-white transition">Contact &amp; Support</button>
+                        <button @click="devKey ? loadDevMode() : (devPromptOpen = true)" class="tap-lg text-zinc-600 hover:text-zinc-300 transition" title="Internal developer tools">Developer</button>
                     </nav>
                 </div>
             </footer>
@@ -387,7 +396,7 @@
                                 <p>With over 80 patents and a team of leading scientists and industry experts, XJet is redefining what's possible in luxury manufacturing.</p>
                                 <p class="mt-3">XJet is proudly certified for <strong class="text-zinc-900">ISO 9001</strong> and <strong class="text-zinc-900">ISO 13485</strong>.</p>
                             </div>
-                            <img src="/static/images/ISO.png" alt="ISO Certification" class="h-24 w-auto object-contain shrink-0">
+                            <img src="{{BASE}}/static/images/ISO.png" alt="ISO Certification" class="h-24 w-auto object-contain shrink-0">
                         </div>
                     </div>
                 </div>
@@ -429,7 +438,7 @@
                         <div><div class="text-3xl font-light mb-1">99.8%</div><div class="text-[10px] uppercase tracking-widest text-zinc-400">Metal Density</div></div>
                     </div>
                 </div>
-                <div class="md:w-1/2"><img src="/static/images/PrintHead.png" alt="" class="rounded-sm shadow-2xl" onerror="this.src='/static/images/Ink.JPG'"></div>
+                <div class="md:w-1/2"><img src="{{BASE}}/static/images/PrintHead.png" alt="" class="rounded-sm shadow-2xl" onerror="this.src='{{BASE}}/static/images/Ink.JPG'"></div>
             </div>
         </main>
     </template>
@@ -604,7 +613,7 @@
                                         <div class="w-full flex flex-col items-center text-center py-2 fade-in" role="status" aria-live="polite">
                                             <!-- Crop the clip's baked-in black side bars (as in P2) -->
                                             <div class="overflow-hidden rounded-xl w-full max-w-[560px]" style="aspect-ratio:1088/720;">
-                                                <video src="/static/videos/atelier-loading.mp4" autoplay muted loop playsinline preload="auto"
+                                                <video src="{{BASE}}/static/videos/atelier-loading.mp4" autoplay muted loop playsinline preload="auto"
                                                        class="w-full h-full object-cover" style="object-position:73% 50%;"></video>
                                             </div>
                                             <h2 class="brand-font mt-6 sm:mt-7 text-[24px] sm:text-[30px] font-medium leading-tight" style="color:#2A2A2A;" x-text="waitPreset.title"></h2>
@@ -1101,6 +1110,63 @@
             </div>
         </main>
     </template>
+
+    <!-- ── Developer AI-mode control (internal: shown only after the developer key is verified) ── -->
+    <div x-show="view === 'home' && devMode" x-cloak class="fixed left-4 bottom-4 z-[90] w-[300px] rounded-xl shadow-2xl border bg-white p-4 text-[12px]"
+         style="border-color:#DCDCDC;" role="region" aria-label="Developer AI mode">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-[10px] uppercase tracking-[0.16em] font-semibold text-zinc-500">Developer · internal</span>
+            <button @click="forgetDevKey()" class="text-zinc-400 hover:text-zinc-700" title="Hide and forget the developer key" aria-label="Close developer panel">✕</button>
+        </div>
+        <div class="flex items-center gap-2 text-[14px] font-semibold text-zinc-900">
+            AI Mode:
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[12px]"
+                  :style="devMode?.mode === 'live' ? 'background:#ECFDF3;color:#146C43;border:1px solid #B7E4C7' : 'background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8'">
+                <span class="w-1.5 h-1.5 rounded-full" :class="devMode?.mode === 'live' ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                <span x-text="devMode?.mode === 'live' ? 'Live' : 'Mock'"></span>
+            </span>
+        </div>
+        <p class="text-zinc-500 mt-1" x-text="'Set by: ' + (devMode?.source || '')"></p>
+        <p x-show="devMode?.active_jobs" class="text-zinc-500 mt-1" x-text="devMode?.active_jobs + ' generation(s) running — switching waits until they finish.'"></p>
+        <div class="mt-3 flex gap-2">
+            <button x-show="devMode?.mode === 'live'" @click="switchAiMode('mock')" :disabled="devBusy" class="btn-black flex-1 py-2 !text-[11px]">Switch to Mock</button>
+            <button x-show="devMode?.mode === 'mock' && devMode?.live_available" @click="liveConfirmOpen = true; devError = ''" :disabled="devBusy" class="btn-outline flex-1 py-2 !text-[11px]">Switch to Live…</button>
+        </div>
+        <p x-show="devMode?.mode === 'mock' && !devMode?.live_available" class="text-zinc-400 mt-2">Live mode needs FAL_KEY in the server configuration.</p>
+        <p x-show="devError && !liveConfirmOpen" class="mt-2" style="color:#A1261D;" x-text="devError"></p>
+    </div>
+
+    <!-- Developer key prompt -->
+    <div x-show="devPromptOpen" x-cloak class="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center p-4" @click.self="devPromptOpen = false" @keydown.escape.window="devPromptOpen = false">
+        <div class="bg-white max-w-sm w-full rounded-xl shadow-2xl p-6">
+            <h3 class="brand-font text-xl mb-1 text-zinc-900">Developer access</h3>
+            <p class="text-[12px] text-zinc-500 mb-4">Internal tool. Enter the server's developer key (P3_ADMIN_KEY).</p>
+            <input type="password" x-model="devKeyInput" @keydown.enter="devConnect()" placeholder="Developer key" autocomplete="off"
+                   class="w-full rounded-lg text-[14px] px-4 py-3 border border-zinc-200 focus:border-zinc-900 transition">
+            <p x-show="devError" class="text-[12px] mt-2" style="color:#A1261D;" x-text="devError"></p>
+            <div class="flex gap-3 mt-5">
+                <button @click="devPromptOpen = false" class="btn-outline flex-1 py-2.5">Cancel</button>
+                <button @click="devConnect()" :disabled="!devKeyInput.trim()" class="btn-black flex-1 py-2.5">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Deliberate switch to Live AI: explicit cost warning + typed confirmation -->
+    <div x-show="liveConfirmOpen" x-cloak class="fixed inset-0 bg-black/60 z-[130] flex items-center justify-center p-4" @click.self="liveConfirmOpen = false" @keydown.escape.window="liveConfirmOpen = false">
+        <div class="bg-white max-w-md w-full rounded-xl shadow-2xl p-6">
+            <h3 class="brand-font text-xl mb-2" style="color:#A1261D;">Switch to Live AI?</h3>
+            <p class="text-[13px] text-zinc-700 leading-relaxed">Live mode sends real requests to fal.ai (Nano Banana Pro images, Minimax movies, Hitem3D meshes). <strong>Every design, refinement, movie and mesh is billed.</strong> This applies to everyone using this server until it is switched back.</p>
+            <p class="text-[12px] text-zinc-500 mt-3">To confirm, type exactly:</p>
+            <p class="text-[12px] font-mono bg-zinc-50 border border-zinc-200 rounded px-2 py-1 mt-1 select-all" x-text="devMode?.live_confirmation"></p>
+            <input type="text" x-model="liveConfirmText" placeholder="Type the confirmation sentence" autocomplete="off"
+                   class="w-full rounded-lg text-[13px] px-3 py-2.5 border border-zinc-200 focus:border-zinc-900 transition mt-2">
+            <p x-show="devError" class="text-[12px] mt-2" style="color:#A1261D;" x-text="devError"></p>
+            <div class="flex gap-3 mt-5">
+                <button @click="liveConfirmOpen = false; liveConfirmText = ''" class="btn-black flex-1 py-2.5">Stay in Mock</button>
+                <button @click="switchAiMode('live')" :disabled="devBusy || liveConfirmText.trim() !== devMode?.live_confirmation" class="btn-outline flex-1 py-2.5" style="color:#A1261D !important; border-color:#A1261D !important;">Switch to Live</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ── Sign-in modal (operator-issued access token) ── -->
     <div x-show="signInOpen" x-cloak class="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center p-4" @click.self="signInOpen = false" @keydown.escape.window="signInOpen = false">

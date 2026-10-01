@@ -103,6 +103,9 @@ class MockProvider:
         return [S for S in self.Submissions if S[0] == Endpoint]
 
     # ── provider interface ───────────────────────────────────────────────
+    def Owns(self, RequestId: str) -> bool:
+        return RequestId.startswith("mockreq_")
+
     async def Upload(self, Data: bytes, ContentType: str) -> str:
         if self.FailUploads:
             raise ProviderError("Mock upload failure", "upload_failed")

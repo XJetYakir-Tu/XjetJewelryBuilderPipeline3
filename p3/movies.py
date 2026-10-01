@@ -96,7 +96,13 @@ class MovieService:
         Db = self.Ctx.Db
         Resumed = Interrupted = 0
         for M in Db.All("SELECT id, provider_request_id FROM movies WHERE status IN ('queued','running')"):
-            if M["provider_request_id"]:
+            if M["provider_request_id"] and not self.Ctx.Provider.Owns(M["provider_request_id"]):
+                if self.Ctx.Provider.Name == "mock":
+                    continue      # live request: resumes when live mode is active
+                Db.Update("movies", M["id"], status="interrupted", error_code="interrupted",
+                          error="This mock-mode movie cannot be resumed in live mode. You can retry.")
+                Interrupted += 1
+            elif M["provider_request_id"]:
                 self.Ctx.Runner.Spawn(f"movie:{M['id']}", self._Drive(M["id"]))
                 Resumed += 1
             else:

@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="p3-base" content="{{BASE}}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pipeline 3 — Developer mesh tools</title>
   <meta name="robots" content="noindex">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="{{BASE}}/static/styles.css">
   <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
   <style>
     .dev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
@@ -85,18 +86,19 @@
   </template>
 </main>
 <script>
+const BASE = (document.querySelector('meta[name="p3-base"]')?.content || '').replace(/\/+$/, '');
 function devApp() {
   return {
     key: '', keyInput: '', ok: false, error: '', busy: false, mode: null,
     candidates: [], selected: null, meshes: [], _poll: null,
     settings: { export_format: 'stl', resolution: '2048quality', face_count: 2000000 },
     async init() {
-      try { this.mode = (await (await fetch('/api/health')).json()).mode; } catch {}
+      try { this.mode = (await (await fetch(BASE + '/api/health')).json()).mode; } catch {}
       try { this.key = sessionStorage.getItem('p3_dev_key') || ''; } catch {}
       if (this.key) await this.connect(this.key);
     },
     async req(method, path, body) {
-      const r = await fetch(path, { method, headers: { 'Authorization': 'Bearer ' + this.key,
+      const r = await fetch(BASE + path, { method, headers: { 'Authorization': 'Bearer ' + this.key,
         ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
       if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error?.message || ('HTTP ' + r.status)); }
       return r;

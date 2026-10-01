@@ -6,7 +6,11 @@
 //     for, so late results never land in a different design;
 //   * reload only READS state — it never re-submits paid generation work.
 
-const STORE_KEY = 'p3_state';
+// Base path injected by the server (<meta name="p3-base">), e.g. "/JewelryB2C3" or "" at the root.
+// EVERY request goes through url() so nothing ever escapes to root /api, /static or /assets.
+const BASE = (document.querySelector('meta[name="p3-base"]')?.content || '').replace(/\/+$/, '');
+const url = (path) => BASE + path;
+const STORE_KEY = 'p3_state' + (BASE ? ':' + BASE : '');
 const STUDIO_VIEWS = ['ai-studio', 'review', 'checkout'];
 const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'designers',
                     'terms', 'privacy', 'shipping-returns', 'contact'];
@@ -88,6 +92,10 @@ function p3App() {
     // ── bag ──────────────────────────────────────────────────────────
     bag: null,
 
+    // ── developer AI-mode control (internal; needs P3_ADMIN_KEY) ──────
+    devKey: '', devKeyInput: '', devPromptOpen: false, devError: '', devMode: null,
+    liveConfirmOpen: false, liveConfirmText: '', devBusy: false,
+
     _poll: null, _pollCust: null,
     waitStatusIndex: 0,
 
@@ -106,6 +114,8 @@ function p3App() {
         this.token = st.token;
         try { this.session = await this.api('GET', '/api/session'); } catch { this.token = ''; }
       }
+      try { this.devKey = sessionStorage.getItem('p3_dev_key') || ''; } catch { this.devKey = ''; }
+      if (this.devKey) this.loadDevMode();
       const hashView = (location.hash || '').replace('#', '');
       if (PAGE_VIEWS.includes(hashView)) this.view = hashView;
       if (!this.token) return;
@@ -126,7 +136,7 @@ function p3App() {
       else if (body !== null && body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
       let resp;
       try {
-        resp = await fetch(path, { method, headers, body: payload });
+        resp = await fetch(url(path), { method, headers, body: payload });
       } catch (e) {
         throw new ApiError(0, 'network', 'Network error — please check your connection.');
       }
@@ -142,6 +152,39 @@ function p3App() {
     // ── mode (mock vs live) ───────────────────────────────────────────
     get isMock() { return this.health?.mode === 'mock'; },
     get isLive() { return this.health?.mode === 'live'; },
+
+    // ── developer AI-mode control ──────────────────────────────────────
+    async devRequest(method, path, body) {
+      const resp = await fetch(url(path), { method, headers: { 'Authorization': 'Bearer ' + this.devKey,
+        ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new ApiError(resp.status, data.error?.code || 'error', data.error?.message || ('HTTP ' + resp.status));
+      return data;
+    },
+    async loadDevMode() {
+      try { this.devMode = await this.devRequest('GET', '/api/dev/mode'); }
+      catch (e) { this.devMode = null; if (e.status === 403 || e.status === 503) this.forgetDevKey(); }
+    },
+    async devConnect() {
+      this.devError = ''; this.devKey = this.devKeyInput.trim();
+      try {
+        this.devMode = await this.devRequest('GET', '/api/dev/mode');
+        try { sessionStorage.setItem('p3_dev_key', this.devKey); } catch {}
+        this.devPromptOpen = false; this.devKeyInput = '';
+      } catch (e) { this.devError = e.message; this.devKey = ''; }
+    },
+    forgetDevKey() { this.devKey = ''; this.devMode = null; try { sessionStorage.removeItem('p3_dev_key'); } catch {} },
+    async switchAiMode(target) {
+      this.devError = ''; this.devBusy = true;
+      try {
+        const body = { mode: target };
+        if (target === 'live') body.confirmation = this.liveConfirmText.trim();
+        this.devMode = await this.devRequest('POST', '/api/dev/mode', body);
+        this.liveConfirmOpen = false; this.liveConfirmText = '';
+        try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch {}
+      } catch (e) { this.devError = e.message; }
+      finally { this.devBusy = false; }
+    },
 
     // ── navigation ────────────────────────────────────────────────────
     navigateTo(v) {

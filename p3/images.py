@@ -258,7 +258,14 @@ class ImageService:
         Resumed = Interrupted = 0
         for C in Db.All("SELECT c.id, c.provider_request_id FROM candidates c "
                         "WHERE c.status IN ('pending', 'generating')"):
-            if C["provider_request_id"]:
+            if C["provider_request_id"] and not self.Ctx.Provider.Owns(C["provider_request_id"]):
+                if self.Ctx.Provider.Name == "mock":
+                    Logger.warning("Candidate %s has a live request; it resumes when live mode is active", C["id"])
+                    continue
+                Db.Update("candidates", C["id"], status="failed", error_code="interrupted",
+                          error="This mock-mode generation cannot be resumed in live mode. You can retry.")
+                Interrupted += 1
+            elif C["provider_request_id"]:
                 self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"]))
                 Resumed += 1
             else:

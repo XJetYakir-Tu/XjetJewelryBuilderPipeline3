@@ -19,17 +19,20 @@ DevProfile = ConfigDir / "pricing_profile.dev-example.json"
 
 class Harness:
     def __init__(self, TmpPath: Path, Profile: Path = ShippedProfile, AllowUnapproved=False,
-                 AdminKey=None, Provider=None):
+                 AdminKey=None, Provider=None, BasePath="", FalKey=None, Factories=None):
         self.TmpPath = TmpPath
         self.Settings = LoadSettings(DataDir=TmpPath / "var", Provider="mock", PricingProfilePath=Profile,
                                      AllowUnapprovedPricing=AllowUnapproved, AdminKey=AdminKey,
-                                     PollIntervalS=0.005, MaxTransientPollErrors=5, MockLatencyS=0.0)
+                                     PollIntervalS=0.005, MaxTransientPollErrors=5, MockLatencyS=0.0,
+                                     BasePath=BasePath, FalKey=FalKey)
+        self.Base = self.Settings.BasePath
         self.Provider = Provider or MockProvider(LatencyS=0.0, RenderVideo=False)
-        self.App = CreateApp(self.Settings, self.Provider)
+        self.App = CreateApp(self.Settings, None if Factories else self.Provider, ProviderFactories=Factories)
         self.Ctx = self.App.state.Ctx
         self.Svc = self.App.state.Services
         self.Token, self.Who = self.Ctx.Accounts.IssueToken("test")
-        self.Client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.App), base_url="http://p3.test",
+        # With a base path every test request goes to http://p3.test/<Base>/..., exactly like production.
+        self.Client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.App), base_url="http://p3.test" + self.Base,
                                         headers={"X-Access-Token": self.Token})
 
     async def Idle(self):
@@ -57,7 +60,8 @@ class Harness:
         return R.json()
 
     def AssetBytes(self, Url: str) -> bytes:
-        return (self.Settings.AssetsDir / Url.removeprefix("/assets/")).read_bytes()
+        assert Url.startswith(self.Base + "/assets/"), Url
+        return (self.Settings.AssetsDir / Url.removeprefix(self.Base + "/assets/")).read_bytes()
 
 
 @pytest.fixture

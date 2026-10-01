@@ -27,6 +27,9 @@ class FalProvider:
     def __init__(self, Key: str):
         self.Client = fal_client.AsyncClient(key=Key)
 
+    def Owns(self, RequestId: str) -> bool:
+        return not RequestId.startswith("mockreq_")
+
     async def Upload(self, Data: bytes, ContentType: str) -> str:
         try:
             return await self.Client.upload(Data, ContentType)

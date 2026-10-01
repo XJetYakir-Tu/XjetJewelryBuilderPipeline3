@@ -18,6 +18,12 @@ This document separates three things:
 
 > - **Accounts boundary (2026-10-01).** Identity, tokens and usage moved behind `p3/accounts` into their own `accounts.db`. Application rows store `owner_account_id`, and a credit check runs before every paid action. This replaces the token-based access described in §3. See [ACCOUNTS.md](ACCOUNTS.md) for the future shared-auth integration point with P2.
 
+> - **Phase 1, base path and AI mode (2026-10-01).**
+>   - `P3_BASE_PATH=/JewelryB2C3` mounts the whole app under the prefix. `/JewelryB2C3` redirects (308) to `/JewelryB2C3/`, and nothing is served at the root.
+>   - Pages get the prefix injected, browser requests go through one prefixed helper, and asset URLs from the API include the prefix. `tests/test_base_path.py` guards this.
+>   - The AI provider mode has a developer-only runtime switch (`/api/dev/mode`, a Home footer panel), persisted in `var/runtime.json`. Live mode requires a typed cost confirmation, and switching is refused while jobs run.
+>   - Reconciliation only resumes requests that belong to the current provider. Live requests found in mock mode wait for live mode.
+
 ## 1. Isolation from Pipeline 2
 
 - This is an independent Git repository with its own remote. Nothing here imports, links to, or reads Pipeline 2 at runtime.

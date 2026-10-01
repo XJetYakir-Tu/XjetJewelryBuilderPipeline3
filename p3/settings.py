@@ -5,6 +5,7 @@ Nothing here points at Pipeline 2. All runtime data lives under P3_DATA_DIR
 """
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +45,7 @@ class Settings:
     PollIntervalS: float
     MaxTransientPollErrors: int
     AccountProvider: str = "local"   # P3_ACCOUNT_PROVIDER; see docs/ACCOUNTS.md
+    BasePath: str = ""               # P3_BASE_PATH, e.g. "/JewelryB2C3"; "" = served at the root
 
     @property
     def DbPath(self) -> Path:
@@ -55,9 +57,26 @@ class Settings:
         return self.DataDir / "assets"
 
     @property
+    def RuntimeStatePath(self) -> Path:
+        """Developer-chosen runtime settings (AI mode) that override .env until changed again."""
+        return self.DataDir / "runtime.json"
+
+    @property
     def DevDir(self) -> Path:
         """Developer-only artifacts (meshes). Never served statically."""
         return self.DataDir / "dev"
+
+
+def NormalizeBasePath(Raw: str | None) -> str:
+    """"" or "/Segment[/Segment]" without a trailing slash (so "/JewelryB2C3/" -> "/JewelryB2C3")."""
+    Value = (Raw or "").strip().rstrip("/")
+    if not Value:
+        return ""
+    if not Value.startswith("/"):
+        Value = "/" + Value
+    if not re.fullmatch(r"(/[A-Za-z0-9._-]+)+", Value) or any(Seg in (".", "..") for Seg in Value.split("/")):
+        raise ValueError(f"P3_BASE_PATH must look like /JewelryB2C3, got {Raw!r}")
+    return Value
 
 
 def LoadSettings(**Overrides) -> Settings:
@@ -76,8 +95,10 @@ def LoadSettings(**Overrides) -> Settings:
         PollIntervalS=float(os.environ.get("P3_POLL_INTERVAL_S", "2.0")),
         MaxTransientPollErrors=int(os.environ.get("P3_MAX_TRANSIENT_POLL_ERRORS", "10")),
         AccountProvider=os.environ.get("P3_ACCOUNT_PROVIDER", "local").strip().lower(),
+        BasePath=os.environ.get("P3_BASE_PATH", ""),
     )
     Values.update(Overrides)
+    Values["BasePath"] = NormalizeBasePath(Values["BasePath"])
     S = Settings(**Values)
     if S.Provider not in ("mock", "fal"):
         raise ValueError(f"P3_PROVIDER must be 'mock' or 'fal', got {S.Provider!r}")

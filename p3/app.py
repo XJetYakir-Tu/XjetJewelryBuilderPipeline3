@@ -1,6 +1,8 @@
 """FastAPI application for Pipeline 3.
 
 Run:  .venv/Scripts/python -m uvicorn p3.app:App --port 8310
+With P3_BASE_PATH=/JewelryB2C3 every page, API, static file and asset is served
+under that prefix (the deployment layout behind proto/tron); without it, at "/".
 """
 
 import logging
@@ -8,7 +10,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import Body, FastAPI, File, Form, Header, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from p3 import assets
@@ -22,19 +24,12 @@ from p3.designs import DesignService
 from p3.images import ImageService
 from p3.meshes import MeshService
 from p3.migrations import MigrateToAccounts
+from p3.modes import DefaultFactories, ModeManager, ResolveStartupMode
 from p3.movies import MovieService
 from p3.pricing.service import PricingService
 from p3.settings import LoadSettings, Settings, WebDir
 
 Logger = logging.getLogger("p3.app")
-
-
-def BuildProvider(S: Settings):
-    if S.Provider == "fal":
-        from p3.providers.fal import FalProvider
-        return FalProvider(S.FalKey)
-    from p3.providers.mock import MockProvider
-    return MockProvider(LatencyS=S.MockLatencyS)
 
 
 class Services:
@@ -51,19 +46,20 @@ class Services:
                 "meshes": self.Meshes.Reconcile()}
 
 
-def _VersionedPage(Name: str) -> str:
-    """Serve a page with ?v=<mtime> on its local scripts/styles, so a browser can never pair a
-    new page with a cached older app.js (which silently breaks the UI after an update)."""
+def _VersionedPage(Name: str, BasePath: str) -> str:
+    """Render a page: every "{{BASE}}" becomes the base path, and local scripts/styles get
+    ?v=<mtime> so a browser can never pair a new page with a cached older app.js."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
     for Asset in ("app.js", "styles.css"):
         Path_ = WebDir / Asset
         if Path_.is_file():
-            Html = Html.replace(f'"/static/{Asset}"', f'"/static/{Asset}?v={Path_.stat().st_mtime_ns}"')
-    return Html
+            Html = Html.replace(f'"{{{{BASE}}}}/static/{Asset}"', f'"{{{{BASE}}}}/static/{Asset}?v={Path_.stat().st_mtime_ns}"')
+    return Html.replace("{{BASE}}", BasePath)
 
 
-def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
+def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFactories: dict | None = None) -> FastAPI:
     S = SettingsObj or LoadSettings()
+    Base = S.BasePath
     S.AssetsDir.mkdir(parents=True, exist_ok=True)
     S.DevDir.mkdir(parents=True, exist_ok=True)
     # Asset paths add ~130 characters (designs/<id>/candidates/<id>.png); Windows fails past 260.
@@ -74,32 +70,44 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
     # Identity is a separate domain (own provider + own storage); app data keys rows by account id only.
     Accounts = BuildAccountProvider(S.AccountProvider, S.DataDir)
     Migrated = MigrateToAccounts(S.DbPath, Accounts)    # one-time, pre-accounts databases only
-    Ctx = Context(Settings=S, Db=Database(S.DbPath), Provider=ProviderObj or BuildProvider(S),
+    Factories = ProviderFactories or DefaultFactories(S)
+    if ProviderObj is not None:                       # tests inject a provider instance
+        Mode, ModeSource = ("live" if ProviderObj.Name == "fal" else "mock"), "injected"
+    else:
+        Mode, ModeSource = ResolveStartupMode(S)
+    Ctx = Context(Settings=S, Db=Database(S.DbPath), Provider=ProviderObj or Factories[Mode](),
                   Gen=LoadGenerationConfig(), Catalog=Catalog,
                   Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing),
                   Accounts=Accounts)
     Svc = Services(Ctx)
+    Modes = ModeManager(Ctx, Mode, ModeSource, Factories)
 
     @asynccontextmanager
     async def Lifespan(_App):
         Summary = Svc.Reconcile()
         Logger.info("Startup reconciliation: %s (provider=%s)", Summary, Ctx.Provider.Name)
+        Logger.warning("AI mode: %s (%s); base path: %s", Modes.Mode.upper(), Modes.Source, Base or "/")
         _App.state.Reconciliation = Summary
         if Migrated:
             Logger.warning("Account migration on startup: %s", Migrated)
         yield
         await Ctx.Runner.Shutdown()
 
-    App_ = FastAPI(title="XJet Jewelry Builder — Pipeline 3", lifespan=Lifespan)
+    # With a base path the routes live on an inner app mounted at Base; Starlette does not run a
+    # mounted app's lifespan, so the outer app owns it.
+    App_ = FastAPI(title="XJet Jewelry Builder — Pipeline 3", lifespan=None if Base else Lifespan,
+                   docs_url="/docs", openapi_url="/openapi.json")
     App_.state.Ctx = Ctx
     App_.state.Services = Svc
+    App_.state.Modes = Modes
 
     @App_.middleware("http")
     async def _NoStaleUi(Req: Request, CallNext):
         # The page and its scripts change with every release; make browsers revalidate
         # (cheap 304s via ETag) instead of running a cached, outdated app.js.
         Resp = await CallNext(Req)
-        if Req.url.path in ("/", "/dev") or Req.url.path.startswith("/static/"):
+        Rel = Req.url.path[len(Base):] if Base and Req.url.path.startswith(Base) else Req.url.path
+        if Rel in ("/", "/dev") or Rel.startswith("/static/"):
             Resp.headers["Cache-Control"] = "no-cache"
         return Resp
 
@@ -118,11 +126,11 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
     # ── pages / static ───────────────────────────────────────────────────
     @App_.get("/", include_in_schema=False)
     async def Index():
-        return HTMLResponse(_VersionedPage("index.html"))
+        return HTMLResponse(_VersionedPage("index.html", Base))
 
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():
-        return HTMLResponse(_VersionedPage("dev.html"))
+        return HTMLResponse(_VersionedPage("dev.html", Base))
 
     App_.mount("/static", StaticFiles(directory=WebDir), name="static")
     App_.mount("/assets", StaticFiles(directory=S.AssetsDir), name="assets")
@@ -131,7 +139,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
     @App_.get("/api/health")
     async def Health():
         return {"ok": True, "provider": Ctx.Provider.Name,
-                "mode": "live" if Ctx.Provider.Name == "fal" else "mock",
+                "mode": Modes.Mode, "mode_source": Modes.Source, "base_path": Base or "/",
                 "pricing_profile": Ctx.Pricing.ProfileVersion,
                 "pricing_profile_approved": bool(Ctx.Pricing.Profile and Ctx.Pricing.Profile["approved"]),
                 "unapproved_pricing_allowed": S.AllowUnapprovedPricing,
@@ -244,6 +252,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
         RequireDeveloper(Ctx, authorization)
         return {"ok": True, "mesh_defaults": Ctx.Gen.Mesh.Params, "mesh_config_version": Ctx.Gen.Mesh.Version}
 
+    @App_.get("/api/dev/mode")
+    async def DevMode(authorization: str | None = Header(None)):
+        RequireDeveloper(Ctx, authorization)
+        return Modes.Status()
+
+    @App_.post("/api/dev/mode")
+    async def DevSwitchMode(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        RequireDeveloper(Ctx, authorization)
+        return Modes.Switch(Body_.get("mode"), Body_.get("confirmation"))
+
     @App_.get("/api/dev/candidates")
     async def DevCandidates(authorization: str | None = Header(None)):
         RequireDeveloper(Ctx, authorization)
@@ -283,7 +301,26 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None) -> FastAPI:
         FsPath, Name = Svc.Meshes.FilePath(MeshId, kind)
         return FileResponse(FsPath, filename=f"{MeshId}_{Name}", media_type="application/octet-stream")
 
-    return App_
+    if not Base:
+        return App_
+
+    Outer = FastAPI(title="XJet Jewelry Builder — Pipeline 3", lifespan=Lifespan, docs_url=None,
+                    redoc_url=None, openapi_url=None)
+    Outer.state.Ctx = Ctx
+    Outer.state.Services = Svc
+    Outer.state.Modes = Modes
+
+    @Outer.get(Base, include_in_schema=False)
+    async def _BaseSlash():
+        return RedirectResponse(Base + "/", status_code=308)
+
+    @Outer.get("/", include_in_schema=False)
+    async def _RootToBase():
+        # Local convenience only: behind proto/tron, "/" never reaches Pipeline 3.
+        return RedirectResponse(Base + "/", status_code=307)
+
+    Outer.mount(Base, App_)
+    return Outer
 
 
 def __getattr__(Name):
