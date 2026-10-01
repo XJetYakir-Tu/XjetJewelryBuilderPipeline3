@@ -28,14 +28,17 @@ def test_identity_lives_in_its_own_database(H):
     assert not Acc & {"designs", "batches", "candidates", "bag_lines"}
 
 
-def test_account_ids_are_namespaced_and_tokens_are_hashed(H):
+def test_account_ids_are_namespaced_and_tokens_are_looked_up_by_hash(H):
     assert re.fullmatch(r"p3local:acct_[0-9a-f]{32}", H.Who.AccountId)
     assert re.fullmatch(r"[A-Z]{6}", H.Token)                               # P2-style access token
-    Raw = (H.Settings.DataDir / "accounts.db").read_bytes()
-    assert H.Token.encode() not in Raw                     # plaintext token never stored
     with sqlite3.connect(H.Settings.DataDir / "accounts.db") as Conn:
+        # Authentication is by hash; the plaintext lives only in accounts.delivery_token, which the
+        # admin table shows and registration re-sends (as P2, which stores tokens in plaintext).
         assert Conn.execute("SELECT COUNT(*) FROM access_tokens WHERE token_hash = ?",
                             (HashToken(H.Token),)).fetchone()[0] == 1
+        assert H.Token not in [R[0] for R in Conn.execute("SELECT token_hint FROM access_tokens")]
+        assert Conn.execute("SELECT delivery_token FROM accounts WHERE account_id = ?",
+                            (H.Who.AccountId,)).fetchone()[0] == H.Token
 
 
 async def test_application_rows_store_account_id_not_token(H):

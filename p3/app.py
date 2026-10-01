@@ -24,8 +24,10 @@ from p3.designs import DesignService
 from p3.images import ImageService
 from p3.meshes import MeshService
 from p3.migrations import MigrateToAccounts
+from p3.admin import RegisterAdmin
 from p3.mail import BuildMailer
 from p3.registration import RegistrationService
+from p3.usage import BackfillUsageAnnotations
 from p3.modes import DefaultFactories, ModeManager, ResolveStartupMode
 from p3.movies import MovieService
 from p3.pricing.service import PricingService
@@ -52,7 +54,7 @@ def _VersionedPage(Name: str, BasePath: str) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, and local scripts/styles get
     ?v=<mtime> so a browser can never pair a new page with a cached older app.js."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
-    for Asset in ("app.js", "styles.css"):
+    for Asset in ("app.js", "admin.js", "styles.css"):
         Path_ = WebDir / Asset
         if Path_.is_file():
             Html = Html.replace(f'"{{{{BASE}}}}/static/{Asset}"', f'"{{{{BASE}}}}/static/{Asset}?v={Path_.stat().st_mtime_ns}"')
@@ -82,6 +84,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing),
                   Accounts=Accounts)
     Svc = Services(Ctx)
+    Annotated = BackfillUsageAnnotations(Ctx)     # provider/endpoint on usage recorded before they were captured
+    if Annotated:
+        Logger.info("Annotated %d earlier usage events with provider/endpoint", Annotated)
     Modes = ModeManager(Ctx, Mode, ModeSource, Factories)
     Mailer = BuildMailer(S.DataDir)
     Registration = RegistrationService(Ctx, Mailer)
@@ -112,7 +117,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         # (cheap 304s via ETag) instead of running a cached, outdated app.js.
         Resp = await CallNext(Req)
         Rel = Req.url.path[len(Base):] if Base and Req.url.path.startswith(Base) else Req.url.path
-        if Rel in ("/", "/dev") or Rel.startswith("/static/"):
+        if Rel in ("/", "/dev", "/admin", "/admin/") or Rel.startswith("/static/"):
             Resp.headers["Cache-Control"] = "no-cache"
         return Resp
 
@@ -136,6 +141,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():
         return HTMLResponse(_VersionedPage("dev.html", Base))
+
+    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base))
 
     App_.mount("/static", StaticFiles(directory=WebDir), name="static")
     App_.mount("/assets", StaticFiles(directory=S.AssetsDir), name="assets")
@@ -162,7 +169,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.post("/api/register-token")
     async def RegisterToken(Body_: dict = Body(...)):
-        return Registration.SignInWithToken(Body_.get("Token", ""))
+        return Registration.SignInWithToken(Body_.get("Token", ""), Body_.get("Via", "token"))
 
     @App_.get("/api/token-status")
     async def TokenStatus(x_access_token: str | None = Header(None)):

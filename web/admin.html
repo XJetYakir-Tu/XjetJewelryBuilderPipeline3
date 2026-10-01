@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="p3-base" content="{{BASE}}">
+  <title>XJet Admin — Users</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="{{BASE}}/static/admin.js"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
+  <!-- Admin area (B2C2 admin_tokens / admin_token_detail look). Customer pages never link here. -->
+  <style>
+    [x-cloak] { display: none !important; }
+    body { font-family: 'Inter', sans-serif; }
+    .cinzel { font-family: 'Cinzel', serif; }
+    .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.15em; color: #a1a1aa; font-weight: 600; }
+    .inp { width: 100%; border: 1px solid #d4d4d8; padding: 8px 12px; font-size: 14px; outline: none; background: #fff; }
+    .inp:focus { border-color: #000; }
+    .btn { background: #000; color: #fff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; padding: 10px 20px; }
+    .btn:hover { background: #27272a; }
+    .btn:disabled { opacity: .4; }
+    .card { background: #fff; border: 1px solid #e4e4e7; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.15em; color: #a1a1aa; font-weight: 600; text-align: left; padding: 10px 12px; }
+    td { padding: 10px 12px; font-size: 13px; border-top: 1px solid #f4f4f5; vertical-align: middle; }
+    .badge { display: inline-block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; padding: 2px 8px; font-weight: 600; white-space: nowrap; }
+  </style>
+</head>
+<body class="bg-zinc-50 text-zinc-900 min-h-screen" x-data="adminApp()" x-init="init()">
+
+  <header class="bg-white border-b border-zinc-200">
+    <div class="max-w-6xl mx-auto px-4 md:px-8 py-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div class="flex items-center gap-3">
+        <span class="cinzel italic uppercase tracking-widest text-lg">XJet Admin</span>
+        <span class="text-[10px] uppercase tracking-widest text-zinc-400">JewelryB2C3</span>
+        <span x-show="mode" x-cloak class="badge" :class="mode === 'mock' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'"
+              x-text="mode === 'mock' ? 'Mock AI' : 'Live AI'"></span>
+      </div>
+      <nav class="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs uppercase tracking-widest">
+        <a :href="BASE + '/admin/'" @click.prevent="go('')" :class="!userId ? 'text-black font-semibold' : 'text-zinc-500 hover:text-black'">Users</a>
+        <a :href="BASE + '/dev'" class="text-zinc-500 hover:text-black">Developer tools</a>
+        <a :href="BASE + '/'" class="text-zinc-500 hover:text-black">← Site</a>
+        <button x-show="ok" x-cloak @click="signOut()" class="text-zinc-400 hover:text-black uppercase tracking-widest">Sign out</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ── Admin key gate (today: the developer key; later: admin role / company sign-in) ── -->
+  <main x-show="!ok" x-cloak class="max-w-md mx-auto p-8 mt-16">
+    <div class="card p-8 space-y-4">
+      <h1 class="cinzel text-xl">Admin sign-in</h1>
+      <p class="text-sm text-zinc-500">Enter the P3 admin key. It is kept only for this browser tab.</p>
+      <input type="password" class="inp" x-model="keyInput" placeholder="Admin key" @keydown.enter="connect()" autofocus>
+      <p x-show="error" class="text-sm text-red-600" x-text="error"></p>
+      <button class="btn w-full" @click="connect()" :disabled="busy || !keyInput.trim()">Sign in</button>
+    </div>
+  </main>
+
+  <!-- ══════════════════════════ Users list ══════════════════════════ -->
+  <main x-show="ok && !userId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+
+    <!-- Create -->
+    <section class="card p-6">
+      <p class="lbl mb-4">Generate Token</p>
+      <form class="grid grid-cols-1 md:grid-cols-[1fr_1fr_150px_auto] gap-4 items-end" @submit.prevent="create()">
+        <div><label class="lbl block mb-1.5">Name <span class="text-red-500">*</span></label>
+          <input class="inp" x-model="form.Name" required placeholder="Full name"></div>
+        <div><label class="lbl block mb-1.5">Email <span class="text-red-500">*</span></label>
+          <input class="inp" type="email" x-model="form.Email" required placeholder="name@example.com"></div>
+        <div><label class="lbl block mb-1.5">Max Generations</label>
+          <input class="inp" type="number" min="1" max="9999" x-model.number="form.MaxGenerations" required></div>
+        <button class="btn" :disabled="busy">Generate Token</button>
+      </form>
+      <div x-show="createError" x-cloak class="mt-4 px-4 py-3 border text-sm bg-red-50 border-red-200 text-red-700 flex items-center gap-3">
+        <span x-text="createError"></span>
+        <button x-show="duplicateOf" class="underline font-semibold" @click="go(duplicateOf)">Open existing user →</button>
+      </div>
+      <div x-show="created" x-cloak class="mt-4 px-4 py-3 border text-sm bg-emerald-50 border-emerald-200 text-emerald-800 flex flex-wrap items-center gap-3">
+        <span>Token created for <strong x-text="created?.name"></strong>:</span>
+        <code class="font-mono font-bold text-base tracking-[0.2em] bg-white border border-emerald-200 px-2 py-0.5" x-text="created?.token"></code>
+        <button class="underline" @click="copy(created?.token)" x-text="copied === created?.token ? 'Copied ✓' : 'Copy'"></button>
+        <span class="text-emerald-700">— copy it now and send it to the user.</span>
+      </div>
+    </section>
+
+    <!-- Table -->
+    <section class="card">
+      <div class="px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100">
+        <p class="lbl">All Users (<span x-text="filtered.length"></span>)</p>
+        <div class="flex items-center gap-4">
+          <input class="inp !w-64 !py-1.5" x-model="search" placeholder="Search name, email or token">
+          <label class="text-xs text-zinc-500 flex items-center gap-1.5"><input type="checkbox" x-model="showRemoved" @change="load()"> Show removed</label>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead><tr><th>Token</th><th>Name</th><th>Email</th><th>Used / Max</th><th>Status</th><th>Created</th><th>Last activity</th><th class="text-right">Actions</th></tr></thead>
+          <template x-for="u in filtered" :key="u.account_id">
+            <tbody>
+            <tr class="hover:bg-zinc-50 cursor-pointer" :class="['inactive','removed'].includes(u.status) ? 'opacity-50' : ''" @click="go(u.account_id)">
+              <td class="font-mono font-bold tracking-wider" x-text="u.token || '—'"></td>
+              <td x-text="u.name || '—'"></td>
+              <td class="text-zinc-600" x-text="u.email || '—'"></td>
+              <td :class="u.used >= u.max ? 'text-red-600 font-semibold' : ''" x-text="u.used + ' / ' + u.max"></td>
+              <td><span class="badge" :class="statusClass(u.status)" x-text="statusLabel(u.status)"></span></td>
+              <td class="text-zinc-500" x-text="date(u.created_at)"></td>
+              <td class="text-zinc-500" x-text="ago(u.last_activity_at)"></td>
+              <td class="text-right whitespace-nowrap space-x-3 text-xs" @click.stop>
+                <button class="text-blue-500 hover:underline" x-show="u.status !== 'removed'" @click="startEdit(u)">Edit</button>
+                <button class="text-zinc-400 hover:underline" x-show="!['inactive','removed'].includes(u.status)" @click="act(u, 'deactivate')">Deactivate</button>
+                <button class="text-green-600 hover:underline" x-show="u.status === 'inactive'" @click="act(u, 'activate')">Activate</button>
+                <button class="text-red-400 hover:underline" x-show="u.status !== 'removed'" @click="remove(u)">Remove</button>
+                <button class="text-green-600 hover:underline" x-show="u.status === 'removed'" @click="act(u, 'restore')">Restore</button>
+              </td>
+            </tr>
+            <tr x-show="editing === u.account_id" x-cloak class="bg-zinc-50">
+              <td colspan="8" class="!py-4" @click.stop>
+                <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_140px_auto_auto] gap-3 items-end">
+                  <div><label class="lbl block mb-1">Name *</label><input class="inp" x-model="edit.Name"></div>
+                  <div><label class="lbl block mb-1">Email *</label><input class="inp" type="email" x-model="edit.Email"></div>
+                  <div><label class="lbl block mb-1">Max Generations</label><input class="inp" type="number" min="1" max="9999" x-model.number="edit.MaxGenerations"></div>
+                  <label class="text-xs text-zinc-600 flex items-center gap-1.5 pb-2"><input type="checkbox" x-model="edit.ResetUsage">
+                    Reset usage (currently <span x-text="u.used"></span> used)</label>
+                  <div class="flex gap-2"><button class="btn" @click="saveEdit(u)" :disabled="busy">Save</button>
+                    <button class="text-xs uppercase tracking-widest text-zinc-500 px-3" @click="editing = null">Cancel</button></div>
+                </div>
+                <p x-show="editError" class="text-sm text-red-600 mt-2" x-text="editError"></p>
+              </td>
+            </tr>
+            </tbody>
+          </template>
+          <tbody x-show="!filtered.length"><tr><td colspan="8" class="text-center text-zinc-400 !py-10">No users.</td></tr></tbody>
+      </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- ══════════════════════════ User detail ══════════════════════════ -->
+  <main x-show="ok && userId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+    <p class="text-xs uppercase tracking-widest text-zinc-400"><a href="#" class="hover:text-black" @click.prevent="go('')">Users</a> / <span x-text="d?.user.name || userId"></span></p>
+    <p x-show="detailError" class="text-sm text-red-600" x-text="detailError"></p>
+
+    <template x-if="d">
+    <div class="space-y-8">
+      <!-- Header -->
+      <section class="card p-6 flex flex-wrap items-start justify-between gap-6">
+        <div class="space-y-1">
+          <div class="flex items-center gap-3">
+            <h1 class="cinzel text-2xl" x-text="d.user.name || 'Unnamed user'"></h1>
+            <span class="badge" :class="statusClass(d.user.status)" x-text="statusLabel(d.user.status)"></span>
+            <span class="badge bg-zinc-100 text-zinc-600" x-text="d.user.source === 'self' ? 'Self-registered' : 'Created by admin'"></span>
+          </div>
+          <p class="text-sm text-zinc-600" x-text="d.user.email || 'No email on record'"></p>
+          <div class="flex items-center gap-2 pt-2">
+            <span class="lbl">Token</span>
+            <code class="font-mono font-bold text-lg tracking-[0.2em]" x-text="d.user.token || '—'"></code>
+            <button x-show="d.user.token_complete" class="text-xs underline text-zinc-500" @click="copy(d.user.token)" x-text="copied === d.user.token ? 'Copied ✓' : 'Copy'"></button>
+          </div>
+          <p class="text-[11px] text-zinc-400 font-mono" x-text="d.user.account_id"></p>
+        </div>
+        <div class="flex gap-4 text-xs uppercase tracking-widest">
+          <button class="text-blue-500 hover:underline" x-show="d.user.status !== 'removed'" @click="go(''); $nextTick(() => startEdit(d.user))">Edit</button>
+          <button class="text-zinc-500 hover:underline" x-show="!['inactive','removed'].includes(d.user.status)" @click="act(d.user, 'deactivate')">Deactivate</button>
+          <button class="text-green-600 hover:underline" x-show="d.user.status === 'inactive'" @click="act(d.user, 'activate')">Activate</button>
+          <button class="text-red-500 hover:underline" x-show="d.user.status !== 'removed'" @click="remove(d.user)">Remove</button>
+          <button class="text-green-600 hover:underline" x-show="d.user.status === 'removed'" @click="act(d.user, 'restore')">Restore</button>
+        </div>
+      </section>
+
+      <!-- Account dates -->
+      <section class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <template x-for="f in [['Account created', d.user.created_at], ['Email verified', d.user.verified_at], ['First activity', d.user.first_activity_at], ['Last sign-in', d.user.last_sign_in_at], ['Last activity', d.user.last_activity_at]]">
+          <div class="card p-4"><p class="lbl mb-1" x-text="f[0]"></p>
+            <p class="text-sm font-medium" x-text="f[1] ? dateTime(f[1]) : '—'"></p>
+            <p class="text-[11px] text-zinc-400" x-text="f[1] ? ago(f[1]) : (f[0] === 'Last sign-in' ? 'Recorded since 1 Oct 2026' : '')"></p></div>
+        </template>
+      </section>
+
+      <!-- Usage totals -->
+      <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="card p-4 md:col-span-2">
+          <div class="flex justify-between items-baseline"><p class="lbl">Generations used (charged)</p>
+            <p class="text-sm"><strong x-text="d.totals.generations_used"></strong> / <span x-text="d.totals.generations_max"></span></p></div>
+          <div class="h-2 bg-zinc-100 mt-3"><div class="h-2" :class="barClass()" :style="'width:' + Math.min(100, 100 * d.totals.generations_used / Math.max(1, d.totals.generations_max)) + '%'"></div></div>
+          <p class="text-[11px] text-zinc-400 mt-2">One generation per finished 360° movie (B2C2 rule). Designs and refinements are not charged.</p>
+          <p x-show="(d.totals.movies.by_status.ready || 0) > d.totals.generations_used" class="text-[11px] text-amber-700 mt-1"
+             x-text="((d.totals.movies.by_status.ready || 0) - d.totals.generations_used) + ' finished movie(s) were not charged: they were made before the generation allowance was tracked, or the allowance was reset by an admin.'"></p>
+        </div>
+        <div class="card p-4"><p class="lbl mb-1">Jobs succeeded / failed</p>
+          <p class="text-2xl font-semibold"><span class="text-emerald-700" x-text="d.totals.jobs_succeeded"></span> <span class="text-zinc-300">/</span> <span :class="d.totals.jobs_failed ? 'text-red-600' : 'text-zinc-400'" x-text="d.totals.jobs_failed"></span></p>
+          <p class="text-[11px] text-zinc-400" x-show="d.totals.jobs_in_progress" x-text="d.totals.jobs_in_progress + ' in progress'"></p></div>
+        <div class="card p-4"><p class="lbl mb-1">Sign-ins</p><p class="text-2xl font-semibold" x-text="d.totals.sign_ins"></p></div>
+        <template x-for="s in statCards()">
+          <div class="card p-4"><p class="lbl mb-1" x-text="s.label"></p>
+            <p class="text-2xl font-semibold" x-text="s.value"></p>
+            <p class="text-[11px] text-zinc-400" x-text="s.sub"></p></div>
+        </template>
+      </section>
+
+      <!-- Usage over time -->
+      <section class="card p-6">
+        <div class="flex flex-wrap items-baseline justify-between gap-3 mb-4">
+          <p class="lbl">Usage over time · last 90 days</p>
+          <div class="flex gap-4 text-[11px] text-zinc-500">
+            <template x-for="k in chartKinds"><span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5" :style="'background:' + k.color"></span><span x-text="k.label"></span></span></template>
+          </div>
+        </div>
+        <div class="flex items-end gap-[2px] h-36 border-b border-zinc-200">
+          <template x-for="day in chartDays()" :key="day.day">
+            <div class="flex-1 flex flex-col-reverse h-full justify-start group relative" :title="dayTitle(day)">
+              <template x-for="k in chartKinds"><div :style="'height:' + (100 * (day[k.key] || 0) / chartMax()) + '%;background:' + k.color"></div></template>
+            </div>
+          </template>
+        </div>
+        <div class="flex justify-between text-[10px] text-zinc-400 mt-1"><span x-text="chartDays()[0]?.day"></span><span>today</span></div>
+      </section>
+
+      <!-- Provider usage ledger (cost-ready) -->
+      <section class="card">
+        <div class="px-6 py-4 border-b border-zinc-100 flex items-baseline justify-between">
+          <p class="lbl">Provider usage</p>
+          <p class="text-[11px] text-zinc-400">Cost per request is not configured yet — costs will appear here once a provider price table is added.</p>
+        </div>
+        <table class="w-full">
+          <thead><tr><th>Kind</th><th>Provider</th><th>Endpoint</th><th class="text-right">Requests</th><th class="text-right">Units</th><th class="text-right">Cost</th></tr></thead>
+          <tbody>
+            <template x-for="r in d.usage_ledger"><tr>
+              <td x-text="kindLabel(r.kind)"></td>
+              <td><span class="badge" :class="r.provider === 'mock' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'" x-text="r.provider"></span></td>
+              <td class="font-mono text-xs text-zinc-600" x-text="r.endpoint"></td>
+              <td class="text-right" x-text="r.requests"></td><td class="text-right" x-text="r.units"></td>
+              <td class="text-right text-zinc-400" x-text="r.cost_usd == null ? '—' : '$' + r.cost_usd.toFixed(2)"></td></tr></template>
+            <tr x-show="!d.usage_ledger.length"><td colspan="6" class="text-center text-zinc-400 !py-6">No provider requests yet.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Designs -->
+      <section class="space-y-3">
+        <p class="lbl">Designs (<span x-text="d.designs.length"></span>)</p>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          <template x-for="g in d.designs" :key="g.id">
+            <button class="card text-left hover:shadow-md transition" :class="openDesign === g.id ? 'ring-2 ring-black' : ''" @click="openDesign = openDesign === g.id ? null : g.id">
+              <div class="aspect-square bg-zinc-100 flex items-center justify-center overflow-hidden">
+                <img x-show="g.thumbnail_url" :src="g.thumbnail_url" class="w-full h-full object-cover" loading="lazy" alt="">
+                <span x-show="!g.thumbnail_url" class="text-xs text-zinc-400">No image</span>
+              </div>
+              <div class="p-3 space-y-0.5">
+                <p class="text-sm font-medium truncate" x-text="g.title"></p>
+                <p class="text-[11px] text-zinc-400" x-text="date(g.created_at) + ' · ' + g.batches.length + (g.batches.length === 1 ? ' batch' : ' batches') + (g.in_bag ? ' · in bag' : '')"></p>
+              </div>
+            </button>
+          </template>
+          <p x-show="!d.designs.length" class="text-sm text-zinc-400 col-span-full">No designs yet.</p>
+        </div>
+        <template x-for="g in d.designs.filter(x => x.id === openDesign)" :key="'open-' + g.id">
+          <div class="card p-6 space-y-5">
+            <div><p class="cinzel text-lg" x-text="g.title"></p><p class="text-sm text-zinc-500" x-text="g.prompt"></p></div>
+            <template x-for="b in g.batches" :key="b.id">
+              <div class="space-y-2">
+                <p class="text-xs text-zinc-500"><span class="badge" :class="b.kind === 'refine' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'" x-text="b.kind === 'refine' ? 'Refinement' : 'Design'"></span>
+                  <span class="ml-2" x-text="b.user_text"></span> <span class="text-zinc-400" x-text="'· ' + dateTime(b.created_at)"></span></p>
+                <div class="grid grid-cols-4 gap-3">
+                  <template x-for="c in b.candidates" :key="c.id">
+                    <div class="space-y-1">
+                      <a :href="c.image_url" target="_blank" class="block aspect-square bg-zinc-100 border" :class="c.selected ? 'border-black border-2' : 'border-zinc-200'">
+                        <img x-show="c.image_url" :src="c.image_url" class="w-full h-full object-cover" loading="lazy" alt="">
+                      </a>
+                      <p class="text-[11px]" :class="c.status === 'failed' ? 'text-red-600' : 'text-zinc-400'" x-text="'Option ' + (c.slot + 1) + (c.selected ? ' · selected' : '') + (c.status !== 'ready' ? ' · ' + c.status : '')"></p>
+                      <template x-for="m in c.movies" :key="m.id">
+                        <a :href="m.url" target="_blank" class="text-[11px] underline" :class="m.status === 'ready' ? 'text-black' : 'text-red-600 no-underline'" x-text="m.status === 'ready' ? '▶ 360° movie' : '360° movie · ' + m.status"></a>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </section>
+
+      <!-- Activity -->
+      <section class="card">
+        <div class="px-6 py-4 border-b border-zinc-100"><p class="lbl">Activity</p></div>
+        <ul class="divide-y divide-zinc-100 max-h-[520px] overflow-y-auto">
+          <template x-for="(e, i) in d.timeline" :key="i">
+            <li class="px-6 py-2.5 flex items-center gap-4 text-sm">
+              <span class="text-[11px] text-zinc-400 w-36 shrink-0" x-text="dateTime(e.at)"></span>
+              <span class="badge shrink-0" :class="eventClass(e)" x-text="eventLabel(e)"></span>
+              <span class="truncate text-zinc-600" x-text="e.text"></span>
+            </li>
+          </template>
+          <li x-show="!d.timeline.length" class="px-6 py-6 text-center text-zinc-400 text-sm">No activity yet.</li>
+        </ul>
+      </section>
+    </div>
+    </template>
+  </main>
+</body>
+</html>

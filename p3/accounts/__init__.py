@@ -31,6 +31,20 @@ class InsufficientCredits(Exception):
         self.Message = Message
 
 
+class DuplicateEmail(Exception):
+    """An admin tried to create (or rename to) an email that already has an account."""
+
+    def __init__(self, AccountId: str):
+        super().__init__("This email already has an account.")
+        self.AccountId = AccountId
+
+
+class AccountNotFound(Exception):
+    def __init__(self, AccountId: str):
+        super().__init__(f"Unknown account: {AccountId}")
+        self.AccountId = AccountId
+
+
 @dataclass(frozen=True)
 class Principal:
     """The authenticated caller.
@@ -60,8 +74,13 @@ class AccountProvider(Protocol):
     def AuthorizeSpend(self, Who: Principal, Kind: str, Units: int) -> None:
         """Raise InsufficientCredits if the account may not start this paid work."""
 
-    def RecordUsage(self, AccountId: str, Kind: str, Units: int, RefId: str) -> None:
-        """Record units actually submitted to a provider (called once per submission)."""
+    def RecordUsage(self, AccountId: str, Kind: str, Units: int, RefId: str,
+                    Provider: str | None = None, Endpoint: str | None = None) -> None:
+        """Record units actually submitted to a provider (called once per submission), with the
+        provider and endpoint so cost per user can be reported later."""
+
+    def RecordSignIn(self, AccountId: str, Method: str) -> None:
+        """Record a customer sign-in (token entry or verification link)."""
 
     def CommitCharge(self, AccountId: str, Kind: str, RefId: str) -> bool:
         """Charge the account's allowance for a FINISHED result (P2: one generation per 360° movie)."""

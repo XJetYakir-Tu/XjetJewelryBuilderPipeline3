@@ -76,7 +76,8 @@ class MovieService:
                 RequestId = await Ctx.Provider.Submit(Movie["endpoint"], Arguments)
                 Db.Update("movies", MovieId, status="running", provider_request_id=RequestId)
                 Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Cand["design_id"],))
-                Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageMovie, 1, MovieId)
+                Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageMovie, 1, MovieId,
+                                         Provider=Ctx.Provider.Name, Endpoint=Movie["endpoint"])
             Result = await PollUntilDone(Ctx.Provider, Movie["endpoint"], RequestId,
                                          Ctx.Gen.Movie.RequestTimeoutS, S.PollIntervalS, S.MaxTransientPollErrors)
             Url = (Result.get("video") or {}).get("url")

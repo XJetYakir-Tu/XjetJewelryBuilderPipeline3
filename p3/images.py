@@ -178,7 +178,8 @@ class ImageService:
                                   provider_request_id=RequestId, attempts=Cand["attempts"] + 1)
                         Owner = Db.One("SELECT d.owner_account_id FROM batches b JOIN designs d ON d.id = b.design_id "
                                        "WHERE b.id = ?", (Batch["id"],))
-                        Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageImage, 1, CandidateId)
+                        Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageImage, 1, CandidateId,
+                                                 Provider=Ctx.Provider.Name, Endpoint=Batch["endpoint"])
                     Result = await PollUntilDone(Ctx.Provider, Batch["endpoint"], RequestId,
                                                  Ctx.Gen.Images.RequestTimeoutS, S.PollIntervalS,
                                                  S.MaxTransientPollErrors)

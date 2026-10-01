@@ -12,6 +12,7 @@ import json
 import logging
 
 from p3 import assets
+from p3.accounts import UsageMesh
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.providers import endpoints
@@ -88,6 +89,11 @@ class MeshService:
                 ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), assets.ImageContentType(Cand["asset_path"]))
                 RequestId = await Ctx.Provider.Submit(Mesh["endpoint"], {"image_url": ImageUrl, **Settings_})
                 Db.Update("meshes", MeshId, status="running", provider_request_id=RequestId)
+                Owner = Db.One("SELECT d.owner_account_id FROM candidates c JOIN batches b ON b.id = c.batch_id "
+                               "JOIN designs d ON d.id = b.design_id WHERE c.id = ?", (Mesh["candidate_id"],))
+                if Owner:
+                    Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageMesh, 1, MeshId,
+                                             Provider=Ctx.Provider.Name, Endpoint=Mesh["endpoint"])
             Result = await PollUntilDone(Ctx.Provider, Mesh["endpoint"], RequestId, Ctx.Gen.Mesh.RequestTimeoutS,
                                          S.PollIntervalS, S.MaxTransientPollErrors)
             Url = (Result.get("model_mesh") or {}).get("url")

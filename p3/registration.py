@@ -68,13 +68,14 @@ class RegistrationService:
                            "email to save your designs and continue creating your jewelry."}
 
     # POST /api/register-token  {Token, Name, Email}  — "Already have a token? Enter it here"
-    def SignInWithToken(self, Token: str) -> dict:
+    def SignInWithToken(self, Token: str, Via: str = "token") -> dict:
         try:
             Who = self.Ctx.Accounts.Authenticate(Token)
         except AuthError as E:
             if E.Code == "token_inactive":
                 raise HttpError(403, "token_inactive", "This token has been deactivated. Contact XJet.") from E
             raise HttpError(404, "token_not_found", "Token not found. Check the code and try again.") from E
+        self.Ctx.Accounts.RecordSignIn(Who.AccountId, "link" if Via == "link" else "token")
         P = self.Ctx.Accounts.Profile(Who)
         return {"ok": True, "used": P["used"], "max": P["max"], "remaining": P["remaining"], "name": P["name"]}
 

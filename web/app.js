@@ -158,7 +158,12 @@ function p3App() {
       if (PAGE_VIEWS.includes(hashView)) this.view = hashView;
       if (!this.token) return;
       this.refreshBag();
-      if (fromLink) { this._enterDesignAfterSignIn(true); return; }
+      if (fromLink) {
+        // Record the sign-in (verify page / token email link); the session is already set.
+        this.api('POST', '/api/register-token', { Token: this.token, Via: 'link' }, { noAuth: true }).catch(() => {});
+        this._enterDesignAfterSignIn(true);
+        return;
+      }
       if (st.designId && STUDIO_VIEWS.includes(st.view)) {
         try { await this.openDesign(st.designId, { restoreView: st.view }); }
         catch { this.persist({ designId: null }); }

@@ -26,7 +26,7 @@ import string
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from p3.accounts import AuthError, InsufficientCredits, Principal, UsageMovie
+from p3.accounts import AccountNotFound, AuthError, DuplicateEmail, InsufficientCredits, Principal, UsageMovie
 from p3.db import Database, Now
 
 Issuer = "p3local"
@@ -62,6 +62,16 @@ CREATE TABLE IF NOT EXISTS usage_events (
     ref_id        TEXT NOT NULL,
     created_at    TEXT NOT NULL
 );
+
+-- Account lifecycle/activity that is not provider usage (sign-ins, admin actions).
+CREATE TABLE IF NOT EXISTS account_events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id    TEXT NOT NULL,
+    kind          TEXT NOT NULL,             -- sign_in | admin_created | admin_edited | deactivated | activated | removed | restored
+    detail        TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS account_events_account ON account_events(account_id, created_at);
 """
 
 # Columns added for P2-style registration and quota; applied to existing accounts.db files.
@@ -73,7 +83,19 @@ _AccountColumns = {
     "verify_expires_at": "ALTER TABLE accounts ADD COLUMN verify_expires_at TEXT",
     "verified_at":       "ALTER TABLE accounts ADD COLUMN verified_at TEXT",
     "activated_at":      "ALTER TABLE accounts ADD COLUMN activated_at TEXT",
-    "delivery_token":    "ALTER TABLE accounts ADD COLUMN delivery_token TEXT",   # self-registration only
+    "delivery_token":    "ALTER TABLE accounts ADD COLUMN delivery_token TEXT",   # retrievable token (shown/re-sent)
+    "last_sign_in_at":   "ALTER TABLE accounts ADD COLUMN last_sign_in_at TEXT",
+    "removed_at":        "ALTER TABLE accounts ADD COLUMN removed_at TEXT",       # soft remove (admin)
+}
+
+# Provider/cost dimensions on each usage event, so cost per user can be reported later. cost_usd
+# stays NULL until a provider price table exists — no cost is ever estimated or invented here.
+_UsageColumns = {
+    "provider":    "ALTER TABLE usage_events ADD COLUMN provider TEXT",      # mock | fal
+    "endpoint":    "ALTER TABLE usage_events ADD COLUMN endpoint TEXT",      # provider model/endpoint id
+    "mode":        "ALTER TABLE usage_events ADD COLUMN mode TEXT",          # mock | live
+    "cost_usd":    "ALTER TABLE usage_events ADD COLUMN cost_usd REAL",
+    "cost_source": "ALTER TABLE usage_events ADD COLUMN cost_source TEXT",   # e.g. price table version / invoice
 }
 
 try:
@@ -115,7 +137,12 @@ class LocalAccountProvider:
             for Column, Sql in _AccountColumns.items():
                 if Column not in Existing:
                     Conn.execute(Sql)
+            Existing = {R[1] for R in Conn.execute("PRAGMA table_info(usage_events)")}
+            for Column, Sql in _UsageColumns.items():
+                if Column not in Existing:
+                    Conn.execute(Sql)
             Conn.execute("CREATE INDEX IF NOT EXISTS accounts_self_email ON accounts(source, email)")
+            Conn.execute("CREATE INDEX IF NOT EXISTS usage_events_account ON usage_events(account_id, created_at)")
 
     # ── tokens ───────────────────────────────────────────────────────────
     def GenerateToken(self) -> str:
@@ -141,7 +168,7 @@ class LocalAccountProvider:
         Row = self._Row(Token)
         if Row is None:
             raise AuthError("token_not_found", "Token not found. Check the code and try again.")
-        if not Row["active"] or Row["status"] != "active":
+        if not Row["active"] or Row["status"] != "active" or Row["removed_at"]:
             raise AuthError("token_inactive", "This token has been deactivated. Contact XJet.")
         T = Now()
         self.Db.Execute("UPDATE access_tokens SET last_used_at = ? WHERE token_hash = ?", (T, Row["token_hash"]))
@@ -163,9 +190,30 @@ class LocalAccountProvider:
         if self._Quota(Who.AccountId)["remaining"] <= 0:
             raise InsufficientCredits(QuotaMessage)
 
-    def RecordUsage(self, AccountId: str, Kind: str, Units: int, RefId: str) -> None:
-        self.Db.Execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at) VALUES (?,?,?,?,?)",
-                        (AccountId, Kind, int(Units), RefId, Now()))
+    def RecordUsage(self, AccountId: str, Kind: str, Units: int, RefId: str,
+                    Provider: str | None = None, Endpoint: str | None = None) -> None:
+        Mode = None if Provider is None else ("mock" if Provider == "mock" else "live")
+        self.Db.Execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at, provider, endpoint, mode) "
+                        "VALUES (?,?,?,?,?,?,?,?)", (AccountId, Kind, int(Units), RefId, Now(), Provider, Endpoint, Mode))
+
+    def UnannotatedUsageRefs(self) -> set[str]:
+        """Usage events recorded before provider/endpoint were captured (for the one-time backfill)."""
+        return {R["ref_id"] for R in self.Db.All(
+            "SELECT DISTINCT ref_id FROM usage_events WHERE provider IS NULL AND kind != 'generation'")}
+
+    def AnnotateUsage(self, RefId: str, Provider: str, Endpoint: str | None) -> None:
+        Mode = "mock" if Provider == "mock" else "live"
+        self.Db.Execute("UPDATE usage_events SET provider = ?, endpoint = COALESCE(endpoint, ?), mode = ? "
+                        "WHERE ref_id = ? AND provider IS NULL", (Provider, Endpoint, Mode, RefId))
+
+    def RecordSignIn(self, AccountId: str, Method: str) -> None:
+        T = Now()
+        self.Db.Execute("UPDATE accounts SET last_sign_in_at = ? WHERE account_id = ?", (T, AccountId))
+        self._Event(AccountId, "sign_in", Method, T)
+
+    def _Event(self, AccountId: str, Kind: str, Detail: str = "", At: str | None = None) -> None:
+        self.Db.Execute("INSERT INTO account_events (account_id, kind, detail, created_at) VALUES (?,?,?,?)",
+                        (AccountId, Kind, Detail, At or Now()))
 
     def CommitCharge(self, AccountId: str, Kind: str, RefId: str) -> bool:
         """Charge one generation for a FINISHED 360° movie (P2 IncrementUsage). Once per RefId."""
@@ -263,7 +311,8 @@ class LocalAccountProvider:
     def IssueToken(self, Label: str, DisplayName: str | None = None, Email: str | None = None,
                    AccountId: str | None = None, Token: str | None = None,
                    MaxGenerations: int = DefaultMaxGenerations) -> tuple[str, Principal]:
-        """Create (or reuse AccountId for) an admin account and issue a token for it."""
+        """Create (or reuse AccountId for) an admin account and issue a token for it. The token is
+        kept on the account (delivery_token) so the admin table can show it, as in P2."""
         Token = NormalizeToken(Token) if Token else self.GenerateToken()
         AccountId = AccountId or NewAccountId()
         T = Now()
@@ -272,6 +321,7 @@ class LocalAccountProvider:
                          "VALUES (?,?,?,?,?)", (AccountId, DisplayName or Label, Email, T, int(MaxGenerations)))
             Conn.execute("INSERT INTO access_tokens (token_hash, token_hint, account_id, label, active, created_at) "
                          "VALUES (?,?,?,?,1,?)", (HashToken(Token), Token[:3], AccountId, Label, T))
+            Conn.execute("UPDATE accounts SET delivery_token = ? WHERE account_id = ?", (Token, AccountId))
         return Token, Principal(AccountId=AccountId, DisplayName=DisplayName or Label, Issuer=Issuer)
 
     def SetQuota(self, AccountId: str, MaxGenerations: int | None = None, ResetUsage: bool = False) -> None:
@@ -297,6 +347,146 @@ class LocalAccountProvider:
 
     def DeactivateToken(self, Token: str) -> bool:
         return self.Db.Execute("UPDATE access_tokens SET active = 0 WHERE token_hash = ?", (HashToken(Token),)) > 0
+
+    # ── admin (user management) ──────────────────────────────────────────
+    def _ActiveAccountByEmail(self, Email: str, Except: str | None = None) -> dict | None:
+        return self.Db.One("SELECT account_id FROM accounts WHERE lower(email) = ? AND removed_at IS NULL "
+                           "AND account_id != ? LIMIT 1", ((Email or "").strip().lower(), Except or ""))
+
+    @staticmethod
+    def _ValidateIdentity(Name: str, Email: str) -> tuple[str, str]:
+        Name, Email = (Name or "").strip(), (Email or "").strip()
+        if not Name:
+            raise ValueError("Name is required.")
+        if not EmailPattern.match(Email):
+            raise ValueError("Please enter a valid email address.")
+        return Name, Email
+
+    @staticmethod
+    def _ValidateMax(MaxGenerations) -> int:
+        try:
+            Max = int(MaxGenerations)
+        except (TypeError, ValueError):
+            raise ValueError("Max generations must be a whole number.") from None
+        if not 1 <= Max <= 9999:
+            raise ValueError("Max generations must be between 1 and 9999.")
+        return Max
+
+    def AdminCreate(self, Name: str, Email: str, MaxGenerations=DefaultMaxGenerations) -> dict:
+        """B2C2 "Generate Token", with Name and Email required and one account per email."""
+        Name, Email = self._ValidateIdentity(Name, Email)
+        Max = self._ValidateMax(MaxGenerations)
+        Dup = self._ActiveAccountByEmail(Email)
+        if Dup:
+            raise DuplicateEmail(Dup["account_id"])
+        Token, Who = self.IssueToken(Name, DisplayName=Name, Email=Email, MaxGenerations=Max)
+        self._Event(Who.AccountId, "admin_created")
+        return self.AdminGet(Who.AccountId) | {"token": Token}
+
+    def AdminUpdate(self, AccountId: str, Name: str, Email: str, MaxGenerations, ResetUsage: bool = False) -> dict:
+        self._Account(AccountId)
+        Name, Email = self._ValidateIdentity(Name, Email)
+        Max = self._ValidateMax(MaxGenerations)
+        Dup = self._ActiveAccountByEmail(Email, Except=AccountId)
+        if Dup:
+            raise DuplicateEmail(Dup["account_id"])
+        self.Db.Execute("UPDATE accounts SET display_name = ?, email = ?, max_generations = ? WHERE account_id = ?",
+                        (Name, Email, Max, AccountId))
+        if ResetUsage:
+            self.Db.Execute("UPDATE accounts SET generations_used = 0 WHERE account_id = ?", (AccountId,))
+        self._Event(AccountId, "admin_edited", "usage reset" if ResetUsage else "")
+        return self.AdminGet(AccountId)
+
+    def AdminSetActive(self, AccountId: str, Active: bool) -> dict:
+        """B2C2 Deactivate / Activate. Activating re-enables the account's current token."""
+        A = self._Account(AccountId)
+        if Active:
+            Current = A["delivery_token"]
+            if Current:
+                self.Db.Execute("UPDATE access_tokens SET active = 1 WHERE token_hash = ?", (HashToken(Current),))
+            else:
+                self.Db.Execute("UPDATE access_tokens SET active = 1 WHERE token_hash = (SELECT token_hash FROM "
+                                "access_tokens WHERE account_id = ? ORDER BY created_at DESC LIMIT 1)", (AccountId,))
+        else:
+            self.Db.Execute("UPDATE access_tokens SET active = 0 WHERE account_id = ?", (AccountId,))
+        self._Event(AccountId, "activated" if Active else "deactivated")
+        return self.AdminGet(AccountId)
+
+    def AdminRemove(self, AccountId: str) -> dict:
+        """Soft remove: tokens revoked, account hidden; designs and usage history are kept."""
+        self._Account(AccountId)
+        T = Now()
+        self.Db.Execute("UPDATE access_tokens SET active = 0 WHERE account_id = ?", (AccountId,))
+        self.Db.Execute("UPDATE accounts SET removed_at = COALESCE(removed_at, ?) WHERE account_id = ?", (T, AccountId))
+        self._Event(AccountId, "removed", "", T)
+        return self.AdminGet(AccountId)
+
+    def AdminRestore(self, AccountId: str) -> dict:
+        """Undo a soft remove. The token stays inactive until an admin activates it."""
+        A = self._Account(AccountId)
+        if A["email"] and self._ActiveAccountByEmail(A["email"], Except=AccountId):
+            raise DuplicateEmail(self._ActiveAccountByEmail(A["email"], Except=AccountId)["account_id"])
+        self.Db.Execute("UPDATE accounts SET removed_at = NULL WHERE account_id = ?", (AccountId,))
+        self._Event(AccountId, "restored")
+        return self.AdminGet(AccountId)
+
+    def _Account(self, AccountId: str) -> dict:
+        Row = self.Db.One("SELECT * FROM accounts WHERE account_id = ?", (AccountId,))
+        if Row is None:
+            raise AccountNotFound(AccountId)
+        return Row
+
+    _AdminSelect = (
+        "SELECT a.*, "
+        "(SELECT COUNT(*) FROM access_tokens t WHERE t.account_id = a.account_id AND t.active = 1) AS active_tokens, "
+        "(SELECT MAX(t.last_used_at) FROM access_tokens t WHERE t.account_id = a.account_id) AS last_activity_at, "
+        "(SELECT t.token_hint FROM access_tokens t WHERE t.account_id = a.account_id "
+        " ORDER BY t.active DESC, t.created_at DESC LIMIT 1) AS token_hint "
+        "FROM accounts a")
+
+    @staticmethod
+    def _AdminRow(R: dict) -> dict:
+        Used, Max = R["generations_used"], R["max_generations"]
+        if R["removed_at"]:
+            Status = "removed"
+        elif R["source"] == "self" and not R["verified_at"]:
+            Status = "pending_verification"
+        elif not R["active_tokens"] or R["status"] != "active":
+            Status = "inactive"
+        elif Used >= Max:
+            Status = "exhausted"
+        elif R["activated_at"] or R["last_activity_at"]:     # older accounts never stamped activated_at
+            Status = "active"
+        else:
+            Status = "unused"
+        return {
+            "account_id": R["account_id"], "name": R["display_name"] or "", "email": R["email"] or "",
+            "token": R["delivery_token"] or ((R["token_hint"] + "…") if R["token_hint"] else ""),
+            "token_complete": bool(R["delivery_token"]),
+            "used": Used, "max": Max, "remaining": max(0, Max - Used), "status": Status, "source": R["source"],
+            "created_at": R["created_at"], "verified_at": R["verified_at"], "first_activity_at": R["activated_at"],
+            "last_activity_at": R["last_activity_at"], "last_sign_in_at": R["last_sign_in_at"],
+            "removed_at": R["removed_at"],
+        }
+
+    def AdminList(self, IncludeRemoved: bool = False) -> list[dict]:
+        Where = "" if IncludeRemoved else " WHERE a.removed_at IS NULL"
+        return [self._AdminRow(R) for R in self.Db.All(self._AdminSelect + Where + " ORDER BY a.created_at DESC")]
+
+    def AdminGet(self, AccountId: str) -> dict:
+        Row = self.Db.One(self._AdminSelect + " WHERE a.account_id = ?", (AccountId,))
+        if Row is None:
+            raise AccountNotFound(AccountId)
+        return self._AdminRow(Row)
+
+    def AdminActivity(self, AccountId: str) -> dict:
+        """Identity-side activity for the admin detail view: usage events and account events."""
+        self._Account(AccountId)
+        Usage = self.Db.All("SELECT kind, units, ref_id, provider, endpoint, mode, cost_usd, cost_source, created_at "
+                            "FROM usage_events WHERE account_id = ? ORDER BY created_at", (AccountId,))
+        Events = self.Db.All("SELECT kind, detail, created_at FROM account_events WHERE account_id = ? "
+                             "ORDER BY created_at", (AccountId,))
+        return {"usage": Usage, "events": Events}
 
     def ListAccounts(self) -> list[dict]:
         return self.Db.All(
