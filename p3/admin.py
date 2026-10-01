@@ -287,10 +287,11 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
     @App_.get("/api/admin/3d/{Sid}/stl/{Stage}")
     async def Download3D(Sid: str, Stage: str, authorization: str | None = Header(None)):
         Admin(authorization)
-        if Stage not in ("raw", "production"):
+        if Stage not in ("raw", "production", "preview"):
             raise HttpError(404, "geometry_not_found", "Unknown stage.")
         Path_ = Production.StlPath(Sid, Stage)
-        return FileResponse(Path_, filename=f"{Sid}_{Stage}{Path_.suffix}", media_type="model/stl")
+        return FileResponse(Path_, filename=f"{Sid}_{Stage}{Path_.suffix}",
+                            media_type="model/stl" if Path_.suffix == ".stl" else "application/octet-stream")
 
     # ── AI prompts & parameters ───────────────────────────────────────────
     def _Model(ModelId: str):

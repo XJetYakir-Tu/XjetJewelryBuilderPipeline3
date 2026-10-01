@@ -255,3 +255,29 @@ async def test_mock_sessions_are_hidden_from_the_admin_unless_asked(HS):
     assert H.Ctx.Db.One("SELECT ai_mode FROM designs")["ai_mode"] == "mock"
     E = H.Ctx.Db.One("SELECT data_json FROM session_events ORDER BY id DESC LIMIT 1")
     assert E is None or json.loads(E["data_json"])["ai_mode"] == "mock"
+
+
+async def test_measurement_runs_in_a_worker_and_out_of_memory_keeps_the_raw_model(HS, monkeypatch):
+    H = HS
+    Batch = await H.NewDesign("Plain band")
+    Did = Batch["design_id"]
+    T = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).json()
+    await H.Idle()
+    D = (await _Session(H, Did))["three_d"][0]
+    assert D["status"] == "measured" and D["raw_available"]                       # measured by the worker process
+    for Stage in ("production", "preview", "raw"):
+        R = await H.Client.get(f"/api/admin/3d/{T['id']}/stl/{Stage}", headers=Admin)
+        assert R.status_code == 200 and len(R.content) > 84, Stage
+    # A model too large for the server: only this measurement fails; the raw Hi3D model stays downloadable.
+    from p3 import production3d
+
+    async def TooBig(*A, **K):
+        raise MemoryError
+    monkeypatch.setattr(production3d, "RunMeasurement", TooBig)
+    T2 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)).json()
+    await H.Idle()
+    D2 = next(X for X in (await _Session(H, Did))["three_d"] if X["id"] == T2["id"])
+    assert D2["status"] == "needs_review" and "too large to measure" in D2["error"] and D2["raw_available"]
+    assert (await H.Client.get(f"/api/admin/3d/{T2['id']}/stl/raw", headers=Admin)).status_code == 200
+    assert (await H.Client.get(f"/api/admin/3d/{T2['id']}/stl/production", headers=Admin)).status_code == 404
+    assert (await H.Client.get("/api/health")).status_code == 200                # the server is fine

@@ -232,7 +232,8 @@ function adminApp() {
       const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(id)}/stl/${stage}`, { headers: { Authorization: 'Bearer ' + this.key } });
       if (!r.ok) { alert('Download failed (' + r.status + ')'); return; }
       const url = URL.createObjectURL(await r.blob());
-      const a = Object.assign(document.createElement('a'), { href: url, download: `${id}_${stage}.stl` });
+      const ext = stage === 'raw' ? ((this.sd?.three_d.find(t => t.id === id)?.geometry?.raw?.stl_path || '').split('.').pop() || 'stl') : 'stl';
+      const a = Object.assign(document.createElement('a'), { href: url, download: `${id}_${stage}.${ext}` });
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
 
@@ -438,7 +439,7 @@ function adminApp() {
       this.clear3d();
       this.viewer3d = { id: t.id, label: 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '' };
       try {
-        const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/production`, { headers: { Authorization: 'Bearer ' + this.key } });
+        const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: { Authorization: 'Bearer ' + this.key } });   // light copy
         if (!r.ok) throw new Error('STL download failed (' + r.status + ')');
         const geo = new THREE.STLLoader().parse(await r.arrayBuffer());
         geo.computeVertexNormals(); geo.center(); geo.computeBoundingSphere();

@@ -13,19 +13,59 @@ Rules:
 import asyncio
 import json
 import logging
+import os
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from p3 import assets
 from p3 import sessions as Sessions
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
-from p3.geometry import MeasureRing, MethodVersion, UsSizeToInnerDiameterMm
+from p3.geometry import Measurement, MethodVersion, UsSizeToInnerDiameterMm
+from p3.geometry_worker import ExitMemory
 from p3.settings import RepoRoot
 
 Logger = logging.getLogger("p3.production3d")
 DefaultSize = 10.0
 CostModelPath = RepoRoot / "config" / "production_costs.json"
 Terminal = ("measured", "needs_review", "failed")
+MeasureTimeoutS = 1800
+_MeasureSlot = None             # one measurement at a time (asyncio.Semaphore, created in the running loop)
+
+
+def _Slot():
+    global _MeasureSlot
+    if _MeasureSlot is None:
+        _MeasureSlot = asyncio.Semaphore(1)
+    return _MeasureSlot
+
+
+async def RunMeasurement(Source: Path, Fmt: str, TargetMm: float, OutStl: Path, OutPreview: Path):
+    """Measure in a separate process (p3.geometry_worker) with a memory cap, one at a time, so a model
+    too large for this server fails only this measurement and never the web server."""
+    OutStl.parent.mkdir(parents=True, exist_ok=True)
+    OutJson = OutStl.with_suffix(".json")
+    Env = {**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
+    async with _Slot():
+        Proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "p3.geometry_worker", str(Source), Fmt, str(TargetMm), str(OutStl), str(OutPreview),
+            str(OutJson), env=Env, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        try:
+            _, Err = await asyncio.wait_for(Proc.communicate(), MeasureTimeoutS)
+        except asyncio.TimeoutError:
+            Proc.kill()
+            await Proc.wait()
+            raise RuntimeError(f"Measurement took longer than {MeasureTimeoutS // 60} minutes and was stopped.")
+    Doc = json.loads(OutJson.read_text(encoding="utf-8")) if OutJson.is_file() else {"ok": False}
+    if Proc.returncode == ExitMemory or Doc.get("error") == "memory" or Proc.returncode in (-9, 137):
+        raise MemoryError
+    if not Doc.get("ok"):
+        raise RuntimeError(Doc.get("error") or (Err or b"").decode("utf-8", "replace")[-400:] or "Measurement failed")
+    def M(D):
+        return Measurement(**D) if D else None
+    return SimpleNamespace(raw=M(Doc["raw"]), production=M(Doc["production"]), scale_factor=Doc["scale_factor"],
+                           status=Doc["status"], problems=Doc["problems"], faces=Doc["faces"])
 
 
 def LoadCostModel(PathObj: Path = CostModelPath) -> dict:
@@ -128,13 +168,22 @@ class Production3D:
             Db.Update("session_3d", Sid, status="measuring")
             Source = assets.Resolve(Ctx.Settings.DevDir, Mesh["original_path"])
             Target = UsSizeToInnerDiameterMm(Row["production_size"])
-            G = await asyncio.to_thread(MeasureRing, Source.read_bytes(), Mesh["original_format"], Target)
-            self._Store(Row, Mesh, G, Target)
+            Rel = f"meshes/{Mesh['id']}/production_{Sid}.stl"
+            Out = assets.Resolve(Ctx.Settings.DevDir, Rel)
+            try:
+                G = await RunMeasurement(Source, Mesh["original_format"], Target, Out, Out.with_name(Out.stem + "_preview.stl"))
+            except MemoryError:
+                Faces = (Source.stat().st_size - 84) // 50 if Mesh["original_format"] == "stl" else None
+                Db.Update("session_3d", Sid, status="needs_review", error=(
+                    f"The model is too large to measure on this server{f' ({Faces:,} faces)' if Faces else ''}. "
+                    "The Hi3D model was kept and can be downloaded."))
+                return
+            self._Store(Row, Mesh, G, Target, Rel)
         except Exception as E:  # noqa: BLE001
             Logger.exception("3D production %s failed", Sid)
             Db.Update("session_3d", Sid, status="failed", error=f"{type(E).__name__}: {E}")
 
-    def _Store(self, Row: dict, Mesh: dict, G, TargetMm: float) -> None:
+    def _Store(self, Row: dict, Mesh: dict, G, TargetMm: float, Rel: str) -> None:
         Ctx, Db, Sid = self.Ctx, self.Ctx.Db, Row["id"]
         T = Now()
 
@@ -151,9 +200,7 @@ class Production3D:
         if G.production is None:
             Db.Update("session_3d", Sid, status="needs_review", error="; ".join(G.problems))
             return
-        Rel = f"meshes/{Mesh['id']}/production_{Sid}.stl"
-        assets.WriteAtomic(Ctx.Settings.DevDir, Rel, G.production_stl)
-        Gid = Insert("production", G.production, G.scale_factor, Rel)
+        Gid = Insert("production", G.production, G.scale_factor, Rel)     # file written by the measurement worker
         Mat = Ctx.Catalog.Get(Row["material_id"])
         Weight = round(G.production.volume_mm3 / 1000.0 * Mat.DensityGCm3, 3) if G.production.volume_mm3 else None
         Model = LoadCostModel()
@@ -203,6 +250,7 @@ class Production3D:
             **R, "target_inner_diameter_mm": UsSizeToInnerDiameterMm(R["production_size"]),
             "material_label": Mat.Label if Mat else R["material_id"], "density_g_cm3": Mat.DensityGCm3 if Mat else None,
             "image_url": Url(Cand["asset_path"]) if Cand else None,
+            "raw_available": bool(Mesh and Mesh["status"] == "ready"),
             "hi3d": Mesh and {"mesh_id": Mesh["id"], "status": Mesh["status"], "endpoint": Mesh["endpoint"],
                               "provider": "mock" if (Mesh["provider_request_id"] or "").startswith("mockreq_") else
                               ("fal" if Mesh["provider_request_id"] else None), "error": Mesh["error"]},
@@ -214,7 +262,20 @@ class Production3D:
             "SELECT id FROM session_3d WHERE design_id = ? ORDER BY created_at DESC", (DesignId,))]
 
     def StlPath(self, Sid: str, Stage: str) -> Path:
-        G = self.Ctx.Db.One("SELECT stl_path FROM geometry_results WHERE session_3d_id = ? AND stage = ?", (Sid, Stage))
+        """raw = the Hi3D model as delivered (available as soon as Hi3D finished, even if measuring
+        failed) · production = repaired + scaled · preview = light copy of production for the viewer."""
+        Dev = self.Ctx.Settings.DevDir
+        if Stage == "raw":
+            M = self.Ctx.Db.One("SELECT m.original_path FROM session_3d s JOIN meshes m ON m.id = s.mesh_id "
+                                "WHERE s.id = ? AND m.status = 'ready'", (Sid,))
+            if M and M["original_path"]:
+                return assets.Resolve(Dev, M["original_path"])
+            raise HttpError(404, "geometry_not_found", "The Hi3D model is not available.")
+        G = self.Ctx.Db.One("SELECT stl_path FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (Sid,))
         if not G or not G["stl_path"]:
-            raise HttpError(404, "geometry_not_found", "No geometry file for this stage.")
-        return assets.Resolve(self.Ctx.Settings.DevDir, G["stl_path"])
+            raise HttpError(404, "geometry_not_found", "No measured geometry yet.")
+        P = assets.Resolve(Dev, G["stl_path"])
+        if Stage == "preview":
+            Pv = P.with_name(P.stem + "_preview.stl")
+            return Pv if Pv.is_file() else P
+        return P

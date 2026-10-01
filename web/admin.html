@@ -537,6 +537,9 @@
               <span class="text-[11px] text-zinc-400" x-text="dateTime(t.created_at) + ' · Hi3D ' + (t.hi3d?.status || '—') + (t.hi3d?.provider ? ' (' + t.hi3d.provider + ')' : '')"></span>
             </div>
             <p x-show="t.error" class="text-sm text-amber-700" x-text="t.error"></p>
+            <div x-show="!t.geometry.production && t.raw_available" class="flex gap-4 text-xs uppercase tracking-widest">
+              <button class="underline" @click="downloadStl(t.id, 'raw')">Download raw Hi3D model</button>
+            </div>
             <template x-if="t.geometry.production">
               <div class="space-y-4">
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
