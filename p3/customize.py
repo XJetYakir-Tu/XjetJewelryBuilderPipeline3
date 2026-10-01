@@ -12,6 +12,7 @@ Purchase rules are enforced here, not just in the browser (spec 4.6):
 
 import json
 
+from p3 import sessions as Sessions
 from p3.accounts import Principal
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
@@ -33,6 +34,7 @@ class CustomizeService:
         if CandidateId is not None:
             self.Images.RequireReadyCandidate(DesignId, CandidateId)
         self.Ctx.Db.Update("designs", DesignId, selected_candidate_id=CandidateId)
+        Sessions.Record(self.Ctx, Who.AccountId, "option_selected", DesignId, candidate_id=CandidateId)
         return {"design_id": DesignId, "selected_candidate_id": CandidateId}
 
     # ── proceed ──────────────────────────────────────────────────────────
@@ -52,6 +54,9 @@ class CustomizeService:
         self.Movies.Ensure(Who, CandidateId)
         Row = Db.One("SELECT * FROM customizations WHERE design_id = ? AND candidate_id = ?",
                      (DesignId, CandidateId))
+        Sessions.Record(self.Ctx, Who.AccountId, "customize_opened", DesignId, candidate_id=CandidateId,
+                        material_id=Row["material_id"], ring_size=Row["ring_size"],
+                        **Sessions.QuoteSnapshot(self.Ctx, Row["material_id"]))
         return self.ToJson(Row)
 
     def Update(self, Who: Principal, CustomizationId: str, Changes: dict) -> dict:
@@ -73,6 +78,9 @@ class CustomizeService:
             Fields["quantity"] = Qty
         if Fields:
             self.Ctx.Db.Update("customizations", CustomizationId, **Fields)
+            Sessions.Record(self.Ctx, Who.AccountId, "customization_changed", Row["design_id"],
+                            customization_id=Row["id"], **Fields,
+                            **Sessions.QuoteSnapshot(self.Ctx, Fields.get("material_id", Row["material_id"])))
         return self.ToJson(self.Ctx.Db.One("SELECT * FROM customizations WHERE id = ?", (Row["id"],)))
 
     def Get(self, Who: Principal, CustomizationId: str) -> dict:
@@ -125,9 +133,15 @@ class CustomizeService:
             "quantity, unit_price, currency, pricing_version, quote_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (LineId, Who.AccountId, Row["design_id"], Row["candidate_id"], Row["id"], Row["material_id"], Row["ring_size"],
              Row["quantity"], Quote.unit_price, Quote.currency, Quote.pricing_version, Dumps(Quote.ToJson()), Now()))
+        Sessions.Record(self.Ctx, Who.AccountId, "bag_added", Row["design_id"], line_id=LineId,
+                        material_id=Row["material_id"], ring_size=Row["ring_size"], quantity=Row["quantity"],
+                        unit_price=Quote.unit_price, currency=Quote.currency, pricing_version=Quote.pricing_version)
         return self.Bag(Who)
 
     def RemoveFromBag(self, Who: Principal, LineId: str) -> dict:
+        Line = self.Ctx.Db.One("SELECT design_id FROM bag_lines WHERE id = ? AND owner_account_id = ?", (LineId, Who.AccountId))
+        if Line:
+            Sessions.Record(self.Ctx, Who.AccountId, "bag_removed", Line["design_id"], line_id=LineId)
         if self.Ctx.Db.Execute("DELETE FROM bag_lines WHERE id = ? AND owner_account_id = ?", (LineId, Who.AccountId)) == 0:
             raise HttpError(404, "bag_line_not_found", "Bag line not found.")
         return self.Bag(Who)

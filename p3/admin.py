@@ -10,9 +10,12 @@ its body with a proper admin role / company sign-in (e.g. SSO) — the routes do
 
 from dataclasses import dataclass
 
-from fastapi import Body, FastAPI, Header
-from fastapi.responses import HTMLResponse
+from statistics import mean
 
+from fastapi import Body, FastAPI, Header
+from fastapi.responses import FileResponse, HTMLResponse
+
+from p3 import sessions as Sessions
 from p3.accounts import AccountNotFound, DuplicateEmail
 from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
@@ -82,10 +85,99 @@ def _Detail(Ctx: Context, AccountId: str) -> dict:
         "timeline": Timeline[:300],
         "daily": [Daily[K] for K in sorted(Daily)],
         "last_design_activity_at": App["last_design_activity_at"],
+        "sessions": Sessions.Summaries(Ctx, OwnerAccountId=AccountId),
     }
 
 
-def RegisterAdmin(App_: FastAPI, Ctx: Context, Page) -> None:
+def _Pct(Part: int, Whole: int) -> float | None:
+    return round(100.0 * Part / Whole, 1) if Whole else None
+
+
+def Dashboard(Ctx: Context) -> dict:
+    """Small, factual overview. Geometry/price statistics appear once 3D data exists."""
+    S = Sessions.Summaries(Ctx)
+    N = len(S)
+
+    def Reached(Key):
+        return sum(1 for X in S if X["stage_times"].get(Key))
+
+    Clicks = Ctx.Db.One("SELECT COUNT(*) AS n FROM session_events WHERE kind = 'new_design_clicked'")["n"]
+    Geo = Ctx.Db.All("SELECT g.volume_mm3, p.material_id, p.weight_g, p.fixed_price, p.calculated_price, "
+                     "p.production_cost FROM geometry_results g JOIN price_calculations p ON p.geometry_id = g.id "
+                     "WHERE g.stage = 'production'")
+    Selected3D = len({R["design_id"] for R in Ctx.Db.All("SELECT DISTINCT design_id FROM session_3d")})
+    ByMat: dict[str, list] = {}
+    for G in Geo:
+        if G["weight_g"] is not None:
+            ByMat.setdefault(G["material_id"], []).append(G["weight_g"])
+    Pairs = [(G["fixed_price"], G["calculated_price"]) for G in Geo if G["fixed_price"] and G["calculated_price"]]
+    Volumes = [G["volume_mm3"] for G in Geo if G["volume_mm3"]]
+    return {
+        "sessions": N, "active_sessions": sum(1 for X in S if X["state"] == "active"),
+        "new_design_clicks": Clicks,
+        "funnel": [{"stage": K, "label": Sessions.StageLabels[K], "sessions": Reached(K), "pct": _Pct(Reached(K), N)}
+                   for K in Sessions.StageOrder],
+        "avg_refinements": round(mean([X["refinements"] for X in S]), 2) if S else None,
+        "sessions_with_refinement_pct": _Pct(sum(1 for X in S if X["refinements"]), N),
+        "generation_failed": sum(1 for X in S if "Generation failed" in X["path"]),
+        "selected_for_3d": Selected3D, "selected_for_3d_pct": _Pct(Selected3D, N),
+        "geometry": {
+            "measured": len(Geo),
+            "avg_volume_mm3": round(mean(Volumes), 1) if Volumes else None,
+            "avg_weight_g_by_material": {K: round(mean(V), 2) for K, V in ByMat.items()},
+            "fixed_vs_3d_price_variance_pct": round(mean([100.0 * (C - F) / F for F, C in Pairs]), 1) if Pairs else None,
+            "price_pairs": len(Pairs),
+        },
+        "cost_model": "configured" if any(G["production_cost"] is not None for G in Geo) else "not_configured",
+    }
+
+
+def SessionDetail(Ctx: Context, Production, DesignId: str) -> dict:
+    Summary = (Sessions.Summaries(Ctx, [DesignId]) or [None])[0]
+    if Summary is None:
+        raise HttpError(404, "session_not_found", "Session not found.")
+    Owner = Summary["account_id"]
+    Design = next((G for G in AccountActivity(Ctx, Owner)["designs"] if G["id"] == DesignId), None)
+    Batches = (Design or {}).get("batches", [])
+    Jobs = {C["id"] for B in Batches for C in B["candidates"]}
+    Jobs |= {M["id"] for B in Batches for C in B["candidates"] for M in C["movies"]}
+    Jobs |= {R["id"] for R in Ctx.Db.All("SELECT m.id FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
+                                         "JOIN batches b ON b.id = c.batch_id WHERE b.design_id = ?", (DesignId,))}
+    try:
+        Usage = [U for U in Ctx.Accounts.AdminActivity(Owner)["usage"]
+                 if U["ref_id"] in Jobs and U["kind"] != "generation"]
+    except AccountNotFound:
+        Usage = []
+    Cost = [U["cost_usd"] for U in Usage if U["cost_usd"] is not None]
+    Timeline = Sessions.Timeline(Ctx, DesignId)
+    Keep = ("material_id", "ring_size", "quantity", "unit_price", "pricing_version", "pricing_status")
+    Choices = [{"at": E["at"], "kind": E["kind"], **{K: V for K, V in (E.get("data") or {}).items() if K in Keep}}
+               for E in Timeline if E["kind"] in ("customize_opened", "customization_changed")]
+    ThreeD = Production.ForDesign(DesignId)
+    return {
+        "session": Summary,
+        "timeline": Timeline,
+        "design": Design,
+        "choices": Choices,
+        "ai_usage": {"requests": len(Usage),
+                     "by_kind": {K: sum(1 for U in Usage if U["kind"] == K) for K in sorted({U["kind"] for U in Usage})},
+                     "providers": sorted({U["provider"] or "unknown" for U in Usage}),
+                     "cost_usd": round(sum(Cost), 4) if Cost else None},
+        "three_d": ThreeD,
+        "three_d_defaults": {
+            "customer_size": Summary["ring_size"],
+            "production_size": Summary["ring_size"] if Summary["ring_size"] is not None else 10.0,
+            "material_id": (Summary["material_id"] if Summary["material_chosen"] else None) or Ctx.Catalog.DefaultMaterialId,
+            "customer_material": Summary["material_id"] if Summary["material_chosen"] else None,
+            "has_raw_mesh": any(T["hi3d"] and T["hi3d"]["status"] == "ready" for T in ThreeD),
+        },
+        "catalog": {"ring_sizes": list(Ctx.Catalog.RingSizes),
+                    "materials": [{"id": M.Id, "label": M.Label, "density_g_cm3": M.DensityGCm3}
+                                  for M in Ctx.Catalog.Materials.values()]},
+    }
+
+
+def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production) -> None:
     """Add the admin page and API to the (inner) app. `Page(name)` renders a web/ page."""
 
     def Admin(Authorization: str | None) -> AdminPrincipal:
@@ -135,3 +227,33 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page) -> None:
         if Action not in Actions:
             raise HttpError(404, "unknown_action", "Unknown action.")
         return _Errors(Actions[Action])
+
+    # ── sessions / dashboard / 3D ─────────────────────────────────────────
+    @App_.get("/api/admin/dashboard")
+    async def AdminDashboard(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Dashboard(Ctx)
+
+    @App_.get("/api/admin/sessions")
+    async def ListSessions(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return {"sessions": Sessions.Summaries(Ctx), "idle_minutes": Sessions.IdleMinutes}
+
+    @App_.get("/api/admin/sessions/{DesignId}")
+    async def GetSession(DesignId: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return SessionDetail(Ctx, Production, DesignId)
+
+    @App_.post("/api/admin/sessions/{DesignId}/3d")
+    async def Generate3D(DesignId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Production.Request(DesignId, Body_.get("production_size"), Body_.get("material_id") or None,
+                                  Body_.get("candidate_id") or None, RequestedBy=Who.Id)
+
+    @App_.get("/api/admin/3d/{Sid}/stl/{Stage}")
+    async def Download3D(Sid: str, Stage: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        if Stage not in ("raw", "production"):
+            raise HttpError(404, "geometry_not_found", "Unknown stage.")
+        Path_ = Production.StlPath(Sid, Stage)
+        return FileResponse(Path_, filename=f"{Sid}_{Stage}{Path_.suffix}", media_type="model/stl")

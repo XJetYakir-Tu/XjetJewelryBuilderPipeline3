@@ -51,6 +51,83 @@ CREATE TABLE IF NOT EXISTS bag_lines (
 );
 """
 
+# ── Sessions (Admin analytics) ──────────────────────────────────────────────
+# A session is one design journey: it starts when the customer submits the first prompt of a New
+# Design (designs.created_at). Most stage times already live in the job tables (batches,
+# candidates, customizations, movies); session_events adds what they do not keep — choice
+# history with the fixed price shown, bag adds/removes, Bag viewed, Checkout clicked, design
+# reopened — plus admin actions. Append-only, so funnels can be rebuilt at any time.
+SessionTables = """
+CREATE TABLE IF NOT EXISTS session_events (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    design_id         TEXT,                       -- NULL only for new_design_clicked
+    owner_account_id  TEXT NOT NULL,
+    kind              TEXT NOT NULL,
+    data_json         TEXT NOT NULL DEFAULT '{}',
+    created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS session_events_design ON session_events(design_id, created_at);
+CREATE INDEX IF NOT EXISTS session_events_owner ON session_events(owner_account_id, created_at);
+
+-- Admin-requested 3D production geometry for one session (never started automatically).
+CREATE TABLE IF NOT EXISTS session_3d (
+    id                 TEXT PRIMARY KEY,
+    design_id          TEXT NOT NULL REFERENCES designs(id),
+    candidate_id       TEXT NOT NULL REFERENCES candidates(id),
+    mesh_id            TEXT REFERENCES meshes(id),
+    customer_size      REAL,                      -- what the customer chose (NULL = none)
+    production_size    REAL NOT NULL,             -- size the geometry is scaled to
+    size_source        TEXT NOT NULL CHECK (size_source IN ('customer', 'default', 'admin_override')),
+    customer_material  TEXT,
+    material_id        TEXT NOT NULL,
+    material_source    TEXT NOT NULL CHECK (material_source IN ('customer', 'default', 'admin_override')),
+    status             TEXT NOT NULL,             -- requested | generating | measuring | measured | needs_review | failed
+    requested_by       TEXT NOT NULL,
+    error              TEXT,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS session_3d_design ON session_3d(design_id, created_at);
+
+-- Measured geometry: one row per stage (raw = as returned, production = repaired + scaled).
+CREATE TABLE IF NOT EXISTS geometry_results (
+    id                 TEXT PRIMARY KEY,
+    session_3d_id      TEXT NOT NULL REFERENCES session_3d(id),
+    stage              TEXT NOT NULL CHECK (stage IN ('raw', 'production')),
+    size_x_mm          REAL, size_y_mm REAL, size_z_mm REAL,
+    inner_diameter_mm  REAL,
+    volume_mm3         REAL,
+    surface_area_mm2   REAL,
+    watertight         INTEGER NOT NULL,
+    scale_factor       REAL,
+    stl_path           TEXT,
+    method_version     TEXT NOT NULL,
+    checks_json        TEXT NOT NULL DEFAULT '{}',
+    created_at         TEXT NOT NULL
+);
+
+-- Weight / cost / price from a production geometry. Kept separate from the fixed customer price,
+-- which is never changed by these numbers.
+CREATE TABLE IF NOT EXISTS price_calculations (
+    id                    TEXT PRIMARY KEY,
+    session_3d_id         TEXT NOT NULL REFERENCES session_3d(id),
+    geometry_id           TEXT NOT NULL REFERENCES geometry_results(id),
+    material_id           TEXT NOT NULL,
+    density_g_cm3         REAL NOT NULL,
+    weight_g              REAL,
+    production_cost       REAL,
+    calculated_price      REAL,
+    currency              TEXT,
+    cost_model_version    TEXT,
+    breakdown_json        TEXT NOT NULL DEFAULT '{}',
+    fixed_price           REAL,
+    fixed_price_version   TEXT,
+    status                TEXT NOT NULL,           -- calculated | cost_model_not_configured | needs_review
+    created_at            TEXT NOT NULL
+);
+"""
+
+
 Schema = DesignsTable + """
 CREATE TABLE IF NOT EXISTS batches (
     id                   TEXT PRIMARY KEY,
@@ -134,7 +211,7 @@ CREATE TABLE IF NOT EXISTS meshes (
     updated_at           TEXT NOT NULL
 );
 
-""" + BagLinesTable + """
+""" + BagLinesTable + SessionTables + """
 CREATE INDEX IF NOT EXISTS designs_owner ON designs(owner_account_id, updated_at);
 CREATE INDEX IF NOT EXISTS bag_lines_owner ON bag_lines(owner_account_id, created_at);
 """

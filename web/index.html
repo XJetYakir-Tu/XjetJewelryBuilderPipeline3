@@ -830,7 +830,7 @@
                             <p x-show="!designsLoading && !designsError && filteredDesigns.length === 0" class="text-[12px] text-center py-10 px-4 leading-relaxed" style="color:#8F8F8F;">No designs yet.<br>Create your first ring.</p>
                             <template x-for="p in filteredDesigns" :key="p.id">
                                 <div class="flex items-center gap-3 px-3 py-2.5 mx-1.5 rounded-xl transition cursor-pointer hover:bg-[#F8F8F8]"
-                                     :class="design?.id === p.id ? 'bg-[#F8F4EE]' : ''" @click="openDesign(p.id)">
+                                     :class="design?.id === p.id ? 'bg-[#F8F4EE]' : ''" @click="openDesign(p.id); track('design_opened', p.id)">
                                     <div class="w-16 h-16 rounded-lg overflow-hidden shrink-0" style="border:1px solid #DCDCDC; background:#F4F4F4;">
                                         <img x-show="p.thumbnail_url" :src="p.thumbnail_url" alt="" class="w-full h-full object-cover">
                                         <div x-show="!p.thumbnail_url" class="w-full h-full flex items-center justify-center text-lg brand-font italic" style="color:#8F8F8F;">?</div>
@@ -1156,8 +1156,10 @@
                 <div class="rounded-xl p-5 text-[13px] leading-relaxed" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;" x-text="bag?.checkout_note || 'Ordering is not available in this preview.'"></div>
                 <div class="flex flex-col sm:flex-row gap-3 mt-8">
                     <button @click="cust ? navigateTo('review') : (design ? navigateTo('ai-studio') : resetAIFlow())" class="flex-1 border border-zinc-300 py-3 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition">← Continue Designing</button>
-                    <button disabled class="flex-1 btn-gold py-3" title="Not available in this preview">Checkout Unavailable</button>
+                    <!-- Not a real checkout yet: clickable only so the Admin can count "Checkout Clicked". -->
+                    <button @click="checkoutClicked()" class="flex-1 btn-gold py-3 opacity-60" title="Not available in this preview">Checkout Unavailable</button>
                 </div>
+                <p x-show="checkoutNotice" x-cloak class="mt-3 text-[13px] text-center" style="color:#5A4A2A;">Checkout is not available in this preview yet.</p>
             </div>
         </main>
     </template>

@@ -25,8 +25,10 @@ from p3.images import ImageService
 from p3.meshes import MeshService
 from p3.migrations import MigrateToAccounts
 from p3.admin import RegisterAdmin
+from p3.production3d import Production3D
 from p3.mail import BuildMailer
 from p3.registration import RegistrationService
+from p3 import sessions as Sessions
 from p3.usage import BackfillUsageAnnotations
 from p3.modes import DefaultFactories, ModeManager, ResolveStartupMode
 from p3.movies import MovieService
@@ -44,10 +46,11 @@ class Services:
         self.Customize = CustomizeService(Ctx, self.Images, self.Movies)
         self.Designs = DesignService(Ctx, self.Images, self.Customize)
         self.Meshes = MeshService(Ctx)
+        self.Production3D = Production3D(Ctx, self.Meshes)     # admin-only; never started automatically
 
     def Reconcile(self) -> dict:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),
-                "meshes": self.Meshes.Reconcile()}
+                "meshes": self.Meshes.Reconcile(), "production_3d": self.Production3D.Reconcile()}
 
 
 def _VersionedPage(Name: str, BasePath: str) -> str:
@@ -84,6 +87,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing),
                   Accounts=Accounts)
     Svc = Services(Ctx)
+    Sessions.BackfillBagEvents(Ctx)               # bag lines can be removed later; keep their bag_added
     Annotated = BackfillUsageAnnotations(Ctx)     # provider/endpoint on usage recorded before they were captured
     if Annotated:
         Logger.info("Annotated %d earlier usage events with provider/endpoint", Annotated)
@@ -142,7 +146,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def DevPage():
         return HTMLResponse(_VersionedPage("dev.html", Base))
 
-    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base))
+    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D)
 
     App_.mount("/static", StaticFiles(directory=WebDir), name="static")
     App_.mount("/assets", StaticFiles(directory=S.AssetsDir), name="assets")
@@ -178,6 +182,11 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.get("/verify", include_in_schema=False)
     async def VerifyEmail(Req: Request, Background: BackgroundTasks, token: str = ""):
         return HTMLResponse(Registration.VerifyPage(Req, token, Background.add_task))
+
+    @App_.post("/api/events")
+    async def SessionEvent(Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        return Sessions.RecordClientEvent(Ctx, Tok(x_access_token).AccountId, str(Body_.get("kind", "")),
+                                          Body_.get("design_id") or None)
 
     @App_.get("/api/catalog")
     async def CatalogRoute():

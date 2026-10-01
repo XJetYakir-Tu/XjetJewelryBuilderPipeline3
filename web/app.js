@@ -89,6 +89,7 @@ function p3App() {
       return String((this.userProfile && this.userProfile.email) || this.userSession.email || '').trim();
     },
     accountPanelOpen: false, tokenCopied: false,
+    checkoutNotice: false,
 
     // ── studio: compose ──────────────────────────────────────────────
     userInput: '', uploadedFile: null, uploadedPreview: null, rightsConfirmed: false,
@@ -239,7 +240,16 @@ function p3App() {
       if (STUDIO_VIEWS.includes(v)) this.persist({ view: v });
       window.scrollTo({ top: 0 });
       document.querySelector('main')?.scrollTo?.({ top: 0 });
-      if (v === 'checkout') this.refreshBag();
+      if (v === 'checkout') { this.refreshBag(); this.track('bag_viewed'); }
+    },
+    // Session analytics for the Admin (best effort; never blocks the customer).
+    track(kind, designId = null) {
+      if (!this.token) return;
+      this.api('POST', '/api/events', { kind, design_id: designId }).catch(() => {});
+    },
+    checkoutClicked() {
+      this.track('checkout_clicked');
+      this.checkoutNotice = true;
     },
     scrollToHowItWorks() {
       this.navigateTo('home');
@@ -461,6 +471,7 @@ function p3App() {
 
     startNew() {
       // Clears the active selection/associations only. Saved designs and the bag are untouched.
+      this.track('new_design_clicked');
       this.stopPolling();
       this.design = null; this.cust = null; this.viewBatchId = null; this.pendingRefineBatchId = null;
       this.actionError = ''; this.composeError = ''; this.closePreview();

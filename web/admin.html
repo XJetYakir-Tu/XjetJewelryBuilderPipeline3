@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
   <meta name="p3-base" content="{{BASE}}">
-  <title>XJet Admin — Users</title>
+  <title>XJet Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -39,7 +39,9 @@
               x-text="mode === 'mock' ? 'Mock AI' : 'Live AI'"></span>
       </div>
       <nav class="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs uppercase tracking-widest">
-        <a :href="BASE + '/admin/'" @click.prevent="go('')" :class="!userId ? 'text-black font-semibold' : 'text-zinc-500 hover:text-black'">Users</a>
+        <template x-for="t in [['dashboard','Dashboard'],['sessions','Sessions'],['users','Users']]">
+          <a :href="'#/' + t[0]" :class="tab === t[0] ? 'text-black font-semibold' : 'text-zinc-500 hover:text-black'" x-text="t[1]"></a>
+        </template>
         <a :href="BASE + '/dev'" class="text-zinc-500 hover:text-black">Developer tools</a>
         <a :href="BASE + '/'" class="text-zinc-500 hover:text-black">← Site</a>
         <button x-show="ok" x-cloak @click="signOut()" class="text-zinc-400 hover:text-black uppercase tracking-widest">Sign out</button>
@@ -59,7 +61,7 @@
   </main>
 
   <!-- ══════════════════════════ Users list ══════════════════════════ -->
-  <main x-show="ok && !userId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+  <main x-show="ok && tab === 'users' && !userId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
 
     <!-- Create -->
     <section class="card p-6">
@@ -75,7 +77,7 @@
       </form>
       <div x-show="createError" x-cloak class="mt-4 px-4 py-3 border text-sm bg-red-50 border-red-200 text-red-700 flex items-center gap-3">
         <span x-text="createError"></span>
-        <button x-show="duplicateOf" class="underline font-semibold" @click="go(duplicateOf)">Open existing user →</button>
+        <button x-show="duplicateOf" class="underline font-semibold" @click="go('#/users/' + encodeURIComponent(duplicateOf))">Open existing user →</button>
       </div>
       <div x-show="created" x-cloak class="mt-4 px-4 py-3 border text-sm bg-emerald-50 border-emerald-200 text-emerald-800 flex flex-wrap items-center gap-3">
         <span>Token created for <strong x-text="created?.name"></strong>:</span>
@@ -99,7 +101,7 @@
         <thead><tr><th>Token</th><th>Name</th><th>Email</th><th>Used / Max</th><th>Status</th><th>Created</th><th>Last activity</th><th class="text-right">Actions</th></tr></thead>
           <template x-for="u in filtered" :key="u.account_id">
             <tbody>
-            <tr class="hover:bg-zinc-50 cursor-pointer" :class="['inactive','removed'].includes(u.status) ? 'opacity-50' : ''" @click="go(u.account_id)">
+            <tr class="hover:bg-zinc-50 cursor-pointer" :class="['inactive','removed'].includes(u.status) ? 'opacity-50' : ''" @click="go('#/users/' + encodeURIComponent(u.account_id))">
               <td class="font-mono font-bold tracking-wider" x-text="u.token || '—'"></td>
               <td x-text="u.name || '—'"></td>
               <td class="text-zinc-600" x-text="u.email || '—'"></td>
@@ -138,8 +140,8 @@
   </main>
 
   <!-- ══════════════════════════ User detail ══════════════════════════ -->
-  <main x-show="ok && userId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
-    <p class="text-xs uppercase tracking-widest text-zinc-400"><a href="#" class="hover:text-black" @click.prevent="go('')">Users</a> / <span x-text="d?.user.name || userId"></span></p>
+  <main x-show="ok && tab === 'users' && userId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+    <p class="text-xs uppercase tracking-widest text-zinc-400"><a href="#/users" class="hover:text-black">Users</a> / <span x-text="d?.user.name || userId"></span></p>
     <p x-show="detailError" class="text-sm text-red-600" x-text="detailError"></p>
 
     <template x-if="d">
@@ -161,7 +163,7 @@
           <p class="text-[11px] text-zinc-400 font-mono" x-text="d.user.account_id"></p>
         </div>
         <div class="flex gap-4 text-xs uppercase tracking-widest">
-          <button class="text-blue-500 hover:underline" x-show="d.user.status !== 'removed'" @click="go(''); $nextTick(() => startEdit(d.user))">Edit</button>
+          <button class="text-blue-500 hover:underline" x-show="d.user.status !== 'removed'" @click="go('#/users'); $nextTick(() => startEdit(d.user))">Edit</button>
           <button class="text-zinc-500 hover:underline" x-show="!['inactive','removed'].includes(d.user.status)" @click="act(d.user, 'deactivate')">Deactivate</button>
           <button class="text-green-600 hover:underline" x-show="d.user.status === 'inactive'" @click="act(d.user, 'activate')">Activate</button>
           <button class="text-red-500 hover:underline" x-show="d.user.status !== 'removed'" @click="remove(d.user)">Remove</button>
@@ -237,6 +239,23 @@
         </table>
       </section>
 
+      <!-- Sessions of this user -->
+      <section class="card">
+        <div class="px-6 py-4 border-b border-zinc-100"><p class="lbl">Sessions (<span x-text="d.sessions.length"></span>)</p></div>
+        <table class="w-full">
+          <tbody>
+            <template x-for="x in d.sessions" :key="x.session_id">
+              <tr class="hover:bg-zinc-50 cursor-pointer" @click="go('#/sessions/' + encodeURIComponent(x.session_id))">
+                <td class="w-14"><img x-show="x.thumbnail_url" :src="x.thumbnail_url" class="w-10 h-10 object-cover border border-zinc-200" alt=""></td>
+                <td><p class="font-medium" x-text="x.title"></p><p class="text-[11px] text-zinc-400" x-text="dateTime(x.started_at)"></p></td>
+                <td class="text-xs text-zinc-600" x-text="x.path"></td>
+                <td class="text-right"><span class="badge" :class="x.state === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'" x-text="x.state === 'active' ? 'Active' : 'Ended'"></span></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </section>
+
       <!-- Designs -->
       <section class="space-y-3">
         <p class="lbl">Designs (<span x-text="d.designs.length"></span>)</p>
@@ -287,13 +306,254 @@
         <ul class="divide-y divide-zinc-100 max-h-[520px] overflow-y-auto">
           <template x-for="(e, i) in d.timeline" :key="i">
             <li class="px-6 py-2.5 flex items-center gap-4 text-sm">
-              <span class="text-[11px] text-zinc-400 w-36 shrink-0" x-text="dateTime(e.at)"></span>
-              <span class="badge shrink-0" :class="eventClass(e)" x-text="eventLabel(e)"></span>
-              <span class="truncate text-zinc-600" x-text="e.text"></span>
+              <span class="text-[11px] text-zinc-400 w-36 shrink-0" x-text="dateTime(e?.at)"></span>
+              <span class="badge shrink-0" :class="e ? eventClass(e) : ''" x-text="e ? eventLabel(e) : ''"></span>
+              <span class="truncate text-zinc-600" x-text="e?.text"></span>
             </li>
           </template>
           <li x-show="!d.timeline.length" class="px-6 py-6 text-center text-zinc-400 text-sm">No activity yet.</li>
         </ul>
+      </section>
+    </div>
+    </template>
+  </main>
+
+  <!-- ══════════════════════════ Dashboard ══════════════════════════ -->
+  <main x-show="ok && tab === 'dashboard'" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+    <template x-if="dash">
+    <div class="space-y-8">
+      <section class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="card p-4"><p class="lbl mb-1">Sessions</p><p class="text-2xl font-semibold" x-text="dash.sessions"></p>
+          <p class="text-[11px] text-zinc-400" x-text="dash.active_sessions + ' active now'"></p></div>
+        <div class="card p-4"><p class="lbl mb-1">New Design clicks</p><p class="text-2xl font-semibold" x-text="dash.new_design_clicks"></p>
+          <p class="text-[11px] text-zinc-400">Recorded from 1 Oct 2026 · incl. no prompt</p></div>
+        <div class="card p-4"><p class="lbl mb-1">Avg refinements</p><p class="text-2xl font-semibold" x-text="dash.avg_refinements ?? '—'"></p>
+          <p class="text-[11px] text-zinc-400" x-text="(dash.sessions_with_refinement_pct ?? 0) + '% of sessions refine'"></p></div>
+        <div class="card p-4"><p class="lbl mb-1">Selected for 3D</p><p class="text-2xl font-semibold" x-text="dash.selected_for_3d"></p>
+          <p class="text-[11px] text-zinc-400" x-text="(dash.selected_for_3d_pct ?? 0) + '% of sessions'"></p></div>
+        <div class="card p-4"><p class="lbl mb-1">Generation failed</p><p class="text-2xl font-semibold" :class="dash.generation_failed ? 'text-red-600' : ''" x-text="dash.generation_failed"></p>
+          <p class="text-[11px] text-zinc-400">Sessions with no image</p></div>
+      </section>
+
+      <section class="card p-6">
+        <p class="lbl mb-5">Funnel — where sessions stop</p>
+        <div class="space-y-3">
+          <template x-for="f in dash.funnel" :key="f.stage">
+            <div class="grid grid-cols-[150px_1fr_110px] items-center gap-4 text-sm">
+              <span x-text="f.label"></span>
+              <div class="h-6 bg-zinc-100"><div class="h-6 bg-zinc-900" :style="'width:' + (f.pct || 0) + '%'"></div></div>
+              <span class="text-right tabular-nums"><strong x-text="f.sessions"></strong> <span class="text-zinc-400" x-text="'· ' + (f.pct ?? 0) + '%'"></span></span>
+            </div>
+          </template>
+        </div>
+        <p class="text-[11px] text-zinc-400 mt-4">Checkout is not implemented yet — "Checkout Clicked" counts clicks on the unavailable Checkout button.</p>
+      </section>
+
+      <section class="card p-6">
+        <p class="lbl mb-4">3D geometry and price accuracy</p>
+        <div x-show="!dash.geometry.measured" class="text-sm text-zinc-500">No sessions measured in 3D yet. Use <strong>Generate 3D</strong> on a session.</div>
+        <div x-show="dash.geometry.measured" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div><p class="lbl mb-1">Measured</p><p class="text-xl font-semibold" x-text="dash.geometry.measured"></p></div>
+          <div><p class="lbl mb-1">Avg volume</p><p class="text-xl font-semibold" x-text="dash.geometry.avg_volume_mm3 ? dash.geometry.avg_volume_mm3 + ' mm³' : '—'"></p></div>
+          <div><p class="lbl mb-1">Avg weight by material</p>
+            <template x-for="(w, m) in dash.geometry.avg_weight_g_by_material"><p x-text="materialLabel(m) + ': ' + w + ' g'"></p></template></div>
+          <div><p class="lbl mb-1">Fixed vs 3D price</p>
+            <p class="text-xl font-semibold" x-text="dash.geometry.fixed_vs_3d_price_variance_pct == null ? '—' : (dash.geometry.fixed_vs_3d_price_variance_pct > 0 ? '+' : '') + dash.geometry.fixed_vs_3d_price_variance_pct + '%'"></p>
+            <p class="text-[11px] text-zinc-400" x-show="dash.cost_model === 'not_configured'">Cost model not configured yet</p></div>
+        </div>
+      </section>
+    </div>
+    </template>
+  </main>
+
+  <!-- ══════════════════════════ Sessions ══════════════════════════ -->
+  <main x-show="ok && tab === 'sessions' && !sessionId" x-cloak class="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+    <section class="card">
+      <div class="px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100">
+        <p class="lbl">Sessions (<span x-text="sessionsFiltered.length"></span>)</p>
+        <div class="flex flex-wrap items-center gap-3 text-xs">
+          <input class="inp !w-56 !py-1.5" x-model="sq" placeholder="Search customer, email, design">
+          <select class="inp !w-auto !py-1.5" x-model="sStage">
+            <option value="">Any stage</option>
+            <template x-for="o in stageOptions"><option :value="o[0]" x-text="'Stopped at ' + o[1]"></option></template>
+          </select>
+          <select class="inp !w-auto !py-1.5" x-model="sBag"><option value="">Bag: any</option><option value="yes">Reached Bag</option><option value="no">No Bag</option></select>
+          <select class="inp !w-auto !py-1.5" x-model="s3d"><option value="">3D: any</option><option value="none">No 3D</option><option value="any">Has 3D</option></select>
+          <button class="text-zinc-500 hover:text-black uppercase tracking-widest" @click="loadSessions()">Refresh</button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead><tr><th></th><th>Customer</th><th>Started / last activity</th><th>Stage</th><th class="text-right">Gen / Ref</th><th>Size</th><th>Material</th><th>Bag</th><th>Checkout clicked</th><th>3D</th><th class="text-right">Fixed price</th></tr></thead>
+        <tbody>
+          <template x-for="x in sessionsFiltered" :key="x.session_id">
+            <tr class="hover:bg-zinc-50 cursor-pointer" @click="go('#/sessions/' + encodeURIComponent(x.session_id))">
+              <td class="w-16"><div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden"><img x-show="x.thumbnail_url" :src="x.thumbnail_url" class="w-full h-full object-cover" loading="lazy" alt=""></div></td>
+              <td><p class="font-medium" x-text="x.customer_name || '—'"></p><p class="text-[11px] text-zinc-500" x-text="x.customer_email || ''"></p></td>
+              <td class="text-xs"><p x-text="dateTime(x.started_at)"></p><p class="text-zinc-400" x-text="ago(x.last_activity_at) + (x.state === 'active' ? ' · active' : '')"></p></td>
+              <td class="text-xs max-w-[260px]"><span :class="x.path.endsWith('stopped') || x.path.includes('failed') ? 'text-zinc-500' : 'text-zinc-800'" x-text="x.path"></span></td>
+              <td class="text-right tabular-nums" x-text="x.generations + ' / ' + x.refinements"></td>
+              <td x-text="x.ring_size != null ? 'US ' + x.ring_size : '—'"></td>
+              <td x-text="x.material_chosen ? x.material_label : '—'"></td>
+              <td x-text="x.add_to_bag ? '✓' : '—'" :class="x.add_to_bag ? 'text-emerald-700 font-semibold' : 'text-zinc-300'"></td>
+              <td x-text="x.checkout_clicked ? '✓' : '—'" :class="x.checkout_clicked ? 'text-emerald-700 font-semibold' : 'text-zinc-300'"></td>
+              <td><span x-show="x.three_d_status" class="badge" :class="threeDClass(x.three_d_status)" x-text="threeDLabel(x.three_d_status)"></span><span x-show="!x.three_d_status" class="text-zinc-300">—</span></td>
+              <td class="text-right tabular-nums" x-text="priceText(x.fixed_price)"></td>
+            </tr>
+          </template>
+          <tr x-show="!sessionsFiltered.length"><td colspan="11" class="text-center text-zinc-400 !py-10">No sessions.</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="px-6 py-3 text-[11px] text-zinc-400 border-t border-zinc-100">A session is one design journey: it starts with the first prompt of a New Design and ends when the customer starts another New Design or after <span x-text="idleMinutes"></span> minutes without activity.</p>
+    </section>
+  </main>
+
+  <!-- ══════════════════════════ Session detail ══════════════════════════ -->
+  <main x-show="ok && tab === 'sessions' && sessionId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+    <p class="text-xs uppercase tracking-widest text-zinc-400"><a href="#/sessions" class="hover:text-black">Sessions</a> / <span x-text="sd?.session.title || sessionId"></span></p>
+    <p x-show="sdError" class="text-sm text-red-600" x-text="sdError"></p>
+    <template x-if="sd">
+    <div class="space-y-8">
+      <!-- Summary -->
+      <section class="card p-6 grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6">
+        <div class="aspect-square bg-zinc-100 border border-zinc-200 overflow-hidden"><img x-show="sd.session.thumbnail_url" :src="sd.session.thumbnail_url" class="w-full h-full object-cover" alt=""></div>
+        <div class="space-y-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <h1 class="cinzel text-2xl" x-text="sd.session.title"></h1>
+            <span class="badge" :class="sd.session.state === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'" x-text="sd.session.state === 'active' ? 'Active' : ('Ended · ' + (sd.session.end_reason === 'new_design' ? 'new design started' : 'inactive'))"></span>
+          </div>
+          <p class="text-sm"><a class="font-medium hover:underline" :href="'#/users/' + encodeURIComponent(sd.session.account_id)" x-text="sd.session.customer_name || 'Unknown customer'"></a>
+            <span class="text-zinc-500" x-text="sd.session.customer_email ? ' · ' + sd.session.customer_email : ''"></span></p>
+          <p class="text-sm text-zinc-500 italic" x-text="'“' + sd.session.prompt + '”'"></p>
+          <p class="text-sm font-medium" x-text="sd.session.path"></p>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm pt-2">
+            <div><p class="lbl">Ring size</p><p x-text="sd.session.ring_size != null ? 'US ' + sd.session.ring_size : 'Not selected'"></p></div>
+            <div><p class="lbl">Material</p><p x-text="sd.session.material_chosen ? sd.session.material_label : 'Not selected'"></p></div>
+            <div><p class="lbl">Fixed price</p><p x-text="priceText(sd.session.fixed_price)"></p>
+              <p class="text-[10px] text-zinc-400" x-text="fixedSource(sd.session.fixed_price)"></p></div>
+            <div><p class="lbl">AI requests</p><p x-text="sd.ai_usage.requests + (sd.ai_usage.cost_usd != null ? ' · $' + sd.ai_usage.cost_usd : ' · cost —')"></p>
+              <p class="text-[10px] text-zinc-400" x-text="sd.ai_usage.providers.join(', ')"></p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Journey -->
+      <section class="card">
+        <div class="px-6 py-4 border-b border-zinc-100"><p class="lbl">Journey</p></div>
+        <ol class="divide-y divide-zinc-100">
+          <template x-for="(e, i) in sd.timeline" :key="i">
+            <li class="px-6 py-2.5 grid grid-cols-[150px_80px_170px_1fr] gap-3 items-center text-sm">
+              <span class="text-[11px] text-zinc-400" x-text="dateTime(e?.at)"></span>
+              <span class="text-[11px] text-zinc-400 text-right" x-text="i && sd?.timeline[i - 1] ? '+' + since(sd.timeline[i - 1].at, e?.at) : ''"></span>
+              <span><span class="badge" :class="e ? stepClass(e) : ''" x-text="e ? stepLabel(e) : ''"></span></span>
+              <span class="truncate text-zinc-600" x-text="e ? stepText(e) : ''"></span>
+            </li>
+          </template>
+        </ol>
+      </section>
+
+      <!-- 3D production -->
+      <section class="card p-6 space-y-5">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <p class="lbl">3D production · Hi3D v3.0</p>
+          <p class="text-[11px] text-zinc-400">Never runs automatically. Each new Hi3D generation is a paid call in live mode (AI mode: <span x-text="mode"></span>).</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-4 items-end">
+          <div><label class="lbl block mb-1">Customer selected size</label>
+            <p class="text-sm py-2" x-text="sd.three_d_defaults.customer_size != null ? 'US ' + sd.three_d_defaults.customer_size : 'None selected → default US 10'"></p></div>
+          <div><label class="lbl block mb-1">3D production size</label>
+            <select class="inp" x-model.number="g3.size">
+              <template x-for="z in sd.catalog.ring_sizes"><option :value="z" :selected="z === g3.size" x-text="'US ' + z + ' · ' + innerDia(z) + ' mm'"></option></template>
+            </select>
+            <p x-show="g3.size !== (sd.three_d_defaults.customer_size ?? 10)" class="text-[11px] text-amber-700 mt-1">Manual override</p></div>
+          <div><label class="lbl block mb-1">Material</label>
+            <select class="inp" x-model="g3.material">
+              <template x-for="m in sd.catalog.materials"><option :value="m.id" :selected="m.id === g3.material" x-text="m.label + ' · ' + m.density_g_cm3 + ' g/cm³'"></option></template>
+            </select>
+            <p class="text-[11px] mt-1" :class="g3.material !== sd.three_d_defaults.customer_material ? 'text-amber-700' : 'text-zinc-400'"
+               x-text="sd.three_d_defaults.customer_material ? (g3.material === sd.three_d_defaults.customer_material ? 'Customer selection' : 'Differs from customer selection') : 'Customer did not choose a material'"></p></div>
+          <button class="btn" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.has_raw_mesh ? 'Recalculate 3D' : 'Generate 3D'"></button>
+        </div>
+        <p x-show="sd.three_d_defaults.has_raw_mesh" class="text-[11px] text-zinc-500">A Hi3D model already exists for this design — recalculating re-scales and re-measures it (no new Hi3D call).</p>
+        <p x-show="g3.error" class="text-sm text-red-600" x-text="g3.error"></p>
+
+        <template x-for="t in sd.three_d" :key="t.id">
+          <div class="border border-zinc-200 p-5 space-y-4">
+            <div class="flex flex-wrap items-center gap-3 text-sm">
+              <span class="badge" :class="threeDClass(t.status)" x-text="threeDLabel(t.status)"></span>
+              <span x-text="'US ' + t.production_size + ' (' + sizeSource(t.size_source) + ') · ' + t.material_label + ' (' + sizeSource(t.material_source) + ')'"></span>
+              <span class="text-[11px] text-zinc-400" x-text="dateTime(t.created_at) + ' · Hi3D ' + (t.hi3d?.status || '—') + (t.hi3d?.provider ? ' (' + t.hi3d.provider + ')' : '')"></span>
+            </div>
+            <p x-show="t.error" class="text-sm text-amber-700" x-text="t.error"></p>
+            <template x-if="t.geometry.production">
+              <div class="space-y-4">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div><p class="lbl">X / Y / Z</p><p x-text="mm(t.geometry.production.size_x_mm) + ' × ' + mm(t.geometry.production.size_y_mm) + ' × ' + mm(t.geometry.production.size_z_mm) + ' mm'"></p></div>
+                  <div><p class="lbl">Inner diameter</p><p x-text="mm(t.geometry.production.inner_diameter_mm) + ' mm'"></p><p class="text-[10px] text-zinc-400" x-text="'target ' + t.target_inner_diameter_mm + ' mm'"></p></div>
+                  <div><p class="lbl">Volume</p><p x-text="t.geometry.production.volume_mm3 != null ? t.geometry.production.volume_mm3.toFixed(1) + ' mm³' : 'not reliable'"></p></div>
+                  <div><p class="lbl">Surface area</p><p x-text="t.geometry.production.surface_area_mm2.toFixed(1) + ' mm²'"></p></div>
+                  <div><p class="lbl">Weight</p><p x-text="t.price?.weight_g != null ? t.price.weight_g.toFixed(2) + ' g' : '—'"></p><p class="text-[10px] text-zinc-400" x-text="t.density_g_cm3 + ' g/cm³'"></p></div>
+                  <div><p class="lbl">Production cost</p><p x-text="t.price?.production_cost != null ? '$' + t.price.production_cost.toFixed(2) : '—'"></p></div>
+                  <div><p class="lbl">Fixed price</p><p x-text="t.price?.fixed_price != null ? '$' + t.price.fixed_price.toFixed(2) : 'Price unavailable'"></p></div>
+                  <div><p class="lbl">3D calculated price</p><p x-text="t.price?.calculated_price != null ? '$' + t.price.calculated_price.toFixed(2) : '—'"></p></div>
+                </div>
+                <p x-show="t.price?.status === 'cost_model_not_configured'" class="text-[11px] text-zinc-500">Production cost and 3D price need the cost model (metal price per gram, production cost, markup) in <code>config/production_costs.json</code> — not configured yet.</p>
+                <div class="flex gap-4 text-xs uppercase tracking-widest">
+                  <button class="underline" @click="downloadStl(t.id, 'production')">Download scaled STL</button>
+                  <button class="underline text-zinc-500" @click="downloadStl(t.id, 'raw')">Download raw Hi3D</button>
+                </div>
+                <details class="text-xs text-zinc-600">
+                  <summary class="cursor-pointer lbl">Technical details</summary>
+                  <div class="grid md:grid-cols-2 gap-4 mt-3">
+                    <template x-for="stage in ['raw', 'production']">
+                      <div x-show="t.geometry[stage]" class="space-y-1">
+                        <p class="font-semibold" x-text="stage === 'raw' ? 'Raw (as returned by Hi3D, model units)' : 'Production (repaired + scaled, mm)'"></p>
+                        <p x-text="'Watertight: ' + (t.geometry[stage]?.watertight ? 'yes' : 'no') + (t.geometry[stage]?.scale_factor ? ' · scale ×' + t.geometry[stage].scale_factor.toFixed(3) : '')"></p>
+                        <p x-text="'Inner diameter: ' + (t.geometry[stage]?.inner_diameter_mm?.toFixed(4) ?? '—') + ' · method ' + t.geometry[stage]?.method_version"></p>
+                        <pre class="bg-zinc-50 border border-zinc-100 p-2 overflow-x-auto text-[10px]" x-text="JSON.stringify(t.geometry[stage]?.checks, null, 1)"></pre>
+                      </div>
+                    </template>
+                  </div>
+                  <p class="mt-2" x-text="'Cost model: ' + (t.price?.cost_model_version || '—') + ' · fixed price source: ' + (t.price?.breakdown?.fixed_price_source || '—') + ' (' + (t.price?.fixed_price_version || '—') + ')'"></p>
+                </details>
+              </div>
+            </template>
+          </div>
+        </template>
+      </section>
+
+      <!-- Customer choices -->
+      <section class="card" x-show="sd.choices.length">
+        <div class="px-6 py-4 border-b border-zinc-100"><p class="lbl">Customize choices</p></div>
+        <table class="w-full"><thead><tr><th>Time</th><th>Change</th><th>Material</th><th>Size</th><th class="text-right">Price shown</th></tr></thead>
+          <tbody><template x-for="(c, i) in sd.choices" :key="i"><tr>
+            <td class="text-xs text-zinc-500" x-text="dateTime(c?.at)"></td>
+            <td class="text-xs" x-text="c?.kind === 'customize_opened' ? 'Opened Customize' : 'Changed'"></td>
+            <td x-text="c?.material_id ? materialLabel(c.material_id) : ''"></td>
+            <td x-text="c?.ring_size != null ? 'US ' + c.ring_size : ''"></td>
+            <td class="text-right" x-text="c?.unit_price != null ? '$' + c.unit_price.toFixed(2) : (c?.pricing_status === 'unavailable' ? 'unavailable' : '')"></td>
+          </tr></template></tbody></table>
+      </section>
+
+      <!-- All images of the session -->
+      <section class="card p-6 space-y-5" x-show="sd.design">
+        <p class="lbl">Designs in this session</p>
+        <template x-for="b in sd.design?.batches || []" :key="b.id">
+          <div class="space-y-2">
+            <p class="text-xs text-zinc-500"><span class="badge" :class="b.kind === 'refine' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'" x-text="b.kind === 'refine' ? 'Refinement' : 'Design'"></span>
+              <span class="ml-2" x-text="b.user_text"></span></p>
+            <div class="grid grid-cols-4 gap-3">
+              <template x-for="c in b.candidates" :key="c.id">
+                <div class="space-y-1">
+                  <a :href="c.image_url" target="_blank" class="block aspect-square bg-zinc-100 border" :class="c.selected ? 'border-black border-2' : 'border-zinc-200'"><img x-show="c.image_url" :src="c.image_url" class="w-full h-full object-cover" loading="lazy" alt=""></a>
+                  <p class="text-[11px] text-zinc-400" x-text="'Option ' + (c.slot + 1) + (c.selected ? ' · selected' : '') + (c.status !== 'ready' ? ' · ' + c.status : '')"></p>
+                  <template x-for="m in c.movies" :key="m.id"><a :href="m.url" target="_blank" class="text-[11px] underline" x-text="m.status === 'ready' ? '▶ 360° movie' : '360° movie · ' + m.status"></a></template>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
       </section>
     </div>
     </template>

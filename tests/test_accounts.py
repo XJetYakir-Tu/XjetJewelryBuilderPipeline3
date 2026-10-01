@@ -8,7 +8,7 @@ import pytest
 
 from p3.accounts import InsufficientCredits, Principal
 from p3.accounts.local import HashToken, LocalAccountProvider
-from p3.db import Schema
+from p3.db import Schema, SessionTables
 from p3.providers import endpoints
 from tests.conftest import Harness
 
@@ -113,7 +113,8 @@ CREATE TABLE usage_events (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT 
 
 
 def _LegacySchema() -> str:
-    S = Schema.replace("owner_account_id       TEXT NOT NULL,", "token TEXT NOT NULL,")
+    S = Schema.replace(SessionTables, "")                      # v0 had no session tables
+    S = S.replace("owner_account_id       TEXT NOT NULL,", "token TEXT NOT NULL,")
     S = S.replace("UNIQUE (owner_account_id, client_request_id)", "UNIQUE (token, client_request_id)")
     S = S.replace("owner_account_id  TEXT NOT NULL,", "token TEXT NOT NULL,")
     S = re.sub(r"CREATE INDEX IF NOT EXISTS (designs_owner|bag_lines_owner)[^;]*;", "", S)

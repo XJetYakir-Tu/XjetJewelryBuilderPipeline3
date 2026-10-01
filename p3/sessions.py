@@ -1,0 +1,260 @@
+"""Sessions — one design journey per session, for the Admin and its statistics.
+
+A session starts when the customer submits the first prompt of a New Design (designs.created_at;
+a "New Design" click with no prompt is only counted as a top-of-funnel event). It is resumed when
+the design is reopened, and it ends when the customer starts another New Design or after
+IdleMinutes without activity.
+
+Stage times come from data P3 already keeps (batches, candidates, customizations, movies) plus the
+append-only session_events table for what those do not keep: material/size history together with
+the fixed price shown, bag adds/removes, Bag viewed, Checkout clicked, design reopened, and admin
+actions. Nothing is estimated.
+
+Stages, in order: started → generated → customize → bag → checkout_clicked. Refinements are
+counted alongside ("Generated → Refined ×2 → Customize → Bag"); the 360° movie and 3D are
+separate status tracks.
+"""
+
+import json
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+
+from p3.context import Context, HttpError
+from p3.db import Dumps, Now
+
+IdleMinutes = 30
+
+# Events the customer site may send (POST /api/events). Everything else is recorded server-side.
+ClientEvents = {"new_design_clicked", "design_opened", "bag_viewed", "checkout_clicked"}
+
+StageOrder = ["started", "generated", "customize", "bag", "checkout_clicked"]
+StageLabels = {"started": "Started", "generated": "Generated", "refined": "Refined", "customize": "Customize",
+               "bag": "Bag", "checkout_clicked": "Checkout Clicked"}
+
+
+def Record(Ctx: Context, OwnerAccountId: str, Kind: str, DesignId: str | None = None, **Data) -> None:
+    """Append one session event. Never raises into the customer flow."""
+    try:
+        Ctx.Db.Execute("INSERT INTO session_events (design_id, owner_account_id, kind, data_json, created_at) "
+                       "VALUES (?,?,?,?,?)", (DesignId, OwnerAccountId, Kind, Dumps(Data), Now()))
+    except Exception:  # noqa: BLE001 — analytics must not break the product
+        import logging
+        logging.getLogger("p3.sessions").exception("Could not record session event %s", Kind)
+
+
+def RecordClientEvent(Ctx: Context, OwnerAccountId: str, Kind: str, DesignId: str | None) -> dict:
+    if Kind not in ClientEvents:
+        raise HttpError(400, "unknown_event", "Unknown event.")
+    if Kind in ("bag_viewed", "checkout_clicked"):
+        # The bag can hold rings from several sessions: the event belongs to each of them.
+        Designs = [R["design_id"] for R in Ctx.Db.All(
+            "SELECT DISTINCT design_id FROM bag_lines WHERE owner_account_id = ?", (OwnerAccountId,))]
+        for Did in Designs:
+            Record(Ctx, OwnerAccountId, Kind, Did)
+        return {"ok": True, "sessions": len(Designs)}
+    if DesignId is not None:
+        if not Ctx.Db.One("SELECT 1 AS x FROM designs WHERE id = ? AND owner_account_id = ?", (DesignId, OwnerAccountId)):
+            raise HttpError(404, "design_not_found", "Design not found.")
+    elif Kind != "new_design_clicked":
+        raise HttpError(400, "design_required", "A design is required for this event.")
+    Record(Ctx, OwnerAccountId, Kind, DesignId)
+    return {"ok": True}
+
+
+def BackfillBagEvents(Ctx: Context) -> int:
+    """Bag lines can be removed later, so give existing ones a bag_added event once (idempotent)."""
+    Rows = Ctx.Db.All("SELECT b.* FROM bag_lines b WHERE NOT EXISTS (SELECT 1 FROM session_events e "
+                      "WHERE e.kind = 'bag_added' AND json_extract(e.data_json, '$.line_id') = b.id)")
+    for B in Rows:
+        Ctx.Db.Execute("INSERT INTO session_events (design_id, owner_account_id, kind, data_json, created_at) "
+                       "VALUES (?,?,?,?,?)", (B["design_id"], B["owner_account_id"], "bag_added", Dumps({
+                           "line_id": B["id"], "material_id": B["material_id"], "ring_size": B["ring_size"],
+                           "quantity": B["quantity"], "unit_price": B["unit_price"], "currency": B["currency"],
+                           "pricing_version": B["pricing_version"], "backfilled": True}), B["created_at"]))
+    return len(Rows)
+
+
+def _Parse(Iso: str | None) -> datetime | None:
+    return datetime.fromisoformat(Iso) if Iso else None
+
+
+def _Min(*Values):
+    V = [X for X in Values if X]
+    return min(V) if V else None
+
+
+def _Max(*Values):
+    V = [X for X in Values if X]
+    return max(V) if V else None
+
+
+def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: str | None = None) -> list[dict]:
+    """Session summaries (newest first) for all designs, or the given ones / one owner."""
+    Db, Url = Ctx.Db, Ctx.AssetUrl
+    Where, Params = [], []
+    if DesignIds is not None:
+        if not DesignIds:
+            return []
+        Where.append(f"id IN ({','.join('?' * len(DesignIds))})")
+        Params += DesignIds
+    if OwnerAccountId:
+        Where.append("owner_account_id = ?")
+        Params.append(OwnerAccountId)
+    Designs = Db.All("SELECT * FROM designs" + (" WHERE " + " AND ".join(Where) if Where else "")
+                     + " ORDER BY created_at DESC", Params)
+    if not Designs:
+        return []
+    Ids = [D["id"] for D in Designs]
+    Q = ",".join("?" * len(Ids))
+    Batches = Db.All(f"SELECT id, design_id, kind, user_text, created_at FROM batches WHERE design_id IN ({Q})", Ids)
+    Cands = Db.All(f"SELECT c.id, c.batch_id, c.slot, c.status, c.asset_path, c.updated_at, b.design_id, b.kind "
+                   f"FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE b.design_id IN ({Q})", Ids)
+    Custs = Db.All(f"SELECT * FROM customizations WHERE design_id IN ({Q}) ORDER BY updated_at", Ids)
+    Movies = Db.All(f"SELECT m.id, m.status, m.created_at, m.updated_at, b.design_id FROM movies m "
+                    f"JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
+                    f"WHERE b.design_id IN ({Q})", Ids)
+    Lines = Db.All(f"SELECT * FROM bag_lines WHERE design_id IN ({Q}) ORDER BY created_at", Ids)
+    Events = Db.All(f"SELECT * FROM session_events WHERE design_id IN ({Q}) ORDER BY created_at", Ids)
+    ThreeD = Db.All(f"SELECT * FROM session_3d WHERE design_id IN ({Q}) ORDER BY created_at", Ids)
+    Owners = list({D["owner_account_id"] for D in Designs})
+    # A newer design by the same customer ends the previous session ("new_design").
+    Starts = defaultdict(list)
+    for R in Db.All(f"SELECT owner_account_id, created_at FROM designs WHERE owner_account_id IN "
+                    f"({','.join('?' * len(Owners))})", Owners):
+        Starts[R["owner_account_id"]].append(R["created_at"])
+
+    def Group(Rows, Key="design_id"):
+        G = defaultdict(list)
+        for R in Rows:
+            G[R[Key]].append(R)
+        return G
+
+    B, C, Cu, M, L, E, T3 = (Group(X) for X in (Batches, Cands, Custs, Movies, Lines, Events, ThreeD))
+    Names = {}
+    for Oid in Owners:
+        try:
+            U = Ctx.Accounts.AdminGet(Oid)
+            Names[Oid] = (U["name"], U["email"])
+        except Exception:  # noqa: BLE001 — an unknown owner must not hide the session
+            Names[Oid] = ("", "")
+    NowDt = datetime.now(timezone.utc)
+    Out = []
+    for D in Designs:
+        Did = D["id"]
+        Ready = [X for X in C[Did] if X["status"] == "ready"]
+        InitialReady = [X for X in Ready if X["kind"] == "initial"]
+        RefineBatches = [X for X in B[Did] if X["kind"] == "refine"]
+        Ev = E[Did]
+        EvAt = lambda K: _Min(*[X["created_at"] for X in Ev if X["kind"] == K])
+        Times = {
+            "started": D["created_at"],
+            "generated": _Min(*[X["updated_at"] for X in InitialReady]),
+            "customize": _Min(EvAt("customize_opened"), *[X["created_at"] for X in Cu[Did]]),
+            "bag": _Min(EvAt("bag_added"), *[X["created_at"] for X in L[Did]]),
+            "checkout_clicked": EvAt("checkout_clicked"),
+        }
+        Reached = [S for S in StageOrder if Times[S]]
+        Stage = Reached[-1] if Reached else "started"
+        LastActivity = _Max(D["updated_at"], *[X["updated_at"] for X in C[Did]], *[X["updated_at"] for X in Cu[Did]],
+                            *[X["updated_at"] for X in M[Did]], *[X["created_at"] for X in Ev if not X["kind"].startswith("admin_")])
+        Later = [S for S in Starts[D["owner_account_id"]] if S > (LastActivity or D["created_at"])]
+        Idle = (NowDt - _Parse(LastActivity)) > timedelta(minutes=IdleMinutes) if LastActivity else True
+        if Later:
+            State, EndReason = "ended", "new_design"
+        elif Idle:
+            State, EndReason = "ended", "idle"
+        else:
+            State, EndReason = "active", None
+        # Customer choices: latest bag line, else the latest customization (selected option first).
+        Cust = next((X for X in reversed(Cu[Did]) if X["candidate_id"] == D["selected_candidate_id"]), None) \
+            or (Cu[Did][-1] if Cu[Did] else None)
+        Line = L[Did][-1] if L[Did] else None
+        Material = (Line or Cust or {}).get("material_id")
+        # Customize opens on the catalog default; only a bag line or an explicit change is a choice.
+        MaterialChosen = bool(Line) or any(X["kind"] == "customization_changed"
+                                           and "material_id" in json.loads(X["data_json"] or "{}") for X in Ev)
+        Size = (Line or Cust or {}).get("ring_size")
+        Fixed = FixedPrice(Ctx, Line, Ev, Material)
+        Thumb = next((X for X in Ready if X["id"] == D["selected_candidate_id"]), Ready[0] if Ready else None)
+        Last3D = T3[Did][-1] if T3[Did] else None
+        Failed = bool(C[Did]) and not InitialReady and all(X["status"] == "failed" for X in C[Did] if X["kind"] == "initial")
+        Path = [StageLabels["generated"]] if Times["generated"] else []
+        if RefineBatches:
+            Path.append(StageLabels["refined"] + (f" ×{len(RefineBatches)}" if len(RefineBatches) > 1 else ""))
+        Path += [StageLabels[S] for S in ("customize", "bag", "checkout_clicked") if Times[S]]
+        if Failed:
+            Path.append("Generation failed")
+        if State == "ended" and not Times["bag"]:
+            Path.append("stopped")
+        Name, Email = Names.get(D["owner_account_id"], ("", ""))
+        Out.append({
+            "session_id": Did, "design_id": Did, "title": D["title"], "prompt": D["prompt"],
+            "account_id": D["owner_account_id"], "customer_name": Name, "customer_email": Email,
+            "thumbnail_url": Url(Thumb["asset_path"]) if Thumb else None,
+            "started_at": D["created_at"], "last_activity_at": LastActivity, "state": State, "end_reason": EndReason,
+            "stage_reached": Stage, "stage_times": Times, "path": " → ".join(Path) if Path else "Started",
+            "generations": sum(1 for X in B[Did] if X["kind"] == "initial"), "refinements": len(RefineBatches),
+            "images_ready": len(Ready), "images_failed": sum(1 for X in C[Did] if X["status"] == "failed"),
+            "movie_status": (sorted(M[Did], key=lambda X: X["created_at"])[-1]["status"] if M[Did] else None),
+            "ring_size": Size, "material_id": Material, "material_chosen": MaterialChosen,
+            "material_label": (Ctx.Catalog.Get(Material).Label if Material and Ctx.Catalog.Get(Material) else None),
+            "add_to_bag": bool(Times["bag"]), "checkout_clicked": bool(Times["checkout_clicked"]),
+            "fixed_price": Fixed,
+            "three_d_status": Last3D["status"] if Last3D else None, "three_d_id": Last3D["id"] if Last3D else None,
+        })
+    return Out
+
+
+def FixedPrice(Ctx: Context, Line: dict | None, Events: list[dict], MaterialId: str | None) -> dict | None:
+    """The customer-facing fixed price: the bag snapshot if added to bag, else the price shown with
+    the last material choice, else today's quote for the material. Never changed by 3D numbers."""
+    if Line:
+        return {"unit_price": Line["unit_price"], "currency": Line["currency"],
+                "pricing_version": Line["pricing_version"], "source": "bag_snapshot", "at": Line["created_at"]}
+    for X in reversed(Events):
+        if X["kind"] in ("customization_changed", "customize_opened"):
+            Data = json.loads(X["data_json"] or "{}")
+            if "unit_price" in Data:
+                return {"unit_price": Data["unit_price"], "currency": Data.get("currency"),
+                        "pricing_version": Data.get("pricing_version"), "source": "shown_at_customize",
+                        "at": X["created_at"]}
+    if MaterialId:
+        Q = Ctx.Pricing.QuoteFor(MaterialId)
+        return {"unit_price": Q.unit_price, "currency": Q.currency, "pricing_version": Q.pricing_version,
+                "source": "current_quote", "at": None}
+    return None
+
+
+def QuoteSnapshot(Ctx: Context, MaterialId: str) -> dict:
+    Q = Ctx.Pricing.QuoteFor(MaterialId)
+    return {"unit_price": Q.unit_price, "currency": Q.currency, "pricing_version": Q.pricing_version,
+            "pricing_status": Q.pricing_status}
+
+
+def Timeline(Ctx: Context, DesignId: str) -> list[dict]:
+    """Every recorded step of one session, oldest first."""
+    Db = Ctx.Db
+    D = Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
+    Items = [{"at": D["created_at"], "kind": "started", "text": D["prompt"]}]
+    for Bt in Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,)):
+        Cs = Db.All("SELECT status, updated_at FROM candidates WHERE batch_id = ?", (Bt["id"],))
+        Ready = [X for X in Cs if X["status"] == "ready"]
+        Items.append({"at": Bt["created_at"], "kind": "refine_requested" if Bt["kind"] == "refine" else "generate_requested",
+                      "text": Bt["user_text"]})
+        if Ready or all(X["status"] == "failed" for X in Cs):
+            Items.append({"at": _Max(*[X["updated_at"] for X in Cs]),
+                          "kind": "refined" if Bt["kind"] == "refine" else "generated",
+                          "text": f"{len(Ready)} of {len(Cs)} images ready"})
+    for Mv in Db.All("SELECT m.* FROM movies m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
+                     "WHERE b.design_id = ? ORDER BY m.created_at", (DesignId,)):
+        Items.append({"at": Mv["updated_at"], "kind": "movie", "status": Mv["status"], "text": ""})
+    for Ev in Db.All("SELECT * FROM session_events WHERE design_id = ? ORDER BY created_at", (DesignId,)):
+        Items.append({"at": Ev["created_at"], "kind": Ev["kind"], "data": json.loads(Ev["data_json"] or "{}")})
+    # Before event tracking: each customization row is one option opened in Customize (its first time).
+    Tracked = {(X.get("data") or {}).get("candidate_id") for X in Items if X["kind"] == "customize_opened"}
+    for Cu in Db.All("SELECT * FROM customizations WHERE design_id = ? ORDER BY created_at", (DesignId,)):
+        if Cu["candidate_id"] not in Tracked:
+            Items.append({"at": Cu["created_at"], "kind": "customize_opened",
+                          "data": {"backfilled": True, "candidate_id": Cu["candidate_id"]}})
+    Items.sort(key=lambda X: X["at"] or "")
+    return Items
