@@ -16,6 +16,7 @@ from p3.accounts import UsageMesh
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.providers import endpoints
+from p3.modelconfig import ConfigError, Validate
 from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
 
 Logger = logging.getLogger("p3.meshes")
@@ -46,11 +47,16 @@ class MeshService:
             raise HttpError(404, "candidate_not_found", "Candidate not found.")
         if Cand["status"] != "ready":
             raise HttpError(409, "candidate_not_ready", "Candidate image is not ready.")
-        Settings_ = dict(self.Ctx.Gen.Mesh.Params)
-        for Key, Value in (Overrides or {}).items():
+        Version = self.Ctx.Models.Active("hi3d")
+        Settings_ = dict(Version.Params)
+        for Key, Value in (Overrides or {}).items():         # explicit per-request developer overrides
             if Key not in AllowedSettings or not AllowedSettings[Key](Value):
                 raise HttpError(400, "invalid_mesh_setting", f"Invalid mesh setting: {Key}")
             Settings_[Key] = Value
+        try:
+            Settings_ = Validate("hi3d", Settings_)
+        except ConfigError as E:
+            raise HttpError(400, "invalid_mesh_setting", str(E)) from E
         SettingsJson = Dumps(Settings_)
         Live = Db.One("SELECT * FROM meshes WHERE candidate_id = ? AND settings_json = ? "
                       "AND status IN ('queued','running')", (CandidateId, SettingsJson))
@@ -61,13 +67,13 @@ class MeshService:
             "candidate_id": CandidateId, "batch_id": Cand["batch_id"], "design_id": Cand["design_id"],
             "batch_kind": Cand["kind"], "batch_text": Cand["user_text"], "image_config_version": Cand["image_config"],
             "source_image_sha256": Cand["content_sha256"], "endpoint": endpoints.Mesh,
-            "settings": Settings_, "mesh_config_version": self.Ctx.Gen.Mesh.Version,
+            "settings": Settings_, "mesh_config_version": Version.Id, "developer_overrides": Overrides or {},
             "requested_at": Now(), "disclaimer": Disclaimer,
         }
         T = Now()
         Db.Execute("INSERT INTO meshes (id, candidate_id, endpoint, settings_json, config_version, status, "
                    "provenance_json, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                   (MeshId, CandidateId, endpoints.Mesh, SettingsJson, self.Ctx.Gen.Mesh.Version, "queued",
+                   (MeshId, CandidateId, endpoints.Mesh, SettingsJson, Version.Id, "queued",
                     Dumps(Provenance), T, T))
         self.Ctx.Runner.Spawn(f"mesh:{MeshId}", self._Drive(MeshId))
         return self.ToJson(Db.One("SELECT * FROM meshes WHERE id = ?", (MeshId,)))
@@ -80,7 +86,7 @@ class MeshService:
         if Mesh is None or Mesh["status"] not in ("queued", "running"):
             return
         Settings_ = json.loads(Mesh["settings_json"])
-        Fmt = Settings_["export_format"]
+        Fmt = Settings_.get("export_format", "glb")          # provider default when not configured
         try:
             RequestId = Mesh["provider_request_id"]
             if not RequestId:

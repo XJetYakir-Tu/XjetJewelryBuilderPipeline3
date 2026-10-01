@@ -16,6 +16,7 @@ from p3.accounts import Principal, UsageMovie
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.providers import endpoints
+from p3.modelconfig import BuildRequest
 from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
 
 Logger = logging.getLogger("p3.movies")
@@ -27,19 +28,26 @@ class MovieService:
 
     def Latest(self, CandidateId: str) -> dict | None:
         """Most relevant movie for the candidate under the current config (live first, then latest)."""
-        Version = self.Ctx.Gen.Movie.Version
+        Same = self.Ctx.Models.Equivalent("minimax-camera")    # versions with the active settings
+        Q = ",".join("?" * len(Same))
         Row = self.Ctx.Db.One(
-            "SELECT * FROM movies WHERE candidate_id = ? AND config_version = ? "
+            f"SELECT * FROM movies WHERE candidate_id = ? AND config_version IN ({Q}) "
             "ORDER BY CASE WHEN status IN ('queued','running','ready') THEN 0 ELSE 1 END, created_at DESC LIMIT 1",
-            (CandidateId, Version))
+            (CandidateId, *Same))
         return Row
+
+    def _Live(self, CandidateId: str) -> dict | None:
+        Same = self.Ctx.Models.Equivalent("minimax-camera")
+        Q = ",".join("?" * len(Same))
+        return self.Ctx.Db.One(f"SELECT * FROM movies WHERE candidate_id = ? AND config_version IN ({Q}) "
+                               "AND status IN ('queued','running','ready') ORDER BY created_at DESC LIMIT 1",
+                               (CandidateId, *Same))
 
     def Ensure(self, Who: Principal, CandidateId: str) -> dict:
         """Start the movie for a ready candidate, or return the live/ready one."""
         Db = self.Ctx.Db
-        Version = self.Ctx.Gen.Movie.Version
-        Live = Db.One("SELECT * FROM movies WHERE candidate_id = ? AND config_version = ? "
-                      "AND status IN ('queued','running','ready')", (CandidateId, Version))
+        Version = self.Ctx.Models.Active("minimax-camera").Id
+        Live = self._Live(CandidateId)      # same settings (any equivalent version) → reuse, no new charge
         if Live:
             return self.ToJson(Live)
         self.Ctx.Accounts.AuthorizeSpend(Who, UsageMovie, 1)
@@ -50,8 +58,7 @@ class MovieService:
                        "VALUES (?,?,?,?,?,?,?)", (MovieId, CandidateId, Version, endpoints.Movie, "queued", T, T))
         except sqlite3.IntegrityError:
             # Lost a race with a concurrent Proceed: reuse the winner.
-            return self.ToJson(Db.One("SELECT * FROM movies WHERE candidate_id = ? AND config_version = ? "
-                                      "AND status IN ('queued','running','ready')", (CandidateId, Version)))
+            return self.ToJson(self._Live(CandidateId))
         self.Ctx.Runner.Spawn(f"movie:{MovieId}", self._Drive(MovieId))
         return self.ToJson(Db.One("SELECT * FROM movies WHERE id = ?", (MovieId,)))
 
@@ -72,7 +79,8 @@ class MovieService:
                     from p3.providers.base import ProviderError
                     raise ProviderError("The selected image could not be loaded.", "reference_unavailable")
                 ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), assets.ImageContentType(Cand["asset_path"]))
-                Arguments = {"image_url": ImageUrl, **Ctx.Gen.Movie.Params}
+                Version = Ctx.Models.Resolve(Movie["config_version"], Movie["endpoint"])
+                Arguments = BuildRequest("minimax-camera", Version.Params, {"image_url": ImageUrl})
                 RequestId = await Ctx.Provider.Submit(Movie["endpoint"], Arguments)
                 Db.Update("movies", MovieId, status="running", provider_request_id=RequestId)
                 Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Cand["design_id"],))

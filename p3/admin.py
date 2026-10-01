@@ -13,13 +13,14 @@ from dataclasses import dataclass
 from statistics import mean
 
 from fastapi import Body, FastAPI, Header
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 from p3 import sessions as Sessions
 from p3.accounts import AccountNotFound, DuplicateEmail
 from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
 from p3.usage import AccountActivity
+from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
 
 
 @dataclass(frozen=True)
@@ -257,3 +258,66 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production) -> None:
             raise HttpError(404, "geometry_not_found", "Unknown stage.")
         Path_ = Production.StlPath(Sid, Stage)
         return FileResponse(Path_, filename=f"{Sid}_{Stage}{Path_.suffix}", media_type="model/stl")
+
+    # ── AI prompts & parameters ───────────────────────────────────────────
+    def _Model(ModelId: str):
+        if ModelId not in ModelSpecs:
+            raise HttpError(404, "unknown_model", "Unknown model.")
+        return ModelId
+
+    def _Invalid(E: ConfigError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"error": {
+            "code": "invalid_configuration", "message": "The configuration is not valid.", "problems": E.Problems}})
+
+    @App_.get("/api/admin/models")
+    async def ListModels(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return {"models": [{**Ctx.Models.State(M), "history": None} for M in ModelSpecs],
+                "runtime_placeholders": RuntimeInputs}
+
+    @App_.get("/api/admin/models/export")
+    async def ExportModels(model: str = "all", format: str = "json", authorization: str | None = Header(None)):
+        Admin(authorization)
+        Ids = list(ModelSpecs) if model == "all" else [_Model(model)]
+        Data = Ctx.Models.Export(Ids)                    # configurations only: no keys or credentials exist here
+        Name = f"p3-ai-config-{'all' if model == 'all' else model}"
+        if format == "txt":
+            return PlainTextResponse(ExportText(Data), headers={"Content-Disposition": f'attachment; filename="{Name}.txt"'})
+        return JSONResponse(Data, headers={"Content-Disposition": f'attachment; filename="{Name}.json"'})
+
+    @App_.get("/api/admin/models/{ModelId}")
+    async def GetModel(ModelId: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Ctx.Models.State(_Model(ModelId))
+
+    @App_.post("/api/admin/models/{ModelId}/validate")
+    async def ValidateModel(ModelId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Admin(authorization)
+        try:
+            return {"ok": True, "params": ValidateConfig(_Model(ModelId), Body_.get("params"))}
+        except ConfigError as E:
+            return {"ok": False, "problems": E.Problems}
+
+    @App_.post("/api/admin/models/{ModelId}/preview")
+    async def PreviewModel(ModelId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        Admin(authorization)
+        try:
+            return Ctx.Models.Preview(_Model(ModelId), Body_.get("params"))   # never submits to the provider
+        except ConfigError as E:
+            return _Invalid(E)
+
+    @App_.post("/api/admin/models/{ModelId}/activate")
+    async def ActivateModel(ModelId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        try:
+            return Ctx.Models.SaveAndActivate(_Model(ModelId), Body_.get("params"), Who.Id, str(Body_.get("note") or "")[:200])
+        except ConfigError as E:
+            return _Invalid(E)
+
+    @App_.post("/api/admin/models/{ModelId}/restore")
+    async def RestoreModel(ModelId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        try:
+            return Ctx.Models.Restore(_Model(ModelId), str(Body_.get("version_id") or ""), Who.Id)
+        except ConfigError as E:
+            return _Invalid(E)

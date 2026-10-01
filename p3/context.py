@@ -31,6 +31,7 @@ class Context:
     Catalog: Catalog
     Pricing: PricingService
     Accounts: AccountProvider
+    Models: "ModelConfigStore" = None             # versioned AI prompts & parameters (source of truth)
     Runner: TaskRunner = field(default_factory=TaskRunner)
     ImageSemaphore: asyncio.Semaphore | None = None
     _Locks: dict = field(default_factory=dict)

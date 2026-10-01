@@ -1,5 +1,5 @@
 {
-  "_comment": "Provider request settings. Endpoint ids are fixed in code (p3/providers/endpoints.py); only parameters live here. Every section's content hash becomes its config_version, so editing a section invalidates movie/mesh reuse automatically. Schemas verified against fal.ai OpenAPI on 2026-09-29 (see docs/IMPLEMENTATION.md, Provider verification).",
+  "_comment": "Operational settings (timeouts, concurrency, retries, candidates per batch) are read from here. The model parameters (\"params\") and the prompt files below are ONLY the initial seed: on first start they become version 1 of each model in Admin → AI Prompts & Params, which is from then on the single source of truth (p3/modelconfig.py). Editing them here has no effect once seeded.",
   "images": {
     "candidates_per_batch": 4,
     "max_concurrent_requests": 8,

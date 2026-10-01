@@ -1,4 +1,4 @@
-# P3 Admin — Dashboard · Sessions · Users
+# P3 Admin — Dashboard · Sessions · Users · AI Prompts & Params
 
 - **Page:** `{base}/admin/`, i.e. `http://proto/JewelryB2C3/admin/`.
   - The customer site never links to it.
@@ -132,3 +132,56 @@ Until then the Cost column shows "—".
 - edit / deactivate / activate / soft remove / restore;
 - detail counts after a design, a refinement, a successful movie and a failed one;
 - the provider ledger, sign-in recording and the usage backfill.
+
+## AI Prompts & Params
+
+**Code:** `p3/modelconfig.py`. **UI:** the *AI Prompts & Params* tab. **API:** `/api/admin/models/*`, which needs the admin code.
+
+**Models.** All five endpoint identifiers were checked against the existing integration and fal.ai's OpenAPI on 1 Oct 2026.
+
+| Tab | Endpoint | Used for |
+|---|---|---|
+| any-llm | `fal-ai/any-llm` | **Not used by the P3 pipeline yet** (B2C2 uses it for its prompt gate). Settings can be prepared and previewed. |
+| nano-banana-pro | `fal-ai/nano-banana-pro` | New Design without a reference image: 4 separate requests, 1 image each |
+| nano-banana-pro/edit | `fal-ai/nano-banana-pro/edit` | Refinements (selected image), and New Design with an uploaded reference |
+| minimax camera | `minimax/h3-max/camera-controls` | The 360° movie (selected final image) |
+| hi3d | `hitem3d/hi3d/v3.0/image-to-3d` | Admin Generate 3D and the developer mesh tool |
+
+**Source of truth.**
+- Every new request is built from the model's **active version**. The version id is recorded on the batch, movie or mesh (`config_version`).
+- A request created before an activation keeps its version, even if it is submitted afterwards.
+- Version 1 was seeded from `config/generation.json` and `config/prompts/*`, and sends exactly the same requests as before (tested). Those files are no longer read for model parameters.
+- The old hardcoded "text + suffix" is now the editable image prompt template `{{user_text}}
+
+<suffix>`. No suffix is added on top of it.
+
+**Configured vs omitted.** Each parameter is either *configured* (sent) or *not sent*, in which case the provider default applies and is shown in the form. Required provider parameters are always sent: the image `prompt`, and the movie `prompt_expansion_mode`.
+
+**Runtime inputs.** These are supplied by the pipeline and never stored in a configuration:
+- **Image models:**
+  - `{{user_text}}`: the customer's prompt or refinement instruction. Required in the image prompt templates.
+  - `{{design_prompt}}`: the session's original prompt. Optional.
+  - `image_urls` (edit model): the selected or reference image.
+  - `seed`: random, different for each of the 4 images.
+  - `num_images`: always 1.
+- **Movie:** `image_url` is the selected final image.
+- **Hi3D:** `image_url` is the selected design image.
+- **any-llm:** `{{user_prompt}}`.
+- **Not sent:** `sync_mode`. The pipeline downloads results from their URL, so the provider default (false) applies.
+
+Saving can't replace these with example text or a fixed URL: such fields are refused, and templates must contain their placeholder.
+
+**Validation** runs before activation, against each model's supported parameters:
+- types, choices and ranges;
+- unknown or pipeline-controlled fields;
+- unknown or missing placeholders;
+- camera keyframes: 2–12 keyframes in time order, elevation −90…90, distance > 0, at most 32 turns of azimuth travel;
+- Hi3D `export_format`: limited to GLB/OBJ/STL, because the geometry measurement can only read those.
+
+**Saving and history.**
+- **Preview** shows the exact request payload with clearly labelled `[SAMPLE …]` runtime inputs, and never calls the provider.
+- **Save & Activate** creates an immutable new version. If nothing changed, no version is created.
+- **History** lists every version with its date, author and note. *Load into form* lets you review or edit an old version; *Restore & activate* makes a copy of it the new active version.
+- **Movie reuse:** an existing movie is reused when its version has the same parameters as the active one. That includes movies made before versioning, through version 1's legacy alias. Changing movie settings means the next new movie request uses them. Customers who reopen Customize on an option get a new movie (charged as usual) only when its settings actually changed.
+
+**Export:** TXT (readable) or JSON (structured: model ids, endpoints, version ids and numbers, parameters, which parameters are omitted, and the pipeline-controlled fields), for one model or all. Configurations contain no API keys, and the export includes none.

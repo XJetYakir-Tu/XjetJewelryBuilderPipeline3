@@ -25,6 +25,7 @@ from p3.images import ImageService
 from p3.meshes import MeshService
 from p3.migrations import MigrateToAccounts
 from p3.admin import RegisterAdmin
+from p3.modelconfig import ModelConfigStore
 from p3.production3d import Production3D
 from p3.mail import BuildMailer
 from p3.registration import RegistrationService
@@ -86,6 +87,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   Gen=LoadGenerationConfig(), Catalog=Catalog,
                   Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing),
                   Accounts=Accounts)
+    Ctx.Models = ModelConfigStore(Ctx.Db)        # seeds v1 from generation.json + prompts on first start
     Svc = Services(Ctx)
     Sessions.BackfillBagEvents(Ctx)               # bag lines can be removed later; keep their bag_added
     Annotated = BackfillUsageAnnotations(Ctx)     # provider/endpoint on usage recorded before they were captured
@@ -159,8 +161,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 "pricing_profile": Ctx.Pricing.ProfileVersion,
                 "pricing_profile_approved": bool(Ctx.Pricing.Profile and Ctx.Pricing.Profile["approved"]),
                 "unapproved_pricing_allowed": S.AllowUnapprovedPricing,
-                "config_versions": {"images": Ctx.Gen.Images.Version, "movie": Ctx.Gen.Movie.Version,
-                                    "mesh": Ctx.Gen.Mesh.Version}}
+                "config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro", "nano-banana-pro-edit",
+                                                                          "minimax-camera", "hi3d")}}
 
     @App_.get("/api/session")
     async def Session(x_access_token: str | None = Header(None)):
@@ -288,7 +290,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.get("/api/dev/status")
     async def DevStatus(authorization: str | None = Header(None)):
         RequireDeveloper(Ctx, authorization)
-        return {"ok": True, "mesh_defaults": Ctx.Gen.Mesh.Params, "mesh_config_version": Ctx.Gen.Mesh.Version}
+        Mesh = Ctx.Models.Active("hi3d")
+        return {"ok": True, "mesh_defaults": Mesh.Params, "mesh_config_version": Mesh.Id}
 
     @App_.get("/api/dev/mode")
     async def DevMode(authorization: str | None = Header(None)):

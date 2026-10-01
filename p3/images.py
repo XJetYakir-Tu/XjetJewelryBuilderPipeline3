@@ -20,6 +20,7 @@ from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.naming import ProductName
 from p3.providers import endpoints
+from p3.modelconfig import BuildRequest, ByEndpoint, Render
 from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
 
 Logger = logging.getLogger("p3.images")
@@ -114,15 +115,19 @@ class ImageService:
 
     def _InsertBatch(self, Conn, BatchId, DesignId, Kind, ParentId, UserText, RefPath, ClientRequestId):
         Img = self.Ctx.Gen.Images
-        Effective = f"{UserText}\n\n{Img.PromptSuffix}"
         Endpoint = endpoints.ImageEdit if RefPath else endpoints.ImageGenerate
+        # The active admin configuration for this endpoint; its version is recorded on the batch so
+        # all four requests use it even if a newer version is activated before they are submitted.
+        Version = self.Ctx.Models.ActiveFor(Endpoint)
+        DesignPrompt = Conn.execute("SELECT prompt FROM designs WHERE id = ?", (DesignId,)).fetchone()[0]
+        Effective = Render(Version.Params["prompt"], {"user_text": UserText, "design_prompt": DesignPrompt})
         T = Now()
         Conn.execute(
             "INSERT INTO batches (id, design_id, kind, parent_candidate_id, user_text, effective_prompt, "
             "endpoint, reference_asset, desired_count, config_version, client_request_id, created_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (BatchId, DesignId, Kind, ParentId, UserText, Effective, Endpoint, RefPath,
-             Img.CandidatesPerBatch, Img.Version, ClientRequestId, T))
+             Img.CandidatesPerBatch, Version.Id, ClientRequestId, T))
         Seeds = set()
         while len(Seeds) < Img.CandidatesPerBatch:
             Seeds.add(_NewSeed())
@@ -199,15 +204,15 @@ class ImageService:
                     return
 
     async def _Arguments(self, Batch: dict, Cand: dict) -> dict:
-        Img = self.Ctx.Gen.Images
-        Args = {"prompt": Batch["effective_prompt"], **Img.Params, "seed": Cand["seed"]}
+        """Provider arguments from the configuration version recorded on the batch (the prompt was
+        rendered from its template when the batch was created)."""
+        Version = self.Ctx.Models.Resolve(Batch["config_version"], Batch["endpoint"])
+        Runtime = {"seed": Cand["seed"]}
         if Batch["reference_asset"]:
-            Args["image_urls"] = [await self._ReferenceUrl(Batch)]
-            SystemPrompt = Img.EditSystemPrompt
-        else:
-            SystemPrompt = Img.GenerateSystemPrompt
-        if SystemPrompt:
-            Args["system_prompt"] = SystemPrompt
+            Runtime["image_url"] = await self._ReferenceUrl(Batch)
+        Params = {K: V for K, V in Version.Params.items() if K != "prompt"}
+        Args = BuildRequest(ByEndpoint[Batch["endpoint"]], Params, Runtime)
+        Args["prompt"] = Batch["effective_prompt"]
         return Args
 
     async def _ReferenceUrl(self, Batch: dict) -> str:

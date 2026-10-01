@@ -28,22 +28,17 @@ def _ReadText(RelPath: str) -> str:
 
 @dataclass(frozen=True)
 class ImageConfig:
+    """Operational image settings. Model parameters and prompts are NOT here: they are versioned
+    admin configurations (p3/modelconfig.py, Admin → AI prompts & params)."""
     CandidatesPerBatch: int
     MaxConcurrentRequests: int
     RequestTimeoutS: float
     MaxDuplicateRetriesPerSlot: int
-    Params: dict
-    GenerateSystemPrompt: str
-    EditSystemPrompt: str
-    PromptSuffix: str
-    Version: str
 
 
 @dataclass(frozen=True)
 class JobConfig:
     RequestTimeoutS: float
-    Params: dict
-    Version: str
 
 
 @dataclass(frozen=True)
@@ -56,9 +51,6 @@ class GenerationConfig:
 def LoadGenerationConfig(ConfigPath: Path | None = None) -> GenerationConfig:
     Raw = json.loads((ConfigPath or ConfigDir / "generation.json").read_text(encoding="utf-8"))
     Img = Raw["images"]
-    GenPrompt  = _ReadText(Img["generate_system_prompt_file"])
-    EditPrompt = _ReadText(Img["edit_system_prompt_file"])
-    Suffix     = _ReadText(Img["prompt_suffix_file"])
     if int(Img["candidates_per_batch"]) != CandidatesPerBatch:
         # Product-owner decision: every batch (initial and refinement) has four candidates
         # (changed from six on 2026-09-30).
@@ -68,17 +60,9 @@ def LoadGenerationConfig(ConfigPath: Path | None = None) -> GenerationConfig:
         MaxConcurrentRequests=max(1, int(Img["max_concurrent_requests"])),
         RequestTimeoutS=float(Img["request_timeout_s"]),
         MaxDuplicateRetriesPerSlot=max(0, int(Img["max_duplicate_retries_per_slot"])),
-        Params=dict(Img["params"]),
-        GenerateSystemPrompt=GenPrompt,
-        EditSystemPrompt=EditPrompt,
-        PromptSuffix=Suffix,
-        Version=ContentVersion("img", {"params": Img["params"], "gen": GenPrompt,
-                                       "edit": EditPrompt, "suffix": Suffix}),
     )
-    Movie = JobConfig(float(Raw["movie"]["request_timeout_s"]), dict(Raw["movie"]["params"]),
-                      ContentVersion("mov", Raw["movie"]["params"]))
-    Mesh = JobConfig(float(Raw["mesh"]["request_timeout_s"]), dict(Raw["mesh"]["params"]),
-                     ContentVersion("mesh", Raw["mesh"]["params"]))
+    Movie = JobConfig(float(Raw["movie"]["request_timeout_s"]))
+    Mesh = JobConfig(float(Raw["mesh"]["request_timeout_s"]))
     return GenerationConfig(Images=Images, Movie=Movie, Mesh=Mesh)
 
 

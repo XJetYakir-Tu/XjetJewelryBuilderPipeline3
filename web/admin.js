@@ -61,6 +61,8 @@ function adminApp() {
     tab: 'sessions', materials: {},
     dash: null, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '',
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
+    models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
+    mProblems: [], mMessage: '', mBusy: false, preview: null,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout Clicked']],
     chartKinds: [
       { key: 'images', label: 'Images', color: '#3b82f6' },
@@ -111,7 +113,9 @@ function adminApp() {
     // ── routing: #/dashboard  #/sessions[/<id>]  #/users[/<account id>] ──
     go(hash) { if (location.hash === hash) this.route(); else location.hash = hash; },
     async route() {
-      const m = location.hash.match(/^#\/(dashboard|sessions|users)(?:\/(.+))?$/);
+      if (this.dirty && this.tab === 'models' && !location.hash.startsWith('#/models/' + this.mid) &&
+          !confirm('Discard unsaved changes to ' + this.mc?.model.label + '?')) { history.replaceState(null, '', '#/models/' + this.mid); return; }
+      const m = location.hash.match(/^#\/(dashboard|sessions|users|models)(?:\/(.+))?$/);
       this.tab = m ? m[1] : 'sessions';
       const id = m && m[2] ? decodeURIComponent(m[2]) : '';
       this.userId = this.tab === 'users' ? id : '';
@@ -124,6 +128,7 @@ function adminApp() {
       if (this.tab === 'sessions' && id) await this.loadSession();
       if (this.tab === 'users' && !id) await this.load();
       if (this.tab === 'users' && id) await this.loadDetail(); else this.d = null;
+      if (this.tab === 'models') await this.loadModels(id);
     },
 
     // ── list ───────────────────────────────────────────────────────────
@@ -275,6 +280,116 @@ function adminApp() {
       if (x.designs) parts.push(`${x.designs} design${x.designs === 1 ? '' : 's'}`);
       if (x.sign_ins) parts.push(`${x.sign_ins} sign-in${x.sign_ins === 1 ? '' : 's'}`);
       return x.day + (parts.length ? ': ' + parts.join(', ') : ': no activity');
+    },
+
+    // ── AI prompts & params ────────────────────────────────────────────
+    async loadModels(id) {
+      const r = await this.api('GET', '/api/admin/models');
+      this.models = r.models; this.runtimePlaceholders = r.runtime_placeholders;
+      const want = id || this.mid || this.models[0].model.id;
+      if (want !== this.mid || !this.mc || !this.dirty) await this.selectModel(want);
+    },
+    async selectModel(id) {
+      this.mc = await this.api('GET', '/api/admin/models/' + encodeURIComponent(id));
+      this.mid = id; this.note = ''; this.mProblems = []; this.mMessage = ''; this.preview = null;
+      this.draft = this.draftFrom(this.mc.active.params);
+      this.dirty = false;
+    },
+    draftFrom(params) {
+      const d = {};
+      for (const p of this.mc.model.params) {
+        const has = Object.prototype.hasOwnProperty.call(params, p.name);
+        let v = has ? params[p.name] : p.default;
+        if (p.kind === 'keyframes') v = JSON.parse(JSON.stringify(has ? v : this.orbit()));
+        if (v === null || v === undefined) v = p.kind === 'bool' ? false : p.kind === 'enum' ? p.enum[0] : (p.kind === 'text' || p.kind === 'template') ? '' : null;
+        d[p.name] = { set: has || p.required, value: v };
+      }
+      return d;
+    },
+    draftParams() {
+      const out = {};
+      for (const p of this.mc.model.params) if (this.draft[p.name]?.set) out[p.name] = this.draft[p.name].value;
+      return out;
+    },
+    setParam(p, on) { this.draft[p.name].set = on; this.dirty = true; },
+    resetDraft() { this.draft = this.draftFrom(this.mc.active.params); this.dirty = false; this.mProblems = []; },
+    loadVersion(v) {
+      this.draft = this.draftFrom(v.params); this.dirty = !v.active; this.mProblems = [];
+      this.mMessage = v.active ? '' : `Loaded v${v.number} into the form — not active until you Save & Activate (or use Restore).`;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    placeholdersFor(mc) { return [...new Set(mc.model.params.flatMap(p => p.placeholders))]; },
+    rangeText(p) {
+      const parts = [];
+      if (p.kind === 'enum') parts.push('Options: ' + p.allowed.join(', '));
+      if ((p.kind === 'int' || p.kind === 'number') && (p.min != null || p.max != null))
+        parts.push('Range: ' + (p.min ?? '−∞') + ' – ' + (p.max ?? '∞'));
+      if (p.kind === 'keyframes') parts.push('2–12 keyframes');
+      if (p.max_length) parts.push('max ' + p.max_length.toLocaleString() + ' characters');
+      if (p.kind !== 'keyframes' && p.kind !== 'template') parts.push('Provider default: ' + this.defaultText(p));
+      if (p.allowed_reason) parts.push(p.allowed_reason);
+      return parts.join(' · ');
+    },
+    defaultText(p) {
+      if (p.default === null || p.default === undefined) return p.kind === 'keyframes' ? 'provider-defined' : 'none (provider decides)';
+      if (p.default === '') return 'empty';
+      const s = typeof p.default === 'string' ? p.default : JSON.stringify(p.default);
+      return s.length > 90 ? '“' + s.slice(0, 90) + '…”' : s;
+    },
+    orbit() { return [0, 0.25, 0.5, 0.75, 1].map((t, i) => ({ time: t, azimuth: i * 90, elevation: 10, distance: 1 })); },
+    orbitPreset(name) { this.draft[name].value = this.orbit(); this.dirty = true; },
+    addKey(name) {
+      const k = this.draft[name].value, last = k[k.length - 1] || { time: 0, azimuth: 0, elevation: 10, distance: 1 };
+      k.push({ time: Math.min(1, +(last.time + 0.1).toFixed(3)), azimuth: last.azimuth + 45, elevation: last.elevation, distance: last.distance });
+      this.dirty = true;
+    },
+    removeKey(name, i) { this.draft[name].value.splice(i, 1); this.dirty = true; },
+    moveKey(name, i, d) { const k = this.draft[name].value; [k[i], k[i + d]] = [k[i + d], k[i]]; this.dirty = true; },
+    azimuthTravel(k) { return (k || []).slice(1).reduce((s, x, i) => s + Math.abs((x?.azimuth || 0) - (k[i]?.azimuth || 0)), 0); },
+    async validateModel() {
+      this.mMessage = ''; this.mProblems = [];
+      const r = await this.api('POST', `/api/admin/models/${this.mid}/validate`, { params: this.draftParams() });
+      if (r.ok) this.mMessage = 'Valid — ready to activate.'; else this.mProblems = r.problems;
+    },
+    async previewModel() {
+      this.mProblems = [];
+      const r = await fetch(BASE + `/api/admin/models/${this.mid}/preview`, { method: 'POST',
+        headers: { Authorization: 'Bearer ' + this.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ params: this.draftParams() }) });
+      const data = await r.json();
+      if (!r.ok) { this.mProblems = data?.error?.problems || [data?.error?.message || 'Preview failed']; this.preview = null; return; }
+      this.preview = data;
+    },
+    async activateModel() {
+      const live = this.mc.model.connected ? 'Every new pipeline request will use it immediately.' : 'This model is not used by the P3 pipeline yet.';
+      if (!confirm(`Save & activate a new version of ${this.mc.model.label}?\n\n${live}\nRequests already created keep their settings.`)) return;
+      this.mBusy = true; this.mProblems = []; this.mMessage = '';
+      try {
+        const r = await fetch(BASE + `/api/admin/models/${this.mid}/activate`, { method: 'POST',
+          headers: { Authorization: 'Bearer ' + this.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ params: this.draftParams(), note: this.note }) });
+        const data = await r.json();
+        if (!r.ok) { this.mProblems = data?.error?.problems || [data?.error?.message || 'Activation failed']; return; }
+        this.dirty = false;
+        await this.loadModels(this.mid);
+        await this.selectModel(this.mid);
+        this.mMessage = data.changed ? `Saved and activated v${data.active.number}.` : 'No changes — the active version already has these settings.';
+      } finally { this.mBusy = false; }
+    },
+    async restoreVersion(v) {
+      if (!confirm(`Restore v${v.number} as a new active version?`)) return;
+      const r = await fetch(BASE + `/api/admin/models/${this.mid}/restore`, { method: 'POST',
+        headers: { Authorization: 'Bearer ' + this.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: v.id }) });
+      const data = await r.json();
+      if (!r.ok) { this.mProblems = data?.error?.problems || ['Restore failed']; return; }
+      this.dirty = false;
+      await this.loadModels(this.mid); await this.selectModel(this.mid);
+      this.mMessage = data.changed ? `Restored v${v.number} as v${data.active.number} (active).` : 'Already active.';
+    },
+    async exportModels(model, fmt) {
+      const r = await fetch(BASE + `/api/admin/models/export?model=${encodeURIComponent(model)}&format=${fmt}`, { headers: { Authorization: 'Bearer ' + this.key } });
+      if (!r.ok) { alert('Export failed (' + r.status + ')'); return; }
+      const url = URL.createObjectURL(await r.blob());
+      const a = Object.assign(document.createElement('a'), { href: url, download: `p3-ai-config-${model}.${fmt}` });
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
 
     // ── formatting ─────────────────────────────────────────────────────
