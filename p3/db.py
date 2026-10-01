@@ -292,6 +292,9 @@ class Database:
                 if "owner_account_id" in Cols and "ai_mode" not in Cols:
                     # AI mode the session was created in ('mock' | 'fal'); mock sessions stay out of the Admin.
                     Conn.execute("ALTER TABLE designs ADD COLUMN ai_mode TEXT")
+                if "owner_account_id" in Cols:
+                    from p3 import ringids
+                    ringids.Install(Conn)                 # shared ring IDs (R-1042, R-1042-B …)
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
 

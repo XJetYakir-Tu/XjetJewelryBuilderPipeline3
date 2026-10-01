@@ -19,6 +19,7 @@ import json
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+from p3 import ringids as RingIds
 from p3.context import Context, HttpError
 from p3.db import Dumps, Now
 
@@ -224,7 +225,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             Path.append("stopped")
         Name, Email = Names.get(D["owner_account_id"], ("", ""))
         Out.append({
-            "session_id": Did, "design_id": Did, "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
+            "session_id": Did, "design_id": Did, "ring_id": RingIds.DesignRef(D.get("ring_no")),
+            "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
             "account_id": D["owner_account_id"], "customer_name": Name, "customer_email": Email,
             "thumbnail_url": Url(Thumb["asset_path"]) if Thumb else None,
             "started_at": D["created_at"], "last_activity_at": LastActivity, "state": State, "end_reason": EndReason,

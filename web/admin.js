@@ -578,7 +578,7 @@ function adminApp() {
           error: '3D viewer unavailable — this browser could not start WebGL (graphics acceleration off?). Showing the Hi3D image.' };
         return;
       }
-      this.viewer3d = { id: t.id, label: 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '' };
+      this.viewer3d = { id: t.id, label: (t.ring_id ? t.ring_id + ' · ' : '') + 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '' };
       try {
         const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: { Authorization: 'Bearer ' + this.key } });   // light, visual only
         if (!r.ok) throw new Error('Preview download failed (' + r.status + ')');

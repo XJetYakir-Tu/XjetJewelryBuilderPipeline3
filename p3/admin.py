@@ -19,6 +19,7 @@ from statistics import mean
 from fastapi import Body, FastAPI, Header
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
+from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import AccountNotFound, DuplicateEmail
 from p3.auth import RequireDeveloper
@@ -56,6 +57,11 @@ def _Detail(Ctx: Context, AccountId: str) -> dict:
     User = _Errors(lambda: Ctx.Accounts.AdminGet(AccountId))
     Identity = Ctx.Accounts.AdminActivity(AccountId)
     App = AccountActivity(Ctx, AccountId, IncludeMock=False)                 # mock activity stays out of the Admin
+    Refs = RingIds.CandidateRefs(Ctx.Db, [G["id"] for G in App.get("designs", [])])
+    for G in App.get("designs", []):
+        for B in G.get("batches", []):
+            for C in B["candidates"]:
+                C["ring_id"] = Refs.get(C["id"])
     Usage = [U for U in Identity["usage"] if U["provider"] != "mock"]
     # Usage ledger by kind and provider/endpoint — the shape a cost report will aggregate.
     Ledger: dict[tuple, dict] = {}
@@ -170,6 +176,10 @@ def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
     Owner = Summary["account_id"]
     Design = next((G for G in AccountActivity(Ctx, Owner)["designs"] if G["id"] == DesignId), None)
     Batches = (Design or {}).get("batches", [])
+    Refs = RingIds.CandidateRefs(Ctx.Db, [DesignId])
+    for B in Batches:
+        for C in B["candidates"]:
+            C["ring_id"] = Refs.get(C["id"])
     Jobs = {C["id"] for B in Batches for C in B["candidates"]}
     Jobs |= {M["id"] for B in Batches for C in B["candidates"] for M in C["movies"]}
     Jobs |= {R["id"] for R in Ctx.Db.All("SELECT m.id FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
@@ -203,7 +213,9 @@ def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
         "cost": {"session": Flow["total_cost"],
                  "basis": "Estimated at list prices (Admin → AI Prompts & Params → AI prices); mock requests are $0.",
                  "price_list_version": Prices.Current()["version"]},
-        "artifacts": {"image_url": Summary["thumbnail_url"], "movie_url": Movie["url"] if Movie else None},
+        "artifacts": {"image_url": Summary["thumbnail_url"], "movie_url": Movie["url"] if Movie else None,
+                      "ring_id": Refs.get(Sel["id"]) if (Sel := next((C for B in Batches for C in B["candidates"]
+                                                                      if C["selected"]), None)) else None},
         "last_choice": Last,
         "timeline": Timeline,
         "design": Design,
@@ -337,7 +349,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
             Admin(authorization)
         Path_ = Production.FilePath(Sid, _Stage(Stage))
         Types = {".stl": "model/stl", ".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
-        Name = f"{Sid}_scaled.stl" if Stage.startswith("export-") else f"{Sid}_{Stage}{Path_.suffix}"
+        Name = Production.FileName(Sid, Stage, Path_.suffix)
         Inline = Stage in ("thumbnail", "preview")
         return FileResponse(Path_, filename=None if Inline else Name,
                             media_type=Types.get(Path_.suffix.lower(), "application/octet-stream"),

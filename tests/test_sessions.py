@@ -423,3 +423,34 @@ async def test_signed_download_link_streams_the_file_without_the_admin_header(HS
     assert (await H.Client.get(Expired)).status_code == 403
     Other = await H.Client.get("/api/" + Path.replace("/stl/raw", "/stl/preview"))      # signature is per file
     assert Other.status_code == 403
+
+
+async def test_shared_ring_ids_for_designs_options_refinements_and_3d_files(HS):
+    H = HS
+    B1 = await H.NewDesign("Plain band")
+    B2 = await H.NewDesign("Twisted band")
+    D1 = await _Session(H, B1["design_id"])
+    D2 = await _Session(H, B2["design_id"])
+    assert (D1["session"]["ring_id"], D2["session"]["ring_id"]) == ("R-1001", "R-1002")     # creation order
+    Opts = [C["ring_id"] for C in D1["design"]["batches"][0]["candidates"]]
+    assert sorted(Opts) == ["R-1001-A", "R-1001-B", "R-1001-C", "R-1001-D"]
+    from p3 import ringids
+    Cand = B1["candidates"][1]["id"]
+    H.Ctx.Db.Execute("INSERT INTO batches (id, design_id, kind, parent_candidate_id, user_text, effective_prompt, endpoint, "
+                     "desired_count, config_version, created_at) SELECT 'bat_r1', design_id, 'refine', ?, 'thinner', "
+                     "'thinner', endpoint, 4, config_version, '2999-01-01T00:00:00+00:00' FROM batches WHERE design_id = ? LIMIT 1",
+                     (Cand, B1["design_id"]))
+    H.Ctx.Db.Execute("INSERT INTO candidates (id, batch_id, slot, status, seed, created_at, updated_at) "
+                     "VALUES ('cnd_r1b', 'bat_r1', 1, 'ready', 1, '2999-01-01T00:00:00+00:00', '2999-01-01T00:00:00+00:00')")
+    assert ringids.CandidateRef(H.Ctx.Db, "cnd_r1b") == "R-1001-R1B"
+    # 3D results and downloads carry the ring ID of the exact option.
+    T = (await H.Client.post(f"/api/admin/sessions/{B1['design_id']}/3d", json={"candidate_id": Cand}, headers=Admin)).json()
+    await H.Idle()
+    assert T["ring_id"] == "R-1001-B"
+    R = await H.Client.get(f"/api/admin/3d/{T['id']}/stl/raw", headers=Admin)
+    assert 'filename="R-1001-B_raw.stl"' in R.headers["content-disposition"]
+    E = (await H.Client.post(f"/api/admin/3d/{T['id']}/export", headers=Admin)).json()
+    await H.Idle()
+    E = (await H.Client.get(f"/api/admin/3d/{T['id']}/export/{E['job_id']}", headers=Admin)).json()
+    R = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
+    assert f'filename="R-1001-B_US10_{T["material_id"]}.stl"' in R.headers["content-disposition"]

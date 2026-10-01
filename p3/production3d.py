@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from p3 import assets
+from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3 import stages as Stages
 from p3.context import Context, HttpError
@@ -440,6 +441,7 @@ class Production3D:
                               ("fal" if Mesh["provider_request_id"] else None), "error": Mesh["error"]},
             "geometry": Geo, "price": Calc,
             "scaled_stl": "stored" if Prod.get("stl_path") else ("on_demand" if Prod else None),   # v2 rows stored one
+            "ring_id": RingIds.CandidateRef(Db, R["candidate_id"]),
             "live": self.Status(Sid),
         }
 
@@ -480,4 +482,13 @@ class Production3D:
         return P
 
     StlPath = FilePath
+
+    def FileName(self, Sid: str, Stage: str, Suffix: str) -> str:
+        """Download names that carry the shared ring ID: R-1042-B_raw.stl, R-1042-B_US10_14k-yellow.stl …"""
+        R = self._Row(Sid)
+        Ring = RingIds.CandidateRef(self.Ctx.Db, R["candidate_id"]) or Sid
+        Size = f"US{R['production_size']:g}"
+        if Stage.startswith("export-") or Stage == "production":
+            return f"{Ring}_{Size}_{R['material_id']}{Suffix}"
+        return f"{Ring}_{Stage}{Suffix}"
 
