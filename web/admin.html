@@ -352,6 +352,19 @@
         <p class="text-[11px] text-zinc-400 mt-4">Live AI sessions only — activity in Mock Mode is not counted. Checkout is not implemented yet — "Checkout Clicked" counts clicks on the unavailable Checkout button.</p>
       </section>
 
+      <section class="card p-6" x-show="storage">
+        <p class="lbl mb-4">3D storage · this server</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div><p class="lbl mb-1">3D files</p><p class="text-xl font-semibold" x-text="gb(storage?.total_3d_bytes)"></p>
+            <p class="text-[11px] text-zinc-400" x-text="(storage?.models ?? 0) + ' Hi3D model' + (storage?.models === 1 ? '' : 's')"></p></div>
+          <div><p class="lbl mb-1">Temporary scaled STLs</p><p class="text-xl font-semibold" x-text="gb(storage?.exports_bytes)"></p>
+            <p class="text-[11px] text-zinc-400">Deleted an hour after export</p></div>
+          <div><p class="lbl mb-1">Free disk</p><p class="text-xl font-semibold" :class="storage && storage.disk_free_bytes < 0.1 * storage.disk_total_bytes ? 'text-red-600' : ''" x-text="gb(storage?.disk_free_bytes)"></p>
+            <p class="text-[11px] text-zinc-400" x-text="'of ' + gb(storage?.disk_total_bytes)"></p></div>
+          <div><p class="lbl mb-1">Clean-up</p><p class="text-sm text-zinc-600">No automatic deletion of Hi3D models</p></div>
+        </div>
+      </section>
+
       <section class="card p-6">
         <p class="lbl mb-4">3D geometry and price accuracy</p>
         <div x-show="!dash.geometry.measured" class="text-sm text-zinc-500">No sessions measured in 3D yet. Use <strong>Generate 3D</strong> on a session.</div>
@@ -469,8 +482,10 @@
             <span x-show="!sd.artifacts.movie_url" class="text-xs text-zinc-400">No movie</span></div></div>
         <div class="card overflow-hidden"><p class="lbl px-4 pt-3 pb-2" x-text="'3D model' + (viewer3d.label ? ' · ' + viewer3d.label : '')"></p>
           <div class="aspect-square bg-zinc-50 relative">
+            <template x-if="thumb() && !viewer3d.id"><img :src="thumb()" alt="Hi3D thumbnail" class="absolute inset-0 w-full h-full object-contain"></template>
             <div x-ref="viewer" class="absolute inset-0"></div>
-            <span x-show="!measured3d()" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-400">Not generated — use Generate 3D below</span>
+            <span x-show="!measured3d() && !thumb()" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-400">Not generated — use Generate 3D below</span>
+            <span x-show="measured3d() && !viewer3d.id && thumb()" class="absolute inset-x-0 bottom-2 text-center text-[11px] text-zinc-500">Hi3D thumbnail · light 3D preview is being prepared…</span>
             <span x-show="measured3d() && viewer3d.loading" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-400">Loading 3D…</span>
             <span x-show="viewer3d.error" class="absolute inset-x-0 bottom-2 text-center text-[11px] text-red-600" x-text="viewer3d.error"></span>
           </div></div>
@@ -525,7 +540,7 @@
              x-text="sd.three_d_defaults.customer_material ? (g3.material === sd.three_d_defaults.customer_material ? 'Customer selection' : 'Differs from customer selection') : 'Customer did not choose a material'"></p>
           <span></span>
         </div>
-        <p x-show="sd.three_d_defaults.has_raw_mesh" class="text-[11px] text-zinc-500">A Hi3D model already exists for this design — recalculating re-scales and re-measures it (no new Hi3D call).</p>
+        <p x-show="sd.three_d_defaults.has_raw_mesh" class="text-[11px] text-zinc-500">A Hi3D model already exists for this design — a new size or material is calculated from its stored measurement instantly (no new Hi3D call).</p>
         <p x-show="g3.error" class="text-sm text-red-600" x-text="g3.error"></p>
 
         <template x-for="t in sd.three_d" :key="t.id">
@@ -536,9 +551,18 @@
                 <span x-text="t.material_label + ' (' + sizeSource(t.material_source) + ') · US ' + t.production_size + ' (' + sizeSource(t.size_source) + ')'"></span></span>
               <span class="text-[11px] text-zinc-400" x-text="dateTime(t.created_at) + ' · Hi3D ' + (t.hi3d?.status || '—') + (t.hi3d?.provider ? ' (' + t.hi3d.provider + ')' : '')"></span>
             </div>
+            <!-- Real state: current stage with a live clock (percent only for real bytes downloaded) -->
+            <div x-show="live3d[t.id]?.stages?.length" class="space-y-1">
+              <p class="text-sm font-medium tabular-nums" :class="live3d[t.id]?.done ? (t.status === 'failed' ? 'text-red-700' : 'text-zinc-700') : 'text-sky-800'" x-text="stageLine(t)"></p>
+              <p class="text-[11px] text-zinc-400 tabular-nums">
+                <template x-for="(st, i) in stageSteps(t)" :key="i"><span><span x-show="i" class="text-zinc-300"> · </span><span :class="st.open ? 'text-sky-700' : ''" x-text="st.label + ' ' + st.time"></span></span></template>
+              </p>
+            </div>
             <p x-show="t.error" class="text-sm text-amber-700" x-text="t.error"></p>
-            <div x-show="!t.geometry.production && t.raw_available" class="flex gap-4 text-xs uppercase tracking-widest">
-              <button class="underline" @click="downloadStl(t.id, 'raw')">Download raw Hi3D model</button>
+            <div class="flex flex-wrap gap-4 text-xs uppercase tracking-widest">
+              <button x-show="live3d[t.id]?.can_cancel" class="underline text-zinc-600" @click="cancel3d(t)">Cancel</button>
+              <button x-show="live3d[t.id]?.can_retry" class="underline" @click="retry3d(t)" x-text="live3d[t.id]?.retry_is_local ? 'Retry geometry (no Hi3D charge)' : 'Retry Hi3D (paid)'"></button>
+              <button x-show="!t.geometry.production && t.raw_available" class="underline" @click="downloadStl(t.id, 'raw')">Download raw Hi3D model</button>
             </div>
             <template x-if="t.geometry.production">
               <div class="space-y-4">
@@ -560,10 +584,12 @@
                   </ol>
                 </div>
                 <p x-show="t.price?.status === 'cost_model_not_configured'" class="text-[11px] text-zinc-500">Production cost and 3D price need the cost model (metal price per gram, production cost, markup) in <code>config/production_costs.json</code> — not configured yet.</p>
+                <p x-show="background(t)" class="text-[11px] text-zinc-500" x-text="background(t)"></p>
+                <p x-show="exports3d[t.id]" class="text-[11px] text-sky-800 tabular-nums" x-text="exportLine(t)"></p>
                 <p x-show="downloadNote" class="text-[11px] text-emerald-700" x-text="downloadNote"></p>
                 <div class="flex gap-4 text-xs uppercase tracking-widest">
-                  <button class="underline" @click="show3d(t)">View in 3D</button>
-                  <button class="underline" @click="downloadStl(t.id, 'production')">Download scaled STL</button>
+                  <button x-show="previewReady(t)" class="underline" @click="show3d(t)">View in 3D</button>
+                  <button class="underline" :disabled="!!exports3d[t.id]" @click="exportStl(t)">Download scaled STL</button>
                   <button class="underline text-zinc-500" @click="downloadStl(t.id, 'raw')">Download raw Hi3D</button>
                 </div>
               </div>

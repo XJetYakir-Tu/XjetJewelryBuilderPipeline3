@@ -357,3 +357,212 @@ def MeasureRing(Data: bytes, Fmt: str, TargetInnerDiameterMm: float) -> RingGeom
         if G.production is not None:
             G.production_stl = Out.read_bytes()
         return G
+
+
+# ══ Measure-once flow (v3) ═══════════════════════════════════════════════════
+# The raw Hi3D STL is the master geometry. It is measured ONCE, exactly (full precision, every
+# triangle); the values for any ring size then follow from the uniform scale factor s:
+#   lengths × s · area × s² · volume × s³ · weight = volume × density.
+# No scaled copy is written during processing — ExportScaledStl builds one only when it is downloaded,
+# from the stored transform, so every export of the same request is identical.
+FastMethodVersion = "ring-measure-once-v3"
+PreviewTargetFaces = 25_000
+
+
+def _Moments(Tri):
+    """One exact pass: bounds, area, area-weighted first/second surface moments, and the enclosed
+    volume about two reference points (equal for a closed mesh — a cheap heuristic, not a proof)."""
+    Lo, Hi = _Bounds(Tri)
+    O1 = (Lo + Hi) / 2
+    O2 = O1 + (Hi - Lo) * np.array([0.37, 0.61, 0.83])
+    Area, S1, S2, V1, V2 = 0.0, np.zeros(3), np.zeros((3, 3)), 0.0, 0.0
+    for S in range(0, len(Tri), Chunk):
+        C = Tri[S:S + Chunk].astype(np.float64)
+        A_, B_, C_ = C[:, 0], C[:, 1], C[:, 2]
+        Ar = np.linalg.norm(np.cross(B_ - A_, C_ - A_), axis=1) / 2
+        Area += float(Ar.sum())
+        Sum = A_ + B_ + C_
+        S1 += (Ar[:, None] * Sum / 3).sum(axis=0)
+        # E[x xT] over a triangle = ((a+b+c)(a+b+c)T + aaT + bbT + ccT) / 12
+        W = Ar[:, None]
+        S2 += (np.einsum("ni,nj->ij", W * Sum, Sum) + np.einsum("ni,nj->ij", W * A_, A_)
+               + np.einsum("ni,nj->ij", W * B_, B_) + np.einsum("ni,nj->ij", W * C_, C_)) / 12
+        a, b, c = A_ - O1, B_ - O1, C_ - O1
+        V1 += float(np.einsum("ij,ij->i", a, np.cross(b, c)).sum()) / 6
+        a, b, c = A_ - O2, B_ - O2, C_ - O2
+        V2 += float(np.einsum("ij,ij->i", a, np.cross(b, c)).sum()) / 6
+    Mu = S1 / Area
+    Cov = S2 / Area - np.outer(Mu, Mu)
+    return {"lo": Lo, "hi": Hi, "area": Area, "centroid": Mu, "cov": Cov, "v1": abs(V1), "v2": abs(V2)}
+
+
+def _ExactSections(Tri, Centre, U, V, Axis, Heights) -> list:
+    """Full-precision cross-sections at several heights in ONE pass (no point thinning)."""
+    Ax = Axis.astype(np.float32)
+    Offs = [float((Centre + H * Axis) @ Axis) for H in Heights]
+    Parts = [[] for _ in Heights]
+    for S in range(0, len(Tri), Chunk):
+        C = Tri[S:S + Chunk]
+        D0 = C @ Ax
+        for K, Off in enumerate(Offs):
+            D = D0 - Off
+            X = (D.min(axis=1) < 0) & (D.max(axis=1) > 0)
+            if X.any():
+                Parts[K].append((C[X].astype(np.float64), D[X].astype(np.float64)))
+    Out = []
+    for K, H in enumerate(Heights):
+        if not Parts[K]:
+            Out.append(np.zeros((0, 2)))
+            continue
+        Origin = Centre + H * Axis
+        T = np.concatenate([P[0] for P in Parts[K]]) - Origin
+        D = np.concatenate([P[1] for P in Parts[K]])
+        Ends = np.full((len(T), 3, 3), np.nan)
+        for J, (A, B) in enumerate(((0, 1), (1, 2), (2, 0))):
+            M = (D[:, A] * D[:, B]) < 0
+            F = D[M, A] / (D[M, A] - D[M, B])
+            Ends[M, J] = T[M, A] + F[:, None] * (T[M, B] - T[M, A])
+        Valid = ~np.isnan(Ends[:, :, 0])
+        Keep = Valid.sum(axis=1) == 2
+        Ends, Valid = Ends[Keep], Valid[Keep]
+        Order = np.argsort(~Valid, axis=1, kind="stable")[:, :2]
+        P0 = np.take_along_axis(Ends, Order[:, :1, None], axis=1)[:, 0]
+        P1 = np.take_along_axis(Ends, Order[:, 1:2, None], axis=1)[:, 0]
+        Wt = np.linspace(0, 1, 8)[None, :, None]
+        P3 = (P0[:, None] * (1 - Wt) + P1[:, None] * Wt).reshape(-1, 3)
+        Out.append(np.c_[P3 @ U, P3 @ V])
+    return Out
+
+
+def _FitBore(P) -> dict:
+    C2, Radius, Std, Filled = np.zeros(2), None, None, 0
+    for _ in range(8):
+        if len(P) < Directions:
+            break
+        Rel = P - C2
+        Ang = np.arctan2(Rel[:, 1], Rel[:, 0])
+        Dist = np.hypot(Rel[:, 0], Rel[:, 1])
+        Bin = ((Ang + np.pi) / (2 * np.pi) * Directions).astype(int) % Directions
+        Near = np.full(Directions, np.inf)
+        np.minimum.at(Near, Bin, Dist)
+        Ok = np.isfinite(Near)
+        Filled = int(Ok.sum())
+        if Filled < Directions * 0.9:
+            break
+        Mid = (np.arange(Directions) + 0.5) / Directions * 2 * np.pi - np.pi
+        Wall = C2 + np.c_[np.cos(Mid), np.sin(Mid)][Ok] * Near[Ok][:, None]
+        NewC, _ = _FitCircle(Wall)
+        R = np.linalg.norm(Wall - NewC, axis=1)
+        Radius, Std = float(np.median(R)), float(R.std())
+        Moved = float(np.linalg.norm(NewC - C2))
+        C2 = NewC
+        if Moved < 1e-6 * Radius:
+            break
+    return {"centre": C2.tolist(), "radius": Radius, "std": Std, "bins_filled": Filled}
+
+
+def MeasureRaw(Source) -> dict:
+    """Measure the raw Hi3D STL once, exactly. Returns plain numbers (JSON-serialisable)."""
+    Tri = LoadTriangles(Source, "stl")
+    Mo = _Moments(Tri)
+    _, Vecs = np.linalg.eigh(Mo["cov"])                         # ascending: least spread = ring axis
+    Axis, V, U = Vecs[:, 0], Vecs[:, 1], Vecs[:, 2]
+    if np.dot(np.cross(U, V), Axis) < 0:                       # right-handed frame
+        Axis = -Axis
+    Centre = Mo["centroid"]
+    R = np.vstack([U, V, Axis])
+    Lo3, Hi3 = np.full(3, np.inf), np.full(3, -np.inf)          # extents in the ring frame
+    for S in range(0, len(Tri), Chunk):
+        P = (Tri[S:S + Chunk].reshape(-1, 3).astype(np.float64) - Centre) @ R.T
+        Lo3, Hi3 = np.minimum(Lo3, P.min(0)), np.maximum(Hi3, P.max(0))
+    Heights = [Lo3[2] + (Hi3[2] - Lo3[2]) * F for F in (0.3, 0.5, 0.7)]
+    Slices = [{"height": float(H), **_FitBore(P)}
+              for H, P in zip(Heights, _ExactSections(Tri, Centre, U, V, Axis, Heights))]
+    Good = [S for S in Slices if S["radius"] and S["bins_filled"] >= Directions * 0.9]
+    Closed = abs(Mo["v1"] - Mo["v2"]) <= 1e-6 * max(Mo["v1"], 1e-30)
+    Out = {
+        "method_version": FastMethodVersion, "faces": int(len(Tri)),
+        "extent_x": float(Hi3[0] - Lo3[0]), "extent_y": float(Hi3[1] - Lo3[1]), "extent_z": float(Hi3[2] - Lo3[2]),
+        "volume": float(Mo["v1"]), "volume_alt_reference": float(Mo["v2"]), "area": float(Mo["area"]),
+        "closed_heuristic": bool(Closed),
+        "frame": {"centre": Centre.tolist(), "u": U.tolist(), "v": V.tolist(), "axis": Axis.tolist()},
+        "bore_ok": bool(Good), "bore_slices": Slices,
+    }
+    if Good:
+        Best = min(Good, key=lambda S: S["radius"])               # narrowest height = sizing diameter
+        Bc = Centre + Best["centre"][0] * U + Best["centre"][1] * V + Best["height"] * Axis
+        Out.update({"inner_diameter": 2 * Best["radius"], "roundness": Best["std"] / Best["radius"],
+                    "bore_origin": Bc.tolist()})
+    return Out
+
+
+def Scaled(Raw: dict, TargetInnerDiameterMm: float) -> dict:
+    """Exact values at the target size (uniform scaling): no file is read."""
+    S = TargetInnerDiameterMm / Raw["inner_diameter"]
+    return {"scale_factor": S, "size_x_mm": Raw["extent_x"] * S, "size_y_mm": Raw["extent_y"] * S,
+            "size_z_mm": Raw["extent_z"] * S, "inner_diameter_mm": Raw["inner_diameter"] * S,
+            "volume_mm3": Raw["volume"] * S ** 3, "surface_area_mm2": Raw["area"] * S ** 2}
+
+
+def _Transform(Raw: dict, Scale: float = 1.0):
+    F = Raw["frame"]
+    R = np.vstack([F["u"], F["v"], F["axis"]])
+    Origin = Raw.get("bore_origin") or F["centre"]
+    return np.asarray(Origin), (R.T * Scale)
+
+
+def ExportScaledStl(Source, Raw: dict, TargetInnerDiameterMm: float, Out) -> int:
+    """Write the scaled, aligned STL (bore centre at the origin, ring axis along Z, millimetres)."""
+    Origin, M = _Transform(Raw, TargetInnerDiameterMm / Raw["inner_diameter"])
+    Count = (os.path.getsize(Source) - 84) // 50
+    Rec = np.memmap(Source, dtype=StlRecord, mode="r", offset=84, shape=(Count,))
+    with open(Out, "wb") as F:
+        F.write(b"XJet P3 scaled ring".ljust(80, b" "))
+        F.write(np.uint32(Count).tobytes())
+        for S in range(0, Count, Chunk):
+            C = (Rec["v"][S:S + Chunk].astype(np.float64) - Origin) @ M
+            N = np.cross(C[:, 1] - C[:, 0], C[:, 2] - C[:, 0])
+            L = np.linalg.norm(N, axis=1, keepdims=True)
+            Block = np.zeros(len(C), StlRecord)
+            Block["n"] = N / np.where(L > 0, L, 1)
+            Block["v"] = C
+            F.write(Block.tobytes())
+    del Rec
+    return int(Count)
+
+
+def WritePreview(Source, Raw: dict, Out, Target: int = PreviewTargetFaces) -> int:
+    """Visual-only light preview (indexed, ~25k faces): one vertex-clustering pass in the ring frame.
+    Format: b"P3PV" · uint32 vertices · uint32 faces · float32 xyz… · uint32 i j k…
+    Never used for any measurement."""
+    Tri = LoadTriangles(Source, "stl")
+    Origin, M = _Transform(Raw)
+    O32, M32 = Origin.astype(np.float32), M.astype(np.float32)
+    for S in range(0, len(Tri), Chunk):
+        Tri[S:S + Chunk] = (Tri[S:S + Chunk] - O32) @ M32
+    Lo, Hi = _Bounds(Tri)
+    Step = max(float(np.sqrt(2.0 * Raw["area"] / Target)), float((Hi - Lo).max()) / 2000)
+    Keys = _CornerKeys(Tri, Lo, Step, Round=False)
+    Uniq, Inv = np.unique(Keys, return_inverse=True)
+    del Keys
+    Cnt = np.bincount(Inv, minlength=len(Uniq)).astype(np.float64)
+    Flat = Tri.reshape(-1, 3)
+    Verts = np.stack([np.bincount(Inv, weights=Flat[:, K], minlength=len(Uniq)) / Cnt for K in range(3)], axis=1)
+    del Tri, Flat
+    Ids = Inv.reshape(-1, 3)
+    Ok = (Ids[:, 0] != Ids[:, 1]) & (Ids[:, 1] != Ids[:, 2]) & (Ids[:, 0] != Ids[:, 2])
+    Faces = Ids[Ok]
+    Faces = Faces[np.unique(np.sort(Faces, axis=1), axis=0, return_index=True)[1]]
+    Used, Remap = np.unique(Faces, return_inverse=True)
+    Verts, Faces = Verts[Used].astype(np.float32), Remap.reshape(-1, 3).astype(np.uint32)
+    with open(Out, "wb") as F:
+        F.write(b"P3PV" + np.uint32(len(Verts)).tobytes() + np.uint32(len(Faces)).tobytes())
+        F.write(Verts.tobytes())
+        F.write(Faces.tobytes())
+    return int(len(Faces))
+
+
+def IntegrityCheck(Source) -> dict:
+    """Background mesh-integrity check (edge manifoldness). Never blocks results."""
+    Tri = LoadTriangles(Source, "stl")
+    return {"watertight": _Watertight(Tri), "faces": int(len(Tri))}

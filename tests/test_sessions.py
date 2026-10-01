@@ -3,6 +3,7 @@
 import io
 import json
 import math
+import sys
 
 import numpy as np
 import pytest
@@ -125,10 +126,33 @@ async def test_3d_never_runs_automatically_and_uses_default_size_10(HS):
     assert math.isclose(Price["weight_g"], Prod["volume_mm3"] / 1000 * Price["density_g_cm3"], rel_tol=1e-3)
     assert Price["status"] == "cost_model_not_configured" and Price["production_cost"] is None
     assert Price["calculated_price"] is None
-    # STL of the scaled geometry downloads (admin only).
-    assert (await H.Client.get(f"/api/admin/3d/{T['id']}/stl/production")).status_code == 403
-    Stl = await H.Client.get(f"/api/admin/3d/{T['id']}/stl/production", headers=Admin)
-    assert Stl.status_code == 200 and len(Stl.content) > 1000
+    # Real, persisted stages; background preview + integrity ran after the numbers.
+    St = (await H.Client.get(f"/api/admin/3d/{T['id']}/status", headers=Admin)).json()
+    Seen = [S["stage"] for S in St["stages"]]
+    assert Seen[-1] == "ready" and "calculating_geometry" in Seen and "downloading_stl" in Seen, Seen
+    assert all(S["ended_at"] for S in St["stages"]) and St["done"]
+    assert St["raw"]["integrity"] == "closed" and St["raw"]["preview_ready"] and St["raw"]["sha256"]
+    Pv = await H.Client.get(f"/api/admin/3d/{T['id']}/stl/preview", headers=Admin)
+    assert Pv.status_code == 200 and Pv.content[:4] == b"P3PV"
+    # The scaled STL is never stored: it is exported on demand (admin only) to a temporary file.
+    assert T["scaled_stl"] == "on_demand" and Prod["stl_path"] is None
+    assert (await H.Client.get(f"/api/admin/3d/{T['id']}/stl/production", headers=Admin)).status_code == 404
+    assert (await H.Client.post(f"/api/admin/3d/{T['id']}/export")).status_code == 403
+    E = (await H.Client.post(f"/api/admin/3d/{T['id']}/export", headers=Admin)).json()
+    await H.Idle()
+    E = (await H.Client.get(f"/api/admin/3d/{T['id']}/export/{E['job_id']}", headers=Admin)).json()
+    assert E["status"] == "done" and E["url"] and E["expires_at"]
+    Stl = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))      # signed: no admin header
+    assert Stl.status_code == 200 and len(Stl.content) == E["bytes"] > 1000
+    Tri = np.frombuffer(Stl.content[84:], dtype=np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")]))["v"]
+    Span = Tri.reshape(-1, 3).max(0) - Tri.reshape(-1, 3).min(0)
+    assert Span[0] == pytest.approx(Prod["size_x_mm"], rel=1e-3) and Span[2] == pytest.approx(Prod["size_z_mm"], rel=1e-3)
+    # Same request again reuses the temporary file; after the TTL it is deleted.
+    assert (await H.Client.post(f"/api/admin/3d/{T['id']}/export", headers=Admin)).json()["job_id"] == E["job_id"]
+    H.Ctx.Db.Execute("UPDATE geometry_jobs SET expires_at = '2000-01-01T00:00:00' WHERE id = ?", (E["job_id"],))
+    Store = (await H.Client.get("/api/admin/storage", headers=Admin)).json()
+    assert Store["exports_bytes"] == 0 and Store["meshes_bytes"] > 0 and Store["disk_free_bytes"] > 0
+    assert (await H.Client.get(f"/api/admin/3d/{T['id']}/export/{E['job_id']}", headers=Admin)).json()["status"] == "expired"
     # The customer's price is untouched by 3D.
     assert (await H.Client.get(f"/api/customizations/{Cust['id']}")).json()["quote"] == Cust["quote"]
 
@@ -257,30 +281,64 @@ async def test_mock_sessions_are_hidden_from_the_admin_unless_asked(HS):
     assert E is None or json.loads(E["data_json"])["ai_mode"] == "mock"
 
 
-async def test_measurement_runs_in_a_worker_and_out_of_memory_keeps_the_raw_model(HS, monkeypatch):
+async def test_geometry_failure_retries_locally_without_another_hi3d_call(HS, monkeypatch):
     H = HS
+    from p3 import geoqueue
     Batch = await H.NewDesign("Plain band")
     Did = Batch["design_id"]
+    Real = geoqueue.WorkerCommand
+    monkeypatch.setattr(geoqueue, "WorkerCommand", lambda: [sys.executable, "-c", "import sys; sys.exit(3)"])  # out of memory
     T = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).json()
     await H.Idle()
-    D = (await _Session(H, Did))["three_d"][0]
-    assert D["status"] == "measured" and D["raw_available"]                       # measured by the worker process
-    for Stage in ("production", "preview", "raw"):
-        R = await H.Client.get(f"/api/admin/3d/{T['id']}/stl/{Stage}", headers=Admin)
-        assert R.status_code == 200 and len(R.content) > 84, Stage
-    # A model too large for the server: only this measurement fails; the raw Hi3D model stays downloadable.
-    from p3 import production3d
-
-    async def TooBig(*A, **K):
-        raise MemoryError
-    monkeypatch.setattr(production3d, "RunMeasurement", TooBig)
-    T2 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)).json()
-    await H.Idle()
-    D2 = next(X for X in (await _Session(H, Did))["three_d"] if X["id"] == T2["id"])
-    assert D2["status"] == "needs_review" and "too large to measure" in D2["error"] and D2["raw_available"]
-    assert (await H.Client.get(f"/api/admin/3d/{T2['id']}/stl/raw", headers=Admin)).status_code == 200
-    assert (await H.Client.get(f"/api/admin/3d/{T2['id']}/stl/production", headers=Admin)).status_code == 404
+    St = (await H.Client.get(f"/api/admin/3d/{T['id']}/status", headers=Admin)).json()
+    assert St["status"] == "failed" and "memory" in St["error"] and St["can_retry"] and St["retry_is_local"]
+    assert St["stages"][-1]["stage"] == "failed"
+    assert (await H.Client.get(f"/api/admin/3d/{T['id']}/stl/raw", headers=Admin)).status_code == 200   # raw kept
     assert (await H.Client.get("/api/health")).status_code == 200                # the server is fine
+    monkeypatch.setattr(geoqueue, "WorkerCommand", Real)
+    R = (await H.Client.post(f"/api/admin/3d/{T['id']}/retry", headers=Admin)).json()
+    assert R["retried"] == "geometry"
+    await H.Idle()
+    D = (await _Session(H, Did))["three_d"][0]
+    assert D["status"] == "measured" and D["geometry"]["production"]["volume_mm3"] > 0
+    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == 1                    # no second paid Hi3D request
+    assert (await H.Client.post(f"/api/admin/3d/{T['id']}/retry", headers=Admin)).status_code == 409
+    # A new size or material is arithmetic on the stored measurement: no new job, instantly measured.
+    Jobs = H.Ctx.Db.One("SELECT COUNT(*) AS n FROM geometry_jobs WHERE kind = 'measure'")["n"]
+    T2 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7, "material_id": "silver"},
+                              headers=Admin)).json()
+    assert T2["status"] == "measured" and H.Ctx.Db.One("SELECT COUNT(*) AS n FROM geometry_jobs WHERE kind = 'measure'")["n"] == Jobs
+    A, B = T2["geometry"]["production"], D["geometry"]["production"]
+    S = A["inner_diameter_mm"] / B["inner_diameter_mm"]
+    assert A["volume_mm3"] == pytest.approx(B["volume_mm3"] * S ** 3) and A["surface_area_mm2"] == pytest.approx(B["surface_area_mm2"] * S ** 2)
+
+
+async def test_persistent_queue_position_cancel_and_restart_recovery(HS, monkeypatch):
+    H = HS
+    Q = H.App.state.Services.Geometry
+    monkeypatch.setattr(Q, "Kick", lambda: None)                               # hold the queue still
+    Ids = []
+    for Text in ("Plain band", "Twisted band"):
+        Batch = await H.NewDesign(Text)
+        Ids.append((await H.Client.post(f"/api/admin/sessions/{Batch['design_id']}/3d", json={}, headers=Admin)).json()["id"])
+        await H.Idle()                                                         # Hi3D finished; measure job queued
+    S1, S2 = [(await H.Client.get(f"/api/admin/3d/{I}/status", headers=Admin)).json() for I in Ids]
+    assert (S1["status"], S1["queue"]["ahead"], S2["queue"]["ahead"]) == ("queued", 0, 1)
+    assert S2["can_cancel"] and S2["stages"][-1]["stage"] == "queued" and S2["stages"][-1]["ended_at"] is None
+    C = (await H.Client.post(f"/api/admin/3d/{Ids[1]}/cancel", headers=Admin)).json()
+    assert C["status"] == "cancelled"
+    assert (await H.Client.post(f"/api/admin/3d/{Ids[1]}/cancel", headers=Admin)).status_code == 409
+    # The server stopped while the first job was running: on startup it is queued again and completes.
+    H.Ctx.Db.Execute("UPDATE geometry_jobs SET status = 'running', attempts = 1 WHERE mesh_id = "
+                     "(SELECT mesh_id FROM session_3d WHERE id = ?)", (Ids[0],))
+    monkeypatch.undo()
+    assert Q.Reconcile() == 1
+    await H.Idle()
+    assert (await H.Client.get(f"/api/admin/3d/{Ids[0]}/status", headers=Admin)).json()["status"] == "measured"
+    # A cancelled request can be retried locally.
+    assert (await H.Client.post(f"/api/admin/3d/{Ids[1]}/retry", headers=Admin)).json()["retried"] == "geometry"
+    await H.Idle()
+    assert (await H.Client.get(f"/api/admin/3d/{Ids[1]}/status", headers=Admin)).json()["status"] == "measured"
 
 
 async def test_signed_download_link_streams_the_file_without_the_admin_header(HS):
@@ -288,8 +346,8 @@ async def test_signed_download_link_streams_the_file_without_the_admin_header(HS
     Batch = await H.NewDesign("Plain band")
     T = (await H.Client.post(f"/api/admin/sessions/{Batch['design_id']}/3d", json={}, headers=Admin)).json()
     await H.Idle()
-    assert (await H.Client.post(f"/api/admin/3d/{T['id']}/download-link", json={"stage": "production"})).status_code == 403
-    L = (await H.Client.post(f"/api/admin/3d/{T['id']}/download-link", json={"stage": "production"}, headers=Admin)).json()
+    assert (await H.Client.post(f"/api/admin/3d/{T['id']}/download-link", json={"stage": "raw"})).status_code == 403
+    L = (await H.Client.post(f"/api/admin/3d/{T['id']}/download-link", json={"stage": "raw"}, headers=Admin)).json()
     assert L["bytes"] > 84 and "sig=" in L["url"]
     Path = L["url"].split("/api/", 1)[1]
     R = await H.Client.get("/api/" + Path)                                    # no Authorization header
@@ -298,5 +356,5 @@ async def test_signed_download_link_streams_the_file_without_the_admin_header(HS
     assert Bad.status_code == 403
     Expired = "/api/" + Path.split("?")[0] + "?exp=1&sig=" + Path.split("sig=")[1]
     assert (await H.Client.get(Expired)).status_code == 403
-    Other = await H.Client.get("/api/" + Path.replace("/stl/production", "/stl/raw"))   # signature is per file
+    Other = await H.Client.get("/api/" + Path.replace("/stl/raw", "/stl/preview"))      # signature is per file
     assert Other.status_code == 403

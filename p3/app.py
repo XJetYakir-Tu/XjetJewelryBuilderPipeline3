@@ -28,6 +28,7 @@ from p3.admin import RegisterAdmin
 from p3.aipricing import PriceBook
 from p3.modelconfig import ModelConfigStore
 from p3.production3d import Production3D
+from p3.geoqueue import GeometryQueue
 from p3.mail import BuildMailer
 from p3.registration import RegistrationService
 from p3 import sessions as Sessions
@@ -48,11 +49,13 @@ class Services:
         self.Customize = CustomizeService(Ctx, self.Images, self.Movies)
         self.Designs = DesignService(Ctx, self.Images, self.Customize)
         self.Meshes = MeshService(Ctx)
-        self.Production3D = Production3D(Ctx, self.Meshes)     # admin-only; never started automatically
+        self.Geometry = GeometryQueue(Ctx)                       # one heavy local STL job at a time, persisted
+        self.Production3D = Production3D(Ctx, self.Meshes, self.Geometry)   # admin-only; never automatic
 
     def Reconcile(self) -> dict:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),
-                "meshes": self.Meshes.Reconcile(), "production_3d": self.Production3D.Reconcile()}
+                "meshes": self.Meshes.Reconcile(), "geometry_jobs": self.Geometry.Reconcile(),
+                "production_3d": self.Production3D.Reconcile()}
 
 
 def _VersionedPage(Name: str, BasePath: str) -> str:

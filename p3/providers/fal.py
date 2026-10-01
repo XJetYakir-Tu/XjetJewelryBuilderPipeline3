@@ -54,7 +54,7 @@ class FalProvider:
         except Exception as E:
             raise _Wrap(E) from E
         if isinstance(S, fal_client.Queued):
-            return ProviderStatus("queued")
+            return ProviderStatus("queued", Position=getattr(S, "position", None))
         if isinstance(S, fal_client.InProgress):
             return ProviderStatus("running")
         if isinstance(S, fal_client.Completed):
@@ -66,6 +66,40 @@ class FalProvider:
             return await self.Client.result(Endpoint, RequestId)
         except Exception as E:
             raise _Wrap(E) from E
+
+    async def DownloadTo(self, Url: str, Target, OnProgress=None) -> tuple[int, str]:
+        """Stream a (possibly 250 MB) artifact straight to disk, hashing as it arrives. Never holds the
+        file in memory. Returns (bytes, sha256). Writes Target + ".part" and renames when complete."""
+        import hashlib
+        from pathlib import Path
+        Target = Path(Target)
+        Target.parent.mkdir(parents=True, exist_ok=True)
+        Part = Target.with_name(Target.name + ".part")
+        Hash, Size = hashlib.sha256(), 0
+        try:
+            async with httpx.AsyncClient(timeout=600.0, follow_redirects=True) as Client:
+                async with Client.stream("GET", Url) as Resp:
+                    if Resp.status_code in _TransientHttp:
+                        raise TransientProviderError(f"Download HTTP {Resp.status_code}")
+                    if Resp.status_code != 200:
+                        raise ProviderError(f"Download failed: HTTP {Resp.status_code}", "download_failed")
+                    Total = int(Resp.headers.get("content-length") or 0) or None
+                    with open(Part, "wb") as F:
+                        async for Chunk in Resp.aiter_bytes(1 << 20):
+                            Size += len(Chunk)
+                            if Size > MaxDownloadBytes:
+                                raise ProviderError("Downloaded artifact is too large", "download_failed")
+                            F.write(Chunk)
+                            Hash.update(Chunk)
+                            if OnProgress:
+                                OnProgress(Size, Total)
+            Part.replace(Target)
+            return Size, Hash.hexdigest()
+        except (httpx.TransportError, httpx.TimeoutException) as E:
+            raise TransientProviderError(str(E)) from E
+        finally:
+            if Part.exists():
+                Part.unlink(missing_ok=True)
 
     async def Download(self, Url: str) -> bytes:
         try:

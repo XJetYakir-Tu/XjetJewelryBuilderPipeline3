@@ -179,3 +179,14 @@ class MockProvider:
         if Url in self.Files:
             return self.Files[Url]
         raise ProviderError("Mock download not found", "download_failed")
+
+    async def DownloadTo(self, Url: str, Target, OnProgress=None) -> tuple[int, str]:
+        import hashlib
+        from pathlib import Path
+        Data = await self.Download(Url)
+        Target = Path(Target)
+        Target.parent.mkdir(parents=True, exist_ok=True)
+        Target.write_bytes(Data)
+        if OnProgress:
+            OnProgress(len(Data), len(Data))
+        return len(Data), hashlib.sha256(Data).hexdigest()

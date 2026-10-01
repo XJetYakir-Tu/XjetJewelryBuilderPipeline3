@@ -31,9 +31,13 @@ const STEPS = {
 };
 const THREE_D = {
   requested: ['Requested', 'bg-zinc-100 text-zinc-600'], generating: ['Hi3D running', 'bg-sky-100 text-sky-800'],
+  queued: ['Queued', 'bg-sky-100 text-sky-800'],
   measuring: ['Measuring', 'bg-sky-100 text-sky-800'], measured: ['Measured', 'bg-emerald-100 text-emerald-800'],
   needs_review: ['Needs review', 'bg-amber-100 text-amber-800'], failed: ['Failed', 'bg-red-100 text-red-700'],
+  cancelled: ['Cancelled', 'bg-zinc-100 text-zinc-600'],
 };
+const STAGE_SHORT = { waiting_hi3d: 'Waiting for Hi3D', generating_3d: 'Generating 3D', downloading_stl: 'Download',
+  queued: 'Queued', calculating_geometry: 'Geometry', exporting: 'Scaled STL' };
 const EVENTS = {
   design_created: ['Design', 'bg-blue-100 text-blue-700'],
   refinement: ['Refinement', 'bg-violet-100 text-violet-700'],
@@ -60,6 +64,7 @@ function adminApp() {
     userId: '', d: null, detailError: '', openDesign: null,
     tab: 'sessions', materials: {}, swatches: {}, showChoices: false,
     viewer3d: { id: null, label: '', loading: false, error: '' }, downloadNote: '',
+    live3d: {}, exports3d: {}, clock: Date.now(), skew: 0, storage: null,
     dash: null, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
@@ -125,7 +130,10 @@ function adminApp() {
       this.openDesign = null;
       window.scrollTo({ top: 0 });
       if (!this.ok) return;
-      if (this.tab === 'dashboard') this.dash = await this.api('GET', '/api/admin/dashboard').catch(() => null);
+      if (this.tab === 'dashboard') {
+        this.dash = await this.api('GET', '/api/admin/dashboard').catch(() => null);
+        this.storage = await this.api('GET', '/api/admin/storage').catch(() => null);
+      }
       if (this.tab === 'sessions' && !id) await this.loadSessions();
       if (this.tab === 'sessions' && id) await this.loadSession();
       if (this.tab === 'users' && !id) await this.load();
@@ -205,14 +213,14 @@ function adminApp() {
         this.g3.size = null; this.g3.material = '';
         this.sd = sd;
         this.showChoices = false;
+        for (const t of sd.three_d) this.setLive(t.id, t.live);
         const latest = sd.three_d.find(t => t.geometry?.production);
-        if (latest && this.viewer3d.id !== latest.id) setTimeout(() => this.show3d(latest), 50);
+        if (latest && this.viewer3d.id !== latest.id && this.previewReady(latest)) setTimeout(() => this.show3d(latest), 50);
         if (!latest) this.clear3d();
         await this.$nextTick();                 // the <option>s must exist before the selects get their value
         await new Promise(r => setTimeout(r));  // (a freshly created detail block renders its options a tick later)
         this.g3.size = size; this.g3.material = material;
-        if (this.sd.three_d.some(t => ['requested', 'generating', 'measuring'].includes(t.status)))
-          setTimeout(() => { if (this.sessionId === this.sd?.session.session_id) this.loadSession(); }, 2000);
+        this.poll3d();
       } catch (e) { this.sd = null; this.sdError = e.message; }
     },
     async generate3d() {
@@ -228,6 +236,109 @@ function adminApp() {
         await this.loadSession();
       } catch (e) { this.g3.error = e.message; } finally { this.g3.busy = false; }
     },
+    // ── live 3D status: real persisted stages, polled lightly; the clock ticks locally ──
+    setLive(id, s) {
+      if (!s) return;
+      this.skew = new Date(s.server_now).getTime() - Date.now();
+      this.live3d = { ...this.live3d, [id]: s };
+    },
+    busy3d(s) { return !!s && (!s.done || Object.keys(s.raw?.background || {}).length > 0); },
+    poll3d() {
+      clearTimeout(this._poll3d);
+      if (!this._tick) this._tick = setInterval(() => { this.clock = Date.now(); }, 1000);
+      const sid = this.sd?.session.session_id;
+      const ids = (this.sd?.three_d || []).filter(t => this.busy3d(this.live3d[t.id])).map(t => t.id);
+      if (!ids.length) return;
+      this._poll3d = setTimeout(async () => {
+        if (this.sessionId !== sid || this.tab !== 'sessions') return;
+        let reload = false;
+        for (const id of ids) {
+          const was = this.live3d[id];
+          try {
+            const s = await this.api('GET', `/api/admin/3d/${encodeURIComponent(id)}/status`);
+            this.setLive(id, s);
+            if (s.done && !was?.done) reload = true;                      // numbers are ready: show them
+            const t = this.sd?.three_d.find(x => x.id === id);
+            if (t && s.raw?.preview_ready && !was?.raw?.preview_ready && t.geometry?.production) this.show3d(t);
+          } catch (e) { /* transient: keep polling */ }
+        }
+        if (reload) await this.loadSession(); else this.poll3d();
+      }, 2000);
+    },
+    now() { return this.clock + this.skew; },
+    clockText(ms) {
+      const s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+      return (h ? h + ':' : '') + String(m).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    },
+    span(st) { return new Date(st.ended_at || this.now()).getTime() - new Date(st.started_at).getTime(); },
+    stageLine(t) {
+      const s = this.live3d[t.id]; if (!s || !s.stages.length) return '';
+      const first = s.stages[0], last = s.stages[s.stages.length - 1];
+      const total = this.clockText(new Date(last.ended_at || this.now()).getTime() - new Date(first.started_at).getTime());
+      if (s.done) return (s.status === 'failed' ? 'Failed' : s.status === 'cancelled' ? 'Cancelled' : 'Ready') + ' — Total ' + total;
+      const open = [...s.stages].reverse().find(x => !x.ended_at) || last;
+      const parts = [open.label];
+      if (open.stage === 'queued' && s.queue) parts.push(s.queue.ahead + ' ahead');
+      if (open.stage === 'waiting_hi3d' && open.detail?.position != null) parts.push('position ' + open.detail.position);
+      if (open.stage === 'downloading_stl' && open.detail?.total) parts.push(Math.floor(100 * open.detail.bytes / open.detail.total) + '%');
+      parts.push(this.clockText(this.span(open)));
+      return parts.join(' — ');
+    },
+    stageSteps(t) {
+      const s = this.live3d[t.id];
+      return (s?.stages || []).filter(x => STAGE_SHORT[x.stage]).map(x => ({ label: STAGE_SHORT[x.stage], time: this.clockText(this.span(x)), open: !x.ended_at }));
+    },
+    background(t) {
+      const r = this.live3d[t.id]?.raw; if (!r || !t.geometry?.production) return '';
+      const bg = r.background || {};
+      const pv = r.preview_ready ? 'ready' : bg.preview ? (bg.preview === 'running' ? 'building…' : 'queued') : '—';
+      const ig = { closed: 'closed (edge check passed)', open: 'open edges found — check the model', unknown: 'could not run', pending: bg.integrity ? 'running in background…' : 'pending' }[r.integrity] || r.integrity;
+      return `Light preview: ${pv} · Mesh integrity: ${ig}`;
+    },
+    previewReady(t) { return !!this.live3d[t.id]?.raw?.preview_ready || t.scaled_stl === 'stored'; },
+    thumb() {
+      const t = this.sd?.three_d.find(x => this.live3d[x.id]?.thumbnail_url);
+      return t ? this.live3d[t.id].thumbnail_url : '';
+    },
+    async cancel3d(t) {
+      try { this.setLive(t.id, (await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/cancel`)).live); await this.loadSession(); }
+      catch (e) { alert(e.message); }
+    },
+    async retry3d(t) {
+      const local = this.live3d[t.id]?.retry_is_local;
+      if (!local && !confirm(`Hi3D itself failed, so a retry is a new ${this.mode === 'mock' ? 'MOCK' : 'PAID live'} Hi3D request. Continue?`)) return;
+      try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/retry`); await this.loadSession(); }
+      catch (e) { alert(e.message); }
+    },
+    // Scaled STL: export on demand to a temporary file (queued like any heavy job), then a native download.
+    async exportStl(t) {
+      if (t.scaled_stl === 'stored') return this.downloadStl(t.id, 'production');      // earlier requests kept one
+      try {
+        let e = await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/export`);
+        this.exports3d = { ...this.exports3d, [t.id]: e };
+        if (!this._tick) this._tick = setInterval(() => { this.clock = Date.now(); }, 1000);
+        while (['queued', 'running'].includes(e.status)) {
+          await new Promise(r => setTimeout(r, 1000));
+          e = await this.api('GET', `/api/admin/3d/${encodeURIComponent(t.id)}/export/${e.job_id}`);
+          this.exports3d = { ...this.exports3d, [t.id]: e };
+        }
+        if (e.status === 'done') {
+          e = await this.api('GET', `/api/admin/3d/${encodeURIComponent(t.id)}/export/${e.job_id}`);   // fresh signed link
+          const a = Object.assign(document.createElement('a'), { href: e.url });
+          document.body.appendChild(a); a.click(); a.remove();
+          this.downloadNote = `Downloading the scaled STL (${this.gb(e.bytes)}) — see your browser's downloads. The temporary file is deleted after an hour.`;
+          setTimeout(() => { this.downloadNote = ''; }, 8000);
+        } else alert('Scaled STL failed: ' + (e.error || e.status));
+      } catch (err) { alert('Scaled STL failed: ' + err.message); }
+      finally { const x = { ...this.exports3d }; delete x[t.id]; this.exports3d = x; }
+    },
+    exportLine(t) {
+      const e = this.exports3d[t.id]; if (!e) return '';
+      if (e.status === 'queued') return `Preparing scaled STL — Queued — ${e.ahead} ahead — ${this.clockText(this.now() - new Date(e.created_at).getTime())}`;
+      return `Preparing scaled STL — ${this.clockText(this.now() - new Date(e.started_at || e.created_at).getTime())}`;
+    },
+    gb(b) { return b == null ? '—' : b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(0) + ' MB' : Math.ceil(b / 1e3) + ' KB'; },
+
     // Native browser download (streams to disk with the browser's progress bar) via a signed link,
     // so a 250 MB STL is never loaded into the page.
     async downloadStl(id, stage) {
@@ -442,9 +553,10 @@ function adminApp() {
       this.clear3d();
       this.viewer3d = { id: t.id, label: 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '' };
       try {
-        const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: { Authorization: 'Bearer ' + this.key } });   // light copy
-        if (!r.ok) throw new Error('STL download failed (' + r.status + ')');
-        const geo = new THREE.STLLoader().parse(await r.arrayBuffer());
+        const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: { Authorization: 'Bearer ' + this.key } });   // light, visual only
+        if (!r.ok) throw new Error('Preview download failed (' + r.status + ')');
+        const buf = await r.arrayBuffer();
+        const geo = this.parsePreview(buf) || new THREE.STLLoader().parse(buf);
         geo.computeVertexNormals(); geo.center(); geo.computeBoundingSphere();
         const el = this.$refs.viewer; if (!el) return;
         const w = el.clientWidth || 300, h = el.clientHeight || 300, R = geo.boundingSphere.radius || 10;
@@ -470,7 +582,17 @@ function adminApp() {
         this.viewer3d.loading = false;
       } catch (e) { this.viewer3d.loading = false; this.viewer3d.error = e.message; }
     },
+    // P3PV: "P3PV" · uint32 vertices · uint32 faces · float32 xyz… · uint32 i j k… (indexed, ~25k faces)
+    parsePreview(buf) {
+      if (buf.byteLength < 12 || new TextDecoder().decode(new Uint8Array(buf, 0, 4)) !== 'P3PV') return null;
+      const h = new Uint32Array(buf, 4, 2), nv = h[0], nf = h[1];
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(buf, 12, nv * 3), 3));
+      geo.setIndex(new THREE.BufferAttribute(new Uint32Array(buf, 12 + nv * 12, nf * 3), 1));
+      return geo;
+    },
     adjustments(t) {
+      if ((t.geometry.production?.method_version || '').startsWith('ring-measure-once')) return this.adjustmentsV3(t);
       const raw = t.geometry.raw || {}, prod = t.geometry.production || {}, c = prod.checks || {};
       const n = (v, d) => v == null ? '?' : Number(v).toFixed(d);
       const out = [
@@ -484,6 +606,23 @@ function adminApp() {
         `Measured: inner diameter ${n(prod.inner_diameter_mm, 3)} mm, volume ${prod.volume_mm3 == null ? 'not reliable (not watertight)' : (prod.volume_mm3 / 1000).toFixed(3) + ' cc'}, surface ${prod.surface_area_mm2 == null ? '?' : (prod.surface_area_mm2 / 100).toFixed(2) + ' cm²'}.`,
       ];
       if (t.price?.weight_g != null) out.push(`Weight = ${(prod.volume_mm3 / 1000).toFixed(3)} cc × ${t.density_g_cm3} g/cm³ (${t.material_label}) = ${t.price.weight_g.toFixed(2)} g.`);
+      out.push('Note: uniform scaling also scales band width and thickness.');
+      return out;
+    },
+
+    adjustmentsV3(t) {
+      const raw = t.geometry.raw || {}, prod = t.geometry.production || {}, c = prod.checks || {};
+      const n = (v, d) => v == null ? '?' : Number(v).toFixed(d);
+      const r = this.live3d[t.id]?.raw || {};
+      const out = [
+        `Received the Hi3D STL: ${Number(c.faces || r.faces || 0).toLocaleString()} faces${r.bytes ? ', ' + this.gb(r.bytes) : ''}${r.sha256 ? ', SHA-256 ' + r.sha256.slice(0, 12) + '…' : ''}. Measured once, exactly, on the full model — never on the preview.`,
+        `Raw model: ${n(raw.size_x_mm, 3)} × ${n(raw.size_y_mm, 3)} × ${n(raw.size_z_mm, 3)} model units, bore ${n(raw.inner_diameter_mm, 4)}, roundness deviation ${c.roundness == null ? '?' : (c.roundness * 100).toFixed(2) + '%'}.`,
+        `Closed-mesh heuristic (volume from two reference points ${c.closed_heuristic ? 'agrees' : 'DISAGREES'}) — a cheap check, not proof of watertightness; the edge check runs in the background.`,
+        `Scaled by arithmetic ×${n(prod.scale_factor, 4)} so the inner diameter is ${t.target_inner_diameter_mm} mm (US ${t.production_size}): lengths × s, area × s², volume × s³ — no file is re-read for a new size or material.`,
+        `Result: inner diameter ${n(prod.inner_diameter_mm, 3)} mm, volume ${prod.volume_mm3 == null ? '?' : (prod.volume_mm3 / 1000).toFixed(3) + ' cc'}, surface ${prod.surface_area_mm2 == null ? '?' : (prod.surface_area_mm2 / 100).toFixed(2) + ' cm²'}.`,
+      ];
+      if (t.price?.weight_g != null) out.push(`Weight = ${(prod.volume_mm3 / 1000).toFixed(3)} cc × ${t.density_g_cm3} g/cm³ (${t.material_label}) = ${t.price.weight_g.toFixed(2)} g.`);
+      out.push('The scaled STL (bore centre at the origin, ring axis along Z, millimetres) is created on demand and deleted after an hour.');
       out.push('Note: uniform scaling also scales band width and thickness.');
       return out;
     },

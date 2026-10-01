@@ -25,6 +25,7 @@ class TransientProviderError(Exception):
 class ProviderStatus:
     State: str                 # "queued" | "running" | "completed"
     Error: str | None = None   # set when State == "completed" but the request failed
+    Position: int | None = None  # provider queue position while queued, when the provider reports it
 
 
 class Provider(Protocol):

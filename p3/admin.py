@@ -282,7 +282,11 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
     @App_.get("/api/admin/sessions/{DesignId}")
     async def GetSession(DesignId: str, authorization: str | None = Header(None)):
         Admin(authorization)
-        return SessionDetail(Ctx, Production, DesignId, Prices)
+        D = SessionDetail(Ctx, Production, DesignId, Prices)
+        for T in D["three_d"]:                          # the Hi3D thumbnail is shown first (an <img>: signed link)
+            if (T["live"].get("raw") or {}).get("thumbnail"):
+                T["live"]["thumbnail_url"] = _SignedUrl(T["id"], "thumbnail")
+        return D
 
     @App_.post("/api/admin/sessions/{DesignId}/3d")
     async def Generate3D(DesignId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
@@ -296,16 +300,21 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
         return hmac.new((Ctx.Settings.AdminKey or "").encode(), f"3d-download:{Sid}:{Stage}:{Exp}".encode(),
                         hashlib.sha256).hexdigest()
 
+    def _Stage(Stage: str) -> str:
+        if Stage in ("raw", "production", "preview", "thumbnail") or Stage.startswith("export-"):
+            return Stage
+        raise HttpError(404, "geometry_not_found", "Unknown file.")
+
+    def _SignedUrl(Sid: str, Stage: str) -> str:
+        Exp = int(time.time()) + DownloadLinkSeconds
+        return f"{Ctx.Settings.BasePath}/api/admin/3d/{Sid}/stl/{Stage}?exp={Exp}&sig={_DownloadSig(Sid, Stage, Exp)}"
+
     @App_.post("/api/admin/3d/{Sid}/download-link")
     async def Download3DLink(Sid: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Admin(authorization)
-        Stage = str(Body_.get("stage") or "")
-        if Stage not in ("raw", "production", "preview"):
-            raise HttpError(404, "geometry_not_found", "Unknown stage.")
-        Path_ = Production.StlPath(Sid, Stage)                     # 404 if the file does not exist (yet)
-        Exp = int(time.time()) + DownloadLinkSeconds
-        return {"url": f"{Ctx.Settings.BasePath}/api/admin/3d/{Sid}/stl/{Stage}?exp={Exp}&sig={_DownloadSig(Sid, Stage, Exp)}",
-                "bytes": Path_.stat().st_size, "expires_in_s": DownloadLinkSeconds}
+        Stage = _Stage(str(Body_.get("stage") or ""))
+        Path_ = Production.FilePath(Sid, Stage)                    # 404 if the file does not exist (yet)
+        return {"url": _SignedUrl(Sid, Stage), "bytes": Path_.stat().st_size, "expires_in_s": DownloadLinkSeconds}
 
     @App_.get("/api/admin/3d/{Sid}/stl/{Stage}")
     async def Download3D(Sid: str, Stage: str, exp: int | None = None, sig: str | None = None,
@@ -314,11 +323,51 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
                   and hmac.compare_digest(sig, _DownloadSig(Sid, Stage, exp)))
         if not Signed:
             Admin(authorization)
-        if Stage not in ("raw", "production", "preview"):
-            raise HttpError(404, "geometry_not_found", "Unknown stage.")
-        Path_ = Production.StlPath(Sid, Stage)
-        return FileResponse(Path_, filename=f"{Sid}_{Stage}{Path_.suffix}",
-                            media_type="model/stl" if Path_.suffix == ".stl" else "application/octet-stream")
+        Path_ = Production.FilePath(Sid, _Stage(Stage))
+        Types = {".stl": "model/stl", ".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+        Name = f"{Sid}_scaled.stl" if Stage.startswith("export-") else f"{Sid}_{Stage}{Path_.suffix}"
+        Inline = Stage in ("thumbnail", "preview")
+        return FileResponse(Path_, filename=None if Inline else Name,
+                            media_type=Types.get(Path_.suffix.lower(), "application/octet-stream"),
+                            headers={"Cache-Control": "private, max-age=600"} if Inline else None)
+
+    @App_.get("/api/admin/3d/{Sid}/status")
+    async def Status3D(Sid: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        S = Production.Status(Sid)
+        if S["raw"] and S["raw"]["thumbnail"]:
+            S["thumbnail_url"] = _SignedUrl(Sid, "thumbnail")
+        return S
+
+    @App_.post("/api/admin/3d/{Sid}/cancel")
+    async def Cancel3D(Sid: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Production.Cancel(Sid)
+
+    @App_.post("/api/admin/3d/{Sid}/retry")
+    async def Retry3D(Sid: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Production.Retry(Sid)
+
+    # Scaled STL: queue export → temporary file → slot released → native signed download → TTL delete.
+    @App_.post("/api/admin/3d/{Sid}/export")
+    async def Export3D(Sid: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Production.StartExport(Sid)
+
+    @App_.get("/api/admin/3d/{Sid}/export/{Jid}")
+    async def Export3DStatus(Sid: str, Jid: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        S = Production.ExportStatus(Sid, Jid)
+        if S["status"] == "done":
+            S["url"] = _SignedUrl(Sid, f"export-{Jid}")
+        return S
+
+    @App_.get("/api/admin/storage")
+    async def Storage(authorization: str | None = Header(None)):
+        Admin(authorization)
+        Production.Queue.CleanupExports()
+        return await asyncio.get_running_loop().run_in_executor(None, Production.Queue.Storage)
 
     # ── AI prompts & parameters ───────────────────────────────────────────
     def _Model(ModelId: str):

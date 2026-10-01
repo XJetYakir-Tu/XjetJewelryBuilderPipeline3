@@ -89,6 +89,58 @@ CREATE TABLE IF NOT EXISTS session_3d (
 );
 CREATE INDEX IF NOT EXISTS session_3d_design ON session_3d(design_id, created_at);
 
+-- The raw Hi3D STL is the master geometry: measured once (exact), values for any size follow by scaling.
+CREATE TABLE IF NOT EXISTS raw_geometry (
+    mesh_id           TEXT PRIMARY KEY REFERENCES meshes(id),
+    stl_path          TEXT NOT NULL,
+    sha256            TEXT,
+    bytes             INTEGER,
+    faces             INTEGER,
+    status            TEXT NOT NULL,              -- downloaded | measured | failed
+    measurement_json  TEXT,                       -- raw ID, X/Y/Z, volume, area, frame, bore … (model units)
+    method_version    TEXT,
+    measured_at       TEXT,
+    preview_path      TEXT,                       -- visual-only light preview (never used for numbers)
+    thumbnail_path    TEXT,                       -- Hi3D's own thumbnail image
+    integrity         TEXT NOT NULL DEFAULT 'pending',   -- pending | closed | open | unknown (background)
+    integrity_json    TEXT,
+    timings_json      TEXT NOT NULL DEFAULT '{}',
+    error             TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+
+-- Persistent queue for heavy local STL work: only one job runs at a time; survives restarts.
+CREATE TABLE IF NOT EXISTS geometry_jobs (
+    id             TEXT PRIMARY KEY,
+    kind           TEXT NOT NULL,                 -- measure | preview | integrity | export
+    mesh_id        TEXT NOT NULL,
+    session_3d_id  TEXT,
+    priority       INTEGER NOT NULL,              -- lower runs first
+    status         TEXT NOT NULL,                 -- queued | running | done | failed | cancelled
+    attempts       INTEGER NOT NULL DEFAULT 0,
+    params_json    TEXT NOT NULL DEFAULT '{}',
+    result_json    TEXT,
+    error          TEXT,
+    output_path    TEXT,
+    expires_at     TEXT,
+    created_at     TEXT NOT NULL,
+    started_at     TEXT,
+    finished_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS geometry_jobs_queue ON geometry_jobs(status, priority, created_at);
+
+-- Real processing stages with start/end times (Hi3D, download, queue, geometry, ready).
+CREATE TABLE IF NOT EXISTS stage_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject      TEXT NOT NULL,
+    stage        TEXT NOT NULL,
+    detail_json  TEXT NOT NULL DEFAULT '{}',
+    started_at   TEXT NOT NULL,
+    ended_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS stage_log_subject ON stage_log(subject, id);
+
 -- Measured geometry: one row per stage (raw = as returned, production = repaired + scaled).
 CREATE TABLE IF NOT EXISTS geometry_results (
     id                 TEXT PRIMARY KEY,

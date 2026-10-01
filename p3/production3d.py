@@ -1,71 +1,40 @@
-"""Admin-only 3D production geometry for a session: Hi3D v3.0 → repair → scale to ring size → measure
-→ weight / cost / 3D price.
+"""Admin-only 3D production geometry for a session: Hi3D v3.0 → measure the raw STL once → exact
+values for any ring size and material by arithmetic → weight / cost / 3D price.
 
 Rules:
   * 3D never starts automatically — only Production3D.Request(), called from the Admin.
   * Every request has a target ring size: the customer's size, else US 10 (default), and the admin
     may override it. Both the customer size and the production size are stored with their source.
-  * The raw Hi3D mesh for a design option is reused: a new size or material re-scales and re-measures
-    the same raw mesh, without another paid Hi3D call.
+  * The raw Hi3D STL (5M faces) is the master geometry. It is measured exactly once (raw_geometry):
+    a new size or material is pure arithmetic — length × s, area × s², volume × s³, weight = volume ×
+    density — with no file read and no paid Hi3D call.
+  * Heavy local work runs one job at a time in the persistent geometry queue (p3.geoqueue).
+    Retrying a failed local stage never repeats Hi3D when the raw STL exists.
+  * The light preview and the mesh-integrity check run in the background after the numbers are shown;
+    the preview is visual only and never used for geometry or pricing.
+  * A scaled STL is never stored permanently: it is exported on demand to a temporary file (TTL).
   * The customer's fixed price is copied in for comparison only; nothing here changes it.
 """
 
-import asyncio
 import json
 import logging
-import os
-import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 
 from p3 import assets
 from p3 import sessions as Sessions
+from p3 import stages as Stages
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
-from p3.geometry import Measurement, MethodVersion, UsSizeToInnerDiameterMm
-from p3.geometry_worker import ExitMemory
+from p3.geometry import Scaled, UsSizeToInnerDiameterMm
 from p3.settings import RepoRoot
 
 Logger = logging.getLogger("p3.production3d")
 DefaultSize = 10.0
 CostModelPath = RepoRoot / "config" / "production_costs.json"
-Terminal = ("measured", "needs_review", "failed")
-MeasureTimeoutS = 1800
-_MeasureSlot = None             # one measurement at a time (asyncio.Semaphore, created in the running loop)
-
-
-def _Slot():
-    global _MeasureSlot
-    if _MeasureSlot is None:
-        _MeasureSlot = asyncio.Semaphore(1)
-    return _MeasureSlot
-
-
-async def RunMeasurement(Source: Path, Fmt: str, TargetMm: float, OutStl: Path, OutPreview: Path):
-    """Measure in a separate process (p3.geometry_worker) with a memory cap, one at a time, so a model
-    too large for this server fails only this measurement and never the web server."""
-    OutStl.parent.mkdir(parents=True, exist_ok=True)
-    OutJson = OutStl.with_suffix(".json")
-    Env = {**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
-    async with _Slot():
-        Proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "p3.geometry_worker", str(Source), Fmt, str(TargetMm), str(OutStl), str(OutPreview),
-            str(OutJson), env=Env, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
-        try:
-            _, Err = await asyncio.wait_for(Proc.communicate(), MeasureTimeoutS)
-        except asyncio.TimeoutError:
-            Proc.kill()
-            await Proc.wait()
-            raise RuntimeError(f"Measurement took longer than {MeasureTimeoutS // 60} minutes and was stopped.")
-    Doc = json.loads(OutJson.read_text(encoding="utf-8")) if OutJson.is_file() else {"ok": False}
-    if Proc.returncode == ExitMemory or Doc.get("error") == "memory" or Proc.returncode in (-9, 137):
-        raise MemoryError
-    if not Doc.get("ok"):
-        raise RuntimeError(Doc.get("error") or (Err or b"").decode("utf-8", "replace")[-400:] or "Measurement failed")
-    def M(D):
-        return Measurement(**D) if D else None
-    return SimpleNamespace(raw=M(Doc["raw"]), production=M(Doc["production"]), scale_factor=Doc["scale_factor"],
-                           status=Doc["status"], problems=Doc["problems"], faces=Doc["faces"])
+Terminal = ("measured", "needs_review", "failed", "cancelled")
+Waiting = ("requested", "generating", "queued", "measuring")
+MaxRoundness = 0.04            # bore deviation from a circle above this → needs review
 
 
 def LoadCostModel(PathObj: Path = CostModelPath) -> dict:
@@ -93,10 +62,19 @@ def Price(Model: dict, MaterialId: str, WeightG: float | None) -> dict:
     return Out
 
 
+def _Seconds(A: str | None, B: str | None) -> float | None:
+    if not A or not B:
+        return None
+    return round((datetime.fromisoformat(B) - datetime.fromisoformat(A)).total_seconds(), 3)
+
+
 class Production3D:
-    def __init__(self, Ctx: Context, Meshes):
+    def __init__(self, Ctx: Context, Meshes, Queue):
         self.Ctx = Ctx
         self.Meshes = Meshes
+        self.Queue = Queue
+        Meshes.OnReady.append(self._MeshFinished)
+        Queue.Handlers.update({"measure": self._Measured, "preview": self._Previewed, "integrity": self._Integrity})
 
     # ── admin request ────────────────────────────────────────────────────
     def Request(self, DesignId: str, ProductionSize=None, MaterialId: str | None = None,
@@ -141,68 +119,166 @@ class Production3D:
                    "size_source, customer_material, material_id, material_source, status, requested_by, created_at, "
                    "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (Sid, DesignId, CandidateId, Mesh["id"], CustomerSize, Size, SizeSource, CustomerMaterial, Mat,
-                    MatSource, "measuring" if Raw else "generating", RequestedBy, T, T))
+                    MatSource, "queued" if Raw else "generating", RequestedBy, T, T))
         Sessions.Record(self.Ctx, Design["owner_account_id"], "admin_3d_requested", DesignId, session_3d_id=Sid,
                         mesh_id=Mesh["id"], reused_raw_mesh=bool(Raw), production_size=Size, size_source=SizeSource,
                         material_id=Mat, material_source=MatSource, by=RequestedBy)
-        self.Ctx.Runner.Spawn(f"s3d:{Sid}", self._Drive(Sid))
+        if Raw:
+            self._Continue(Mesh["id"])           # measured already → instant; else one queued measure job
         return self.Get(Sid)
 
-    # ── pipeline ─────────────────────────────────────────────────────────
-    async def _Drive(self, Sid: str) -> None:
-        Ctx, Db = self.Ctx, self.Ctx.Db
-        try:
-            Row = Db.One("SELECT * FROM session_3d WHERE id = ?", (Sid,))
-            Deadline = asyncio.get_running_loop().time() + Ctx.Gen.Mesh.RequestTimeoutS + 120
-            while True:
-                Mesh = Db.One("SELECT * FROM meshes WHERE id = ?", (Row["mesh_id"],))
-                if Mesh["status"] == "ready":
-                    break
-                if Mesh["status"] in ("failed", "interrupted"):
-                    Db.Update("session_3d", Sid, status="failed", error=f"Hi3D: {Mesh['error'] or Mesh['status']}")
-                    return
-                if asyncio.get_running_loop().time() > Deadline:
-                    Db.Update("session_3d", Sid, status="failed", error="Hi3D did not finish in time")
-                    return
-                await asyncio.sleep(Ctx.Settings.PollIntervalS)
-            Db.Update("session_3d", Sid, status="measuring")
-            Source = assets.Resolve(Ctx.Settings.DevDir, Mesh["original_path"])
-            Target = UsSizeToInnerDiameterMm(Row["production_size"])
-            Rel = f"meshes/{Mesh['id']}/production_{Sid}.stl"
-            Out = assets.Resolve(Ctx.Settings.DevDir, Rel)
-            try:
-                G = await RunMeasurement(Source, Mesh["original_format"], Target, Out, Out.with_name(Out.stem + "_preview.stl"))
-            except MemoryError:
-                Faces = (Source.stat().st_size - 84) // 50 if Mesh["original_format"] == "stl" else None
-                Db.Update("session_3d", Sid, status="needs_review", error=(
-                    f"The model is too large to measure on this server{f' ({Faces:,} faces)' if Faces else ''}. "
-                    "The Hi3D model was kept and can be downloaded."))
-                return
-            self._Store(Row, Mesh, G, Target, Rel)
-        except Exception as E:  # noqa: BLE001
-            Logger.exception("3D production %s failed", Sid)
-            Db.Update("session_3d", Sid, status="failed", error=f"{type(E).__name__}: {E}")
+    # ── pipeline (event driven: mesh ready → measure job → finalize) ─────
+    def _WaitingFor(self, MeshId: str) -> list[dict]:
+        return self.Ctx.Db.All(f"SELECT * FROM session_3d WHERE mesh_id = ? AND status IN ({','.join('?' * len(Waiting))}) "
+                               "ORDER BY created_at", (MeshId, *Waiting))
 
-    def _Store(self, Row: dict, Mesh: dict, G, TargetMm: float, Rel: str) -> None:
-        Ctx, Db, Sid = self.Ctx, self.Ctx.Db, Row["id"]
+    def _MeshFinished(self, MeshId: str, Ok: bool) -> None:
+        if not self._WaitingFor(MeshId):
+            return                                # e.g. a /dev mesh: nothing waits to be measured
+        if Ok:
+            self._Continue(MeshId)
+            return
+        Mesh = self.Ctx.Db.One("SELECT status, error FROM meshes WHERE id = ?", (MeshId,))
+        for R in self._WaitingFor(MeshId):
+            self._Fail(R["id"], f"Hi3D: {Mesh['error'] or Mesh['status']}")
+
+    def _RawRow(self, MeshId: str) -> dict | None:
+        """raw_geometry for a ready mesh — created for meshes downloaded before measure-once existed."""
+        Db = self.Ctx.Db
+        Row = Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ?", (MeshId,))
+        if Row:
+            return Row
+        Mesh = Db.One("SELECT * FROM meshes WHERE id = ? AND status = 'ready'", (MeshId,))
+        if not Mesh or not Mesh["original_path"]:
+            return None
+        P = assets.Resolve(self.Ctx.Settings.DevDir, Mesh["original_path"])
+        if not P.is_file():
+            return None
         T = Now()
+        Db.Execute("INSERT OR IGNORE INTO raw_geometry (mesh_id, stl_path, sha256, bytes, faces, status, created_at, updated_at) "
+                   "VALUES (?,?,NULL,?,NULL,'downloaded',?,?)", (MeshId, Mesh["original_path"], P.stat().st_size, T, T))
+        return Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ?", (MeshId,))
 
-        def Insert(Stage, M, Scale, StlPath):
+    def _Continue(self, MeshId: str) -> None:
+        """The raw STL exists: finalize from its measurement, or queue the (single) measure job."""
+        Db = self.Ctx.Db
+        Raw = self._RawRow(MeshId)
+        if Raw is None:
+            for R in self._WaitingFor(MeshId):
+                self._Fail(R["id"], "The Hi3D model file is missing.")
+            return
+        if Raw["status"] == "measured":
+            for R in self._WaitingFor(MeshId):
+                self._Finalize(R, Raw)
+            return
+        Mesh = Db.One("SELECT original_format FROM meshes WHERE id = ?", (MeshId,))
+        Job = self.Queue.Enqueue("measure", MeshId, Params={
+            "source": Raw["stl_path"], "format": Mesh["original_format"] or "stl",
+            "convert_to": f"meshes/{MeshId}/raw.stl", "hash": not Raw["sha256"]})
+        Running = Job["status"] == "running"
+        for R in self._WaitingFor(MeshId):
+            Db.Update("session_3d", R["id"], status="measuring" if Running else "queued", error=None)
+            Stages.Begin(Db, R["id"], "calculating_geometry" if Running else "queued")
+
+    def _Measured(self, Job: dict, Result, Error, Started: bool = False) -> None:
+        Db, MeshId = self.Ctx.Db, Job["mesh_id"]
+        if Started:
+            for R in self._WaitingFor(MeshId):
+                Db.Update("session_3d", R["id"], status="measuring")
+                Stages.Begin(Db, R["id"], "calculating_geometry")
+            return
+        T = Now()
+        if Error == "cancelled":
+            for R in self._WaitingFor(MeshId):
+                Db.Update("session_3d", R["id"], status="cancelled", error="Cancelled before it started.")
+                Stages.Begin(Db, R["id"], "cancelled")
+            return
+        if Error:
+            Db.Execute("UPDATE raw_geometry SET status = 'failed', error = ?, updated_at = ? WHERE mesh_id = ?", (Error, T, MeshId))
+            for R in self._WaitingFor(MeshId):
+                self._Fail(R["id"], f"Geometry: {Error}. The Hi3D model was kept — a retry costs no Hi3D credits.")
+            return
+        Raw = Result["raw"]
+        Old = Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ?", (MeshId,))
+        Timings = {**json.loads(Old["timings_json"] or "{}"), "measure_s": Result.get("seconds"),
+                   "queue_wait_s": _Seconds(Job["created_at"], Job["started_at"])}
+        Db.Execute("UPDATE raw_geometry SET status = 'measured', measurement_json = ?, method_version = ?, measured_at = ?, "
+                   "faces = ?, sha256 = COALESCE(?, sha256), bytes = COALESCE(?, bytes), stl_path = ?, timings_json = ?, "
+                   "error = NULL, updated_at = ? WHERE mesh_id = ?",
+                   (Dumps(Raw), Raw["method_version"], T, Raw["faces"], Result.get("sha256"), Result.get("bytes"),
+                    f"meshes/{MeshId}/raw.stl" if Result.get("converted") else Old["stl_path"], Dumps(Timings), T, MeshId))
+        Row = Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ?", (MeshId,))
+        for R in self._WaitingFor(MeshId):
+            self._Finalize(R, Row)
+        # Background, never blocking the numbers already shown: light preview, then the integrity check.
+        if Raw.get("bore_ok"):
+            self.Queue.Enqueue("preview", MeshId, Params={"source": Row["stl_path"], "raw": Raw,
+                                                          "output": f"meshes/{MeshId}/preview.p3pv"})
+        self.Queue.Enqueue("integrity", MeshId, Params={"source": Row["stl_path"]})
+
+    def _Timings(self, MeshId: str, **New) -> str:
+        Old = self.Ctx.Db.One("SELECT timings_json FROM raw_geometry WHERE mesh_id = ?", (MeshId,))
+        return Dumps({**json.loads((Old or {}).get("timings_json") or "{}"), **New})
+
+    def _Previewed(self, Job: dict, Result, Error, Started: bool = False) -> None:
+        if Started or Error:
+            return
+        self.Ctx.Db.Execute("UPDATE raw_geometry SET preview_path = ?, timings_json = ?, updated_at = ? WHERE mesh_id = ?",
+                            (json.loads(Job["params_json"])["output"],
+                             self._Timings(Job["mesh_id"], preview_s=Result.get("seconds"),
+                                           preview_faces=Result.get("preview_faces")), Now(), Job["mesh_id"]))
+
+    def _Integrity(self, Job: dict, Result, Error, Started: bool = False) -> None:
+        if Started:
+            return
+        State, Doc = ("unknown", {"error": Error}) if Error else (("closed" if Result.get("watertight") else "open"), Result)
+        self.Ctx.Db.Execute("UPDATE raw_geometry SET integrity = ?, integrity_json = ?, timings_json = ?, updated_at = ? "
+                            "WHERE mesh_id = ?", (State, Dumps(Doc), self._Timings(Job["mesh_id"],
+                                                  integrity_s=(Result or {}).get("seconds")), Now(), Job["mesh_id"]))
+
+    def _Fail(self, Sid: str, Error: str) -> None:
+        self.Ctx.Db.Update("session_3d", Sid, status="failed", error=Error)
+        Stages.Begin(self.Ctx.Db, Sid, "failed", error=Error)
+
+    def _Finalize(self, Row: dict, RawRow: dict) -> None:
+        """Exact values for this request's size and material from the one raw measurement — arithmetic only."""
+        Ctx, Db, Sid = self.Ctx, self.Ctx.Db, Row["id"]
+        Raw = json.loads(RawRow["measurement_json"])
+        T = Now()
+        Db.Execute("DELETE FROM price_calculations WHERE session_3d_id = ?", (Sid,))     # a retry replaces results
+        Db.Execute("DELETE FROM geometry_results WHERE session_3d_id = ?", (Sid,))
+        Checks = {"closed_heuristic": Raw["closed_heuristic"], "volume": Raw["volume"],
+                  "volume_alt_reference": Raw["volume_alt_reference"], "roundness": Raw.get("roundness"),
+                  "bore_slices": Raw.get("bore_slices"), "faces": Raw["faces"], "raw_sha256": RawRow["sha256"]}
+
+        def Insert(Stage, G, Scale, StlPath):
             Gid = NewId("geo")
             Db.Execute("INSERT INTO geometry_results (id, session_3d_id, stage, size_x_mm, size_y_mm, size_z_mm, "
                        "inner_diameter_mm, volume_mm3, surface_area_mm2, watertight, scale_factor, stl_path, "
                        "method_version, checks_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                       (Gid, Sid, Stage, M.size_x_mm, M.size_y_mm, M.size_z_mm, M.inner_diameter_mm, M.volume_mm3,
-                        M.surface_area_mm2, int(M.watertight), Scale, StlPath, MethodVersion, Dumps(M.checks), T))
+                       (Gid, Sid, Stage, G["size_x_mm"], G["size_y_mm"], G["size_z_mm"], G["inner_diameter_mm"],
+                        G["volume_mm3"], G["surface_area_mm2"], int(Raw["closed_heuristic"]), Scale, StlPath,
+                        Raw["method_version"], Dumps(Checks), T))
             return Gid
 
-        Insert("raw", G.raw, None, Mesh["original_path"])
-        if G.production is None:
-            Db.Update("session_3d", Sid, status="needs_review", error="; ".join(G.problems))
+        Insert("raw", {"size_x_mm": Raw["extent_x"], "size_y_mm": Raw["extent_y"], "size_z_mm": Raw["extent_z"],
+                       "inner_diameter_mm": Raw.get("inner_diameter"), "volume_mm3": Raw["volume"],
+                       "surface_area_mm2": Raw["area"]}, None, RawRow["stl_path"])
+        Problems = []
+        if not Raw.get("bore_ok"):
+            Problems.append("No ring bore was found — the model may not be a ring.")
+        elif Raw["roundness"] > MaxRoundness:
+            Problems.append(f"The bore is not round ({Raw['roundness'] * 100:.1f}% deviation) — check the inner diameter.")
+        if not Raw["closed_heuristic"]:
+            Problems.append("The volume reference check suggests the mesh may not be closed — check the volume.")
+        if not Raw.get("bore_ok"):
+            Db.Update("session_3d", Sid, status="needs_review", error=" ".join(Problems))
+            Stages.Begin(Db, Sid, "ready", needs_review=True)
             return
-        Gid = Insert("production", G.production, G.scale_factor, Rel)     # file written by the measurement worker
+        G = Scaled(Raw, UsSizeToInnerDiameterMm(Row["production_size"]))
+        Gid = Insert("production", G, G["scale_factor"], None)          # scaled STL: exported on demand only
         Mat = Ctx.Catalog.Get(Row["material_id"])
-        Weight = round(G.production.volume_mm3 / 1000.0 * Mat.DensityGCm3, 3) if G.production.volume_mm3 else None
+        Weight = round(G["volume_mm3"] / 1000.0 * Mat.DensityGCm3, 3) if Raw["closed_heuristic"] else None
         Model = LoadCostModel()
         P = Price(Model, Row["material_id"], Weight)
         Summary = (Sessions.Summaries(Ctx, [Row["design_id"]]) or [{}])[0]
@@ -218,26 +294,131 @@ class Production3D:
                     P.get("calculated_price"), Model.get("currency"), Model.get("version"),
                     Dumps({**P.get("breakdown", {}), "reason": P.get("reason"), "fixed_price_source": Fixed.get("source")}),
                     Fixed.get("unit_price"), Fixed.get("pricing_version"), P["status"], T))
-        Db.Update("session_3d", Sid, status=G.status, error="; ".join(G.problems) or None)
+        Status = "needs_review" if Problems else "measured"
+        Db.Update("session_3d", Sid, status=Status, error=" ".join(Problems) or None)
+        Stages.Begin(Db, Sid, "ready", needs_review=bool(Problems))
         Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
         Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid,
-                        status=G.status, inner_diameter_mm=G.production.inner_diameter_mm,
-                        volume_mm3=G.production.volume_mm3, weight_g=Weight)
+                        status=Status, inner_diameter_mm=G["inner_diameter_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
 
+    # ── admin actions: cancel / retry / export ───────────────────────────
+    def _MeasureJob(self, MeshId: str, Statuses=("queued", "running")) -> dict | None:
+        return self.Ctx.Db.One(f"SELECT * FROM geometry_jobs WHERE kind = 'measure' AND mesh_id = ? AND status IN "
+                               f"({','.join('?' * len(Statuses))}) ORDER BY created_at DESC LIMIT 1", (MeshId, *Statuses))
+
+    def Cancel(self, Sid: str) -> dict:
+        Row = self._Row(Sid)
+        Job = self._MeasureJob(Row["mesh_id"], ("queued",))
+        if Row["status"] != "queued" or Job is None:
+            raise HttpError(409, "not_cancellable", "Only a request that is still queued can be cancelled.")
+        if len(self._WaitingFor(Row["mesh_id"])) > 1:        # other requests share the job: keep it for them
+            self.Ctx.Db.Update("session_3d", Sid, status="cancelled", error="Cancelled before it started.")
+            Stages.Begin(self.Ctx.Db, Sid, "cancelled")
+        else:
+            self.Queue.Cancel(Job["id"])
+        return self.Get(Sid)
+
+    def Retry(self, Sid: str) -> dict:
+        """Retry from the last successful stage. With the raw STL on disk this is local only (no Hi3D charge)."""
+        Row = self._Row(Sid)
+        if Row["status"] not in ("failed", "cancelled", "needs_review"):
+            raise HttpError(409, "not_retryable", "This request is not in a state that can be retried.")
+        Mesh = self.Ctx.Db.One("SELECT * FROM meshes WHERE id = ?", (Row["mesh_id"],))
+        if Mesh and Mesh["status"] == "ready":
+            self.Ctx.Db.Execute("UPDATE raw_geometry SET status = 'downloaded' WHERE mesh_id = ? AND status = 'failed'",
+                                (Row["mesh_id"],))
+            self.Ctx.Db.Update("session_3d", Sid, status="queued", error=None)
+            self._Continue(Row["mesh_id"])
+            return {**self.Get(Sid), "retried": "geometry"}
+        if Row["status"] != "failed":
+            raise HttpError(409, "not_retryable", "This request is not in a state that can be retried.")
+        New = self.Meshes.Create(Row["candidate_id"], None)       # Hi3D itself failed: a new (paid) Hi3D request
+        self.Ctx.Db.Update("session_3d", Sid, status="generating", mesh_id=New["id"], error=None)
+        return {**self.Get(Sid), "retried": "hi3d"}
+
+    def StartExport(self, Sid: str) -> dict:
+        """Queue a temporary scaled STL (deleted after the TTL); the download itself never holds the queue."""
+        Row = self._Row(Sid)
+        Raw = self.Ctx.Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ? AND status = 'measured'", (Row["mesh_id"],))
+        if Raw is None or Row["status"] not in ("measured", "needs_review"):
+            raise HttpError(409, "geometry_not_ready", "The geometry is not measured yet.")
+        Measured = json.loads(Raw["measurement_json"])
+        if not Measured.get("bore_ok"):
+            raise HttpError(409, "no_bore", "No ring bore was found, so the model cannot be scaled to a ring size.")
+        self.Queue.CleanupExports()
+        Target = UsSizeToInnerDiameterMm(Row["production_size"])
+        for J in self.Ctx.Db.All("SELECT * FROM geometry_jobs WHERE kind = 'export' AND session_3d_id = ? AND status IN "
+                                 "('queued','running','done') ORDER BY created_at DESC", (Sid,)):
+            P = json.loads(J["params_json"])
+            Usable = J["status"] != "done" or (J["output_path"] and (self.Ctx.Settings.DevDir / J["output_path"]).is_file())
+            if Usable and P.get("target_mm") == Target and P.get("raw_sha256") == Raw["sha256"]:
+                return self.ExportStatus(Sid, J["id"])
+        Job = self.Queue.Enqueue("export", Row["mesh_id"], Sid, Dedupe=False, Params={
+            "source": Raw["stl_path"], "raw": Measured, "target_mm": Target, "raw_sha256": Raw["sha256"],
+            "output": f"exports/{Sid}_{NewId('x')}.stl"})
+        return self.ExportStatus(Sid, Job["id"])
+
+    def ExportStatus(self, Sid: str, Jid: str) -> dict:
+        J = self.Queue.Get(Jid)
+        if J["session_3d_id"] != Sid or J["kind"] != "export":
+            raise HttpError(404, "job_not_found", "Export not found.")
+        Out = self.Ctx.Settings.DevDir / J["output_path"] if J["output_path"] else None
+        Ready = J["status"] == "done" and Out is not None and Out.is_file()
+        return {"job_id": J["id"], "status": "expired" if J["status"] == "done" and not Ready else J["status"],
+                "ahead": self.Queue.Ahead(J), "created_at": J["created_at"], "started_at": J["started_at"],
+                "finished_at": J["finished_at"], "expires_at": J["expires_at"], "error": J["error"],
+                "bytes": Out.stat().st_size if Ready else None, "server_now": Now()}
+
+    # ── recovery ─────────────────────────────────────────────────────────
     def Reconcile(self) -> int:
-        """After a restart, resume watching 3D requests that were still in progress."""
+        """After a restart: continue every request whose raw STL is on disk; Hi3D ones resume via the mesh."""
         N = 0
-        for R in self.Ctx.Db.All("SELECT id FROM session_3d WHERE status IN ('requested', 'generating', 'measuring')"):
-            self.Ctx.Runner.Spawn(f"s3d:{R['id']}", self._Drive(R["id"]))
-            N += 1
+        for R in self.Ctx.Db.All("SELECT DISTINCT s.mesh_id, m.status FROM session_3d s JOIN meshes m ON m.id = s.mesh_id "
+                                 f"WHERE s.status IN ({','.join('?' * len(Waiting))})", Waiting):
+            if R["status"] == "ready":
+                if not self._MeasureJob(R["mesh_id"]):
+                    self._Continue(R["mesh_id"])
+                N += 1
+            elif R["status"] in ("failed", "interrupted"):
+                self._MeshFinished(R["mesh_id"], False)
         return N
 
     # ── read ─────────────────────────────────────────────────────────────
-    def Get(self, Sid: str) -> dict:
-        Db, Url = self.Ctx.Db, self.Ctx.AssetUrl
-        R = Db.One("SELECT * FROM session_3d WHERE id = ?", (Sid,))
+    def _Row(self, Sid: str) -> dict:
+        R = self.Ctx.Db.One("SELECT * FROM session_3d WHERE id = ?", (Sid,))
         if R is None:
             raise HttpError(404, "session_3d_not_found", "3D request not found.")
+        return R
+
+    def Status(self, Sid: str) -> dict:
+        """Light, real state for the live status line (polled): stages with persisted start/end times."""
+        Db, R = self.Ctx.Db, self._Row(Sid)
+        HiStages = [S for S in Stages.List(Db, R["mesh_id"]) if S["stage"] != "failed"
+                    and (S["ended_at"] is None or S["ended_at"] >= R["created_at"])] if R["mesh_id"] else []
+        All = HiStages + Stages.List(Db, Sid)
+        Job = self._MeasureJob(R["mesh_id"], ("queued",)) if R["status"] == "queued" else None
+        Mesh = Db.One("SELECT status FROM meshes WHERE id = ?", (R["mesh_id"],))
+        Raw = Db.One("SELECT status, integrity, preview_path, thumbnail_path, timings_json, faces, bytes, sha256 "
+                     "FROM raw_geometry WHERE mesh_id = ?", (R["mesh_id"],))
+        Bg = Db.All("SELECT kind, status FROM geometry_jobs WHERE mesh_id = ? AND kind IN ('preview','integrity') "
+                    "AND status IN ('queued','running')", (R["mesh_id"],))
+        return {
+            "id": Sid, "status": R["status"], "error": R["error"], "server_now": Now(),
+            "done": R["status"] in Terminal, "stages": All,
+            "queue": {"ahead": self.Queue.Ahead(Job), "job_id": Job["id"]} if Job else None,
+            "can_cancel": bool(Job),
+            "can_retry": R["status"] in ("failed", "cancelled")
+                         or (R["status"] == "needs_review" and not (Raw and Raw["status"] == "measured")),
+            "retry_is_local": bool(Mesh and Mesh["status"] == "ready"),
+            "raw": Raw and {"faces": Raw["faces"], "bytes": Raw["bytes"], "sha256": Raw["sha256"],
+                            "integrity": Raw["integrity"], "preview_ready": bool(Raw["preview_path"]),
+                            "thumbnail": bool(Raw["thumbnail_path"]), "timings": json.loads(Raw["timings_json"] or "{}"),
+                            "background": {J["kind"]: J["status"] for J in Bg}},
+        }
+
+    def Get(self, Sid: str) -> dict:
+        Db, Url = self.Ctx.Db, self.Ctx.AssetUrl
+        R = self._Row(Sid)
         Mesh = Db.One("SELECT id, status, provider_request_id, endpoint, error FROM meshes WHERE id = ?", (R["mesh_id"],))
         Geo = {G["stage"]: {**G, "checks": json.loads(G.pop("checks_json") or "{}")}
                for G in Db.All("SELECT * FROM geometry_results WHERE session_3d_id = ? ORDER BY created_at", (Sid,))}
@@ -246,6 +427,7 @@ class Production3D:
             Calc["breakdown"] = json.loads(Calc.pop("breakdown_json") or "{}")
         Cand = Db.One("SELECT asset_path FROM candidates WHERE id = ?", (R["candidate_id"],))
         Mat = self.Ctx.Catalog.Get(R["material_id"])
+        Prod = Geo.get("production") or {}
         return {
             **R, "target_inner_diameter_mm": UsSizeToInnerDiameterMm(R["production_size"]),
             "material_label": Mat.Label if Mat else R["material_id"], "density_g_cm3": Mat.DensityGCm3 if Mat else None,
@@ -255,27 +437,45 @@ class Production3D:
                               "provider": "mock" if (Mesh["provider_request_id"] or "").startswith("mockreq_") else
                               ("fal" if Mesh["provider_request_id"] else None), "error": Mesh["error"]},
             "geometry": Geo, "price": Calc,
+            "scaled_stl": "stored" if Prod.get("stl_path") else ("on_demand" if Prod else None),   # v2 rows stored one
+            "live": self.Status(Sid),
         }
 
     def ForDesign(self, DesignId: str) -> list[dict]:
         return [self.Get(R["id"]) for R in self.Ctx.Db.All(
             "SELECT id FROM session_3d WHERE design_id = ? ORDER BY created_at DESC", (DesignId,))]
 
-    def StlPath(self, Sid: str, Stage: str) -> Path:
-        """raw = the Hi3D model as delivered (available as soon as Hi3D finished, even if measuring
-        failed) · production = repaired + scaled · preview = light copy of production for the viewer."""
-        Dev = self.Ctx.Settings.DevDir
+    def FilePath(self, Sid: str, Stage: str) -> Path:
+        """raw = the Hi3D model as delivered · production = a stored scaled STL (v2 requests only) ·
+        export-<job> = a temporary scaled STL · preview = the light visual preview · thumbnail = Hi3D's image."""
+        Dev, Db = self.Ctx.Settings.DevDir, self.Ctx.Db
+        R = self._Row(Sid)
+        Raw = Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ?", (R["mesh_id"],))
+        Rel = None
         if Stage == "raw":
-            M = self.Ctx.Db.One("SELECT m.original_path FROM session_3d s JOIN meshes m ON m.id = s.mesh_id "
-                                "WHERE s.id = ? AND m.status = 'ready'", (Sid,))
-            if M and M["original_path"]:
-                return assets.Resolve(Dev, M["original_path"])
-            raise HttpError(404, "geometry_not_found", "The Hi3D model is not available.")
-        G = self.Ctx.Db.One("SELECT stl_path FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (Sid,))
-        if not G or not G["stl_path"]:
-            raise HttpError(404, "geometry_not_found", "No measured geometry yet.")
-        P = assets.Resolve(Dev, G["stl_path"])
-        if Stage == "preview":
-            Pv = P.with_name(P.stem + "_preview.stl")
-            return Pv if Pv.is_file() else P
+            M = Db.One("SELECT original_path FROM meshes WHERE id = ? AND status = 'ready'", (R["mesh_id"],))
+            Rel = M and M["original_path"]
+        elif Stage == "thumbnail":
+            Rel = Raw and Raw["thumbnail_path"]
+        elif Stage.startswith("export-"):
+            J = Db.One("SELECT output_path FROM geometry_jobs WHERE id = ? AND kind = 'export' AND session_3d_id = ? "
+                       "AND status = 'done'", (Stage[len("export-"):], Sid))
+            Rel = J and J["output_path"]
+        elif Stage in ("production", "preview"):
+            G = Db.One("SELECT stl_path FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (Sid,))
+            Legacy = G and G["stl_path"]
+            if Stage == "production":
+                Rel = Legacy
+            elif Raw and Raw["preview_path"]:
+                Rel = Raw["preview_path"]
+            elif Legacy:                                        # v2: light STL next to the stored scaled STL
+                P = assets.Resolve(Dev, Legacy)
+                Pv = P.with_name(P.stem + "_preview.stl")
+                return Pv if Pv.is_file() else P
+        P = assets.Resolve(Dev, Rel) if Rel else None
+        if P is None or not P.is_file():
+            raise HttpError(404, "geometry_not_found", "This file is not available.")
         return P
+
+    StlPath = FilePath
+

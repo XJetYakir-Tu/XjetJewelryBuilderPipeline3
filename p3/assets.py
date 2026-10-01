@@ -87,6 +87,21 @@ def ValidateMp4(Data: bytes) -> None:
         raise AssetError("Downloaded movie is not an MP4 file")
 
 
+def ValidateMeshFile(PathObj: Path, Format: str) -> None:
+    """Validate a downloaded mesh on disk without reading it all (binary STL: size must match)."""
+    Size = Path(PathObj).stat().st_size
+    with open(PathObj, "rb") as F:
+        Head = F.read(84)
+    if Size < 84:
+        raise AssetError("Downloaded mesh is empty or truncated")
+    if Format == "glb" and Head[:4] != b"glTF":
+        raise AssetError("Downloaded mesh is not a GLB file")
+    if Format == "stl" and not Head[:5].lower().startswith(b"solid"):
+        Count = int.from_bytes(Head[80:84], "little")
+        if Count == 0 or Size < 84 + 50 * Count:
+            raise AssetError("Downloaded STL is not a valid binary STL")
+
+
 def ValidateMesh(Data: bytes, Format: str) -> None:
     if len(Data) < 84:
         raise AssetError("Downloaded mesh is empty or truncated")

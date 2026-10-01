@@ -69,8 +69,9 @@ class TaskRunner:
 
 
 async def PollUntilDone(ProviderObj: Provider, Endpoint: str, RequestId: str, TimeoutS: float,
-                        IntervalS: float, MaxTransient: int) -> dict:
-    """Poll one provider request to a terminal state and return its result payload."""
+                        IntervalS: float, MaxTransient: int, OnStatus=None) -> dict:
+    """Poll one provider request to a terminal state and return its result payload. OnStatus(status)
+    is called on every successful status read (real provider state for progress displays)."""
     Deadline = time.monotonic() + TimeoutS
     Transient = 0
     while True:
@@ -79,6 +80,8 @@ async def PollUntilDone(ProviderObj: Provider, Endpoint: str, RequestId: str, Ti
         try:
             Status = await ProviderObj.Status(Endpoint, RequestId)
             Transient = 0
+            if OnStatus:
+                OnStatus(Status)
         except TransientProviderError as E:
             Transient += 1
             if Transient > MaxTransient:
@@ -91,6 +94,19 @@ async def PollUntilDone(ProviderObj: Provider, Endpoint: str, RequestId: str, Ti
             return await _WithTransientRetry(lambda: ProviderObj.Result(Endpoint, RequestId),
                                              MaxTransient, IntervalS)
         await asyncio.sleep(IntervalS)
+
+
+async def DownloadToFileWithRetry(ProviderObj: Provider, Url: str, Target, MaxTransient: int, IntervalS: float,
+                                  OnProgress=None) -> tuple[int, str]:
+    """Stream to disk (providers with DownloadTo) — falls back to an in-memory download otherwise."""
+    if hasattr(ProviderObj, "DownloadTo"):
+        return await _WithTransientRetry(lambda: ProviderObj.DownloadTo(Url, Target, OnProgress), MaxTransient, IntervalS)
+    import hashlib
+    from pathlib import Path
+    Data = await DownloadWithRetry(ProviderObj, Url, MaxTransient, IntervalS)
+    Path(Target).parent.mkdir(parents=True, exist_ok=True)
+    Path(Target).write_bytes(Data)
+    return len(Data), hashlib.sha256(Data).hexdigest()
 
 
 async def DownloadWithRetry(ProviderObj: Provider, Url: str, MaxTransient: int, IntervalS: float) -> bytes:

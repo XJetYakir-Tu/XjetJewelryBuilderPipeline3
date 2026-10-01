@@ -12,12 +12,13 @@ import json
 import logging
 
 from p3 import assets
+from p3 import stages as Stages
 from p3.accounts import UsageMesh
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.providers import endpoints
 from p3.modelconfig import ConfigError, Validate
-from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
+from p3.runner import DownloadToFileWithRetry, DownloadWithRetry, FailureFor, PollUntilDone
 
 Logger = logging.getLogger("p3.meshes")
 
@@ -38,6 +39,7 @@ Disclaimer = ("Generated from a single AI image. Not measured, not sized to the 
 class MeshService:
     def __init__(self, Ctx: Context):
         self.Ctx = Ctx
+        self.OnReady = []           # callbacks(mesh_id, ok) — 3D production continues from here
 
     def Create(self, CandidateId: str, Overrides: dict | None) -> dict:
         Db = self.Ctx.Db
@@ -100,21 +102,62 @@ class MeshService:
                 if Owner:
                     Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageMesh, 1, MeshId,
                                              Provider=Ctx.Provider.Name, Endpoint=Mesh["endpoint"])
+            def OnStatus(St):
+                if St.State == "queued":
+                    Stages.Begin(Db, MeshId, "waiting_hi3d", **({"position": St.Position} if St.Position is not None else {}))
+                elif St.State == "running":
+                    Stages.Begin(Db, MeshId, "generating_3d")
+            Stages.Begin(Db, MeshId, "waiting_hi3d")
             Result = await PollUntilDone(Ctx.Provider, Mesh["endpoint"], RequestId, Ctx.Gen.Mesh.RequestTimeoutS,
-                                         S.PollIntervalS, S.MaxTransientPollErrors)
+                                         S.PollIntervalS, S.MaxTransientPollErrors, OnStatus=OnStatus)
             Url = (Result.get("model_mesh") or {}).get("url")
             if not Url:
                 raise assets.AssetError("Provider returned no model_mesh")
-            Data = await DownloadWithRetry(Ctx.Provider, Url, S.MaxTransientPollErrors, S.PollIntervalS)
-            assets.ValidateMesh(Data, Fmt)
+            # Stream the (up to ~250 MB) model straight to disk with real progress; never held in memory.
             RelPath = f"meshes/{MeshId}/original.{Fmt}"
-            assets.WriteAtomic(S.DevDir, RelPath, Data)
+            Target = assets.Resolve(S.DevDir, RelPath)
+            Stages.Begin(Db, MeshId, "downloading_stl")
+            Last = [0.0]
+
+            def OnProgress(Done, Total):
+                import time as _t
+                if _t.monotonic() - Last[0] >= 0.5 or (Total and Done >= Total):
+                    Last[0] = _t.monotonic()
+                    Stages.Detail(Db, MeshId, bytes=Done, total=Total)
+            Size, Sha = await DownloadToFileWithRetry(Ctx.Provider, Url, Target, S.MaxTransientPollErrors,
+                                                      S.PollIntervalS, OnProgress)
+            assets.ValidateMeshFile(Target, Fmt)
+            Thumb = None
+            ThumbUrl = (Result.get("thumbnail") or {}).get("url")
+            if ThumbUrl:
+                try:                                             # small; a failure never fails the mesh
+                    Ext = (ThumbUrl.rsplit(".", 1)[-1].split("?")[0] or "webp")[:5]
+                    Thumb = f"meshes/{MeshId}/thumbnail.{Ext}"
+                    await DownloadToFileWithRetry(Ctx.Provider, ThumbUrl, assets.Resolve(S.DevDir, Thumb), 2, S.PollIntervalS)
+                except Exception:  # noqa: BLE001
+                    Thumb = None
+            T = Now()
+            Faces = (Size - 84) // 50 if Fmt == "stl" else None
+            Db.Execute("INSERT OR REPLACE INTO raw_geometry (mesh_id, stl_path, sha256, bytes, faces, status, thumbnail_path, "
+                       "timings_json, created_at, updated_at) VALUES (?,?,?,?,?, 'downloaded', ?, '{}', ?, ?)",
+                       (MeshId, RelPath, Sha, Size, Faces, Thumb, T, T))
             Db.Update("meshes", MeshId, status="ready", original_path=RelPath, original_format=Fmt,
                       stl_path=RelPath if Fmt == "stl" else None, error=None, error_code=None)
+            Stages.End(Db, MeshId)
+            self._Notify(MeshId, True)
         except Exception as E:
             Message, Code = FailureFor(E)
             Logger.warning("Mesh %s failed (%s): %s", MeshId, Code, E)
             Db.Update("meshes", MeshId, status="failed", error=Message, error_code=Code)
+            Stages.Begin(Db, MeshId, "failed", error=Message)
+            self._Notify(MeshId, False)
+
+    def _Notify(self, MeshId: str, Ok: bool) -> None:
+        for Fn in self.OnReady:
+            try:
+                Fn(MeshId, Ok)
+            except Exception:  # noqa: BLE001
+                Logger.exception("Mesh ready hook failed for %s", MeshId)
 
     def ConvertToStl(self, MeshId: str) -> dict:
         """Separate developer operation: convert a GLB/OBJ result to STL with trimesh (no repair, no scaling)."""

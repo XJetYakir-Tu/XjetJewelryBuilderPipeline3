@@ -84,18 +84,49 @@ A **session is one design journey**:
 
 - **Never automatic.** Only this admin action starts Hi3D v3.0, on the session's selected option.
 - **Ring size:** the customer's size, else **US 10**; the admin can override it before generating. Stored as `customer_size` and `production_size`, with `size_source` = customer / default / admin_override. Material is handled the same way: customer, default, or admin override.
-- **No repeated paid calls.** If a raw Hi3D model already exists for that option, it is reused: a new size or material re-scales and re-measures it without another Hi3D call.
-- **Geometry** (`ring-bore-sections-v1`):
-  1. Repair: merge vertices, drop degenerate faces, fix normals, fill holes.
-  2. Find the ring axis: the direction of least surface spread.
-  3. Find the bore: cross-sections at 3 heights, the nearest wall per 5° bin, then a circle fit with an iterated centre. The narrowest height gives the inner diameter.
-  4. Scale uniformly to the target inner diameter (US size → mm: 11.63 + 0.8128 × size), with the axis aligned to Z.
-  5. Measure: X/Y/Z, inner diameter, volume (only if watertight) and surface area.
-- **Checks recorded:** watertight before/after repair, bore roundness, whether the inner diameter after scaling matches the target, and the known limitation that uniform scaling also scales band width.
-- **Status:** `measured` or `needs_review`.
-- **Accuracy:** tested against an ideal ring in a random orientation and arbitrary units. Inner diameter is within 0.2%, volume and surface area within 1%.
-- **Stored per stage** in `geometry_results`, raw and production (STL kept). Both downloads are admin-only.
-- **Weight** = volume × density from `config/materials.json`, stored in `price_calculations`.
+- **No repeated paid calls.** If a raw Hi3D model already exists for that option, it is reused. Retrying a failed local step never repeats Hi3D while the raw STL exists ("Retry geometry (no Hi3D charge)"). Only a failed Hi3D request offers "Retry Hi3D (paid)".
+- **Hi3D settings:** 2048quality, 5,000,000 faces, STL only.
+- **Download:** the STL is streamed straight to disk (`meshes/<id>/original.stl`), with its SHA-256 calculated during the download. Hi3D's thumbnail is saved too.
+- **Measure once** (`ring-measure-once-v3`, `p3/geometry.py` `MeasureRaw`). The full raw STL is measured exactly once, and the results are stored in `raw_geometry`:
+  - raw X/Y/Z and inner diameter;
+  - volume and surface area;
+  - ring frame (orientation) and bore centre;
+  - SHA-256 and method version.
+
+  How it works:
+  1. Find the ring axis from the exact surface moments.
+  2. Find the bore: exact cross-sections at 3 heights, then a circle fit. The narrowest height gives the inner diameter.
+  3. Compute the volume from two reference points. If they agree, the mesh is probably closed. This is a cheap heuristic, not proof of watertightness.
+- **Any size or material is arithmetic** (`Scaled`), with no file read: s = target ID / raw ID, then lengths × s, area × s², volume × s³, and weight = volume × density (`config/materials.json`). US size → mm: 11.63 + 0.8128 × size.
+- **Status:** `measured`, or `needs_review` if:
+  - no bore was found;
+  - roundness deviation is over 4%;
+  - the closed-mesh heuristic disagrees.
+- **Background, never blocking the numbers:**
+  - a light preview (~25k faces, `preview.p3pv`; visual only, never used for numbers);
+  - a mesh-integrity check (edge manifoldness → `raw_geometry.integrity`).
+- **Scaled STL:** never stored. "Download scaled STL" queues an export job that writes a temporary STL (`exports/`), aligned with the bore centre at the origin, axis Z, in millimetres. That frees the processing slot; the browser then downloads it natively through a signed link. The file is deleted after 1 hour. Requests measured before v3 keep their stored scaled STL.
+- **Accuracy:** tested against an ideal ring in a random orientation and arbitrary units. On a 5M-face torus, inner diameter and volume match the analytic values.
+- **Stored per stage** in `geometry_results` (raw and production), with weight and price in `price_calculations`.
+
+### Processing queue and live status
+
+- **One job at a time.** Heavy local work on the 5M STL runs one job at a time in a persistent queue (`geometry_jobs`, `p3/geoqueue.py`). Each job runs in a memory-capped worker process (`p3/geometry_worker.py`, `P3_GEOMETRY_MEMORY_MB`). Priority order: export, then measure, then preview, then integrity.
+- **Restarts:** after a restart, a running job is queued again; it fails if it is interrupted twice.
+- **Cancel:** a queued job can be cancelled before it starts.
+- **Real stages, with persisted start and end times** (`stage_log`), so a refresh shows the same state:
+  - `Waiting for Hi3D — 00:42`
+  - `Generating 3D — 03:11`
+  - `Downloading STL — 64% — 00:08` (a real byte count)
+  - `Queued — 1 ahead`
+  - `Calculating Geometry — 00:06`
+  - `Ready — Total 04:37`
+
+  No other percentages are shown. The page polls only `GET /api/admin/3d/{id}/status`, every 2 s; the clock ticks in the browser, synced to server time.
+- **Endpoints:**
+  - `POST …/3d/{id}/cancel`, `…/retry`, `…/export`;
+  - `GET …/3d/{id}/export/{job}`;
+  - `GET /api/admin/storage` (3D bytes and free disk; shown on the Dashboard, with no automatic deletion).
 
 ## Fixed price vs production cost vs 3D price
 
@@ -201,7 +232,7 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
 **Session detail now shows:**
 - user status (active, exhausted, inactive, removed…);
 - AI cost for the session and for the user in total;
-- the selected image, the 360° movie, and the 3D model in an interactive three.js viewer of the scaled STL;
+- the selected image, the 360° movie, and the 3D model: Hi3D's thumbnail first, then an interactive three.js viewer of the light preview;
 - a pipeline flow with each step's duration, requests and cost;
 - 3D results in cc and cm², with a material colour dot, plus "what was done to the model" (repair, bore, scale, alignment, measurement);
 - the customer's last Customize choice (full history on request);

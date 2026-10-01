@@ -1,18 +1,20 @@
-"""Run one ring measurement in its own process (python -m p3.geometry_worker ...).
+"""Run one heavy local STL job in its own process (python -m p3.geometry_worker <args.json>).
 
-Multi-million-face models need a lot of memory. Running the measurement in a child process with a
-hard address-space cap (P3_GEOMETRY_MEMORY_MB, Linux) means a model that does not fit only fails this
-measurement — it can never take the web server down (an out-of-memory kill of the server is what
-happened with the first 5,000,000-face Hi3D model).
+Multi-million-face models need a lot of memory. Running each job in a child process with a hard
+address-space cap (P3_GEOMETRY_MEMORY_MB, Linux) means a model that does not fit only fails this job —
+it can never take the web server down.
 
-  argv: <source file> <format> <target inner diameter mm> <out production.stl> <out preview.stl> <out result.json>
-  exit: 0 = result written · 3 = out of memory · 1 = other error (message in result.json)
+args.json: {"kind": "measure" | "preview" | "integrity" | "export", "source": <raw STL>, "result": <json out>,
+            "raw": {measurement}, "target_mm": <float>, "output": <file out>,
+            measure only: "hash": bool (SHA-256 when not hashed at download), "convert_to": <binary STL path>,
+            "format": <source format>}
+exit: 0 = result written · 3 = out of memory · 1 = other error (message in the result file)
 """
 
 import json
 import os
 import sys
-from dataclasses import asdict
+import time
 
 ExitMemory = 3
 
@@ -26,21 +28,55 @@ def _Cap() -> None:
         pass
 
 
+def _BinaryStl(PathStr: str) -> bool:
+    with open(PathStr, "rb") as F:
+        Head = F.read(84)
+    return len(Head) == 84 and os.path.getsize(PathStr) == 84 + 50 * int.from_bytes(Head[80:84], "little")
+
+
+def _Sha256(PathStr: str) -> str:
+    import hashlib
+    H = hashlib.sha256()
+    with open(PathStr, "rb") as F:
+        for Block in iter(lambda: F.read(1 << 20), b""):
+            H.update(Block)
+    return H.hexdigest()
+
+
+def Run(A: dict) -> dict:
+    from p3 import geometry as g
+    T = time.perf_counter()
+    Kind = A["kind"]
+    if Kind == "measure":
+        Source, Out = A["source"], {}
+        if A.get("convert_to") and not _BinaryStl(Source):     # GLB / OBJ / ASCII STL → binary STL master
+            g.WriteStl(g.LoadTriangles(Source, A.get("format") or "stl"), A["convert_to"])
+            Source, Out["converted"] = A["convert_to"], True
+        if A.get("hash"):
+            Out["sha256"], Out["bytes"] = _Sha256(Source), os.path.getsize(Source)
+        Out["raw"] = g.MeasureRaw(Source)
+    elif Kind == "preview":
+        Out = {"preview_faces": g.WritePreview(A["source"], A["raw"], A["output"])}
+    elif Kind == "integrity":
+        Out = g.IntegrityCheck(A["source"])
+    elif Kind == "export":
+        Out = {"faces": g.ExportScaledStl(A["source"], A["raw"], float(A["target_mm"]), A["output"])}
+    else:
+        raise ValueError(f"unknown job kind {Kind}")
+    return {"ok": True, **Out, "seconds": round(time.perf_counter() - T, 3)}
+
+
 def Main(Argv: list[str]) -> int:
-    Src, Fmt, Target, OutStl, OutPreview, OutJson = Argv
+    with open(Argv[0], encoding="utf-8") as F:
+        A = json.load(F)
     _Cap()
     try:
-        from p3.geometry import MeasureRingFile
-        G = MeasureRingFile(Src, Fmt, float(Target), OutStl, OutPreview)
-        Doc = {"ok": True, "status": G.status, "problems": G.problems, "faces": G.faces,
-               "scale_factor": G.scale_factor, "raw": asdict(G.raw),
-               "production": asdict(G.production) if G.production else None}
-        Code = 0
+        Doc, Code = Run(A), 0
     except MemoryError:
         Doc, Code = {"ok": False, "error": "memory"}, ExitMemory
     except Exception as E:  # noqa: BLE001
         Doc, Code = {"ok": False, "error": f"{type(E).__name__}: {E}"}, 1
-    with open(OutJson, "w", encoding="utf-8") as F:
+    with open(A["result"], "w", encoding="utf-8") as F:
         json.dump(Doc, F, default=float)
     return Code
 
