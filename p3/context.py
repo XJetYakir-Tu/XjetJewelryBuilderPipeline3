@@ -32,6 +32,7 @@ class Context:
     Pricing: PricingService
     Accounts: AccountProvider
     Models: "ModelConfigStore" = None             # versioned AI prompts & parameters (source of truth)
+    MaterialPrices: "MaterialPriceBook" = None    # versioned density / price $/g / cost $/g / fixed price
     Runner: TaskRunner = field(default_factory=TaskRunner)
     ImageSemaphore: asyncio.Semaphore | None = None
     _Locks: dict = field(default_factory=dict)

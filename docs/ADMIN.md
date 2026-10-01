@@ -133,10 +133,18 @@ A **session is one design journey**:
 Three separate values that never overwrite each other:
 
 1. **Fixed customer price:** the price the customer saw. It is the Add to Bag snapshot, else the price shown in Customize, else the current list price, always with its pricing version. Customer pages never read 3D data, so this price can't change.
-2. **Production cost:** weight × metal price per gram + production cost.
-3. **3D calculated price:** production cost × markup.
+2. **Production cost:** weight × cost $/g.
+3. **3D calculated price:** weight × price $/g.
 
-Values 2 and 3 come from `config/production_costs.json`, which is **not configured**: every value is null. Until real numbers are entered, they show "—" with status `cost_model_not_configured`. Nothing is invented.
+Weight = 3D volume × sintered density.
+
+All four inputs come from one versioned table, **Admin → AI Prompts & Params → Pricing · materials** (`p3/materialprices.py`, table `material_price_lists`): density, price $/g, cost $/g and fixed price, for each material.
+
+- **Fixed price** is what the website shows for the material. Empty means "NA": the website shows "Price unavailable" (luxury gold today). It is a placeholder until there is enough data to set it from real 3D costs.
+- **Density** in this table is the only density used: weight on the website and in 3D.
+- **Saving** creates a new version (who, when, note). New 3D results and website quotes use it immediately. Results already calculated keep the version they were made with.
+- **Seed:** the business table of 2026-10-02 (Silver 925 / 316L / Vermeil / Gold 18K / 14K). 10K gold had no values.
+- An empty price or cost shows "—", with the reason. Nothing is invented.
 
 ## Cost reporting (prepared, not active)
 

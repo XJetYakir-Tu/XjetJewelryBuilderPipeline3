@@ -27,6 +27,7 @@ from p3.migrations import MigrateToAccounts
 from p3.admin import RegisterAdmin
 from p3.aipricing import PriceBook
 from p3.modelconfig import ModelConfigStore
+from p3.materialprices import MaterialPriceBook
 from p3.production3d import Production3D
 from p3.geoqueue import GeometryQueue
 from p3.mail import BuildMailer
@@ -92,6 +93,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing),
                   Accounts=Accounts)
     Ctx.Models = ModelConfigStore(Ctx.Db)        # seeds v1 from generation.json + prompts on first start
+    Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
+    Ctx.Pricing.Book = Ctx.MaterialPrices         # the website's fixed price per material comes from it
     Svc = Services(Ctx)
     Sessions.BackfillBagEvents(Ctx)               # bag lines can be removed later; keep their bag_added
     Sessions.BackfillDesignModes(Ctx)             # mark older sessions mock / live from their requests

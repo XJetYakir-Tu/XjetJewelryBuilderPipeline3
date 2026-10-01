@@ -55,6 +55,7 @@ class PricingService:
         self.AllowUnapproved = AllowUnapproved
         self.Profile = None
         self.ProfileError = None
+        self.Book = None                         # MaterialPriceBook: fixed price per material (Admin table)
         try:
             self.Profile = self._LoadProfile(ProfilePath)
         except (OSError, ValueError) as E:
@@ -94,6 +95,9 @@ class PricingService:
             raise KeyError(MaterialId)
         if not self.Catalog.IsPurchasableGroup(Mat.Group):
             return self._Unavailable(Mat, "luxury_pricing_unavailable")
+        Fixed = self._BookPrice(Mat)
+        if Fixed is not None:
+            return Fixed
         if self.Profile is None:
             return self._Unavailable(Mat, "pricing_profile_invalid",
                                      [self.ProfileError] if self.ProfileError else None)
@@ -137,6 +141,20 @@ class PricingService:
                      profile_approved=self.Profile["approved"],
                      estimated_weight_g=round(AssumedVolumeCm3 * Mat.DensityGCm3, 2),
                      notes=Notes)
+
+    def _BookPrice(self, Mat) -> Quote | None:
+        """The fixed price set in Admin → Material pricing (an admin decision, so it counts as approved)."""
+        if self.Book is None:
+            return None
+        Doc = self.Book.Current()
+        Fixed = (Doc["materials"].get(Mat.Id) or {}).get("fixed_price")
+        if not Fixed:
+            return None
+        return Quote(material_id=Mat.Id, material_group=Mat.Group, pricing_status="available",
+                     unit_price=round(float(Fixed), 2), currency=Doc.get("currency", "USD"),
+                     assumed_volume_cm3=AssumedVolumeCm3, pricing_version=Doc["version"], profile_approved=True,
+                     estimated_weight_g=round(AssumedVolumeCm3 * Mat.DensityGCm3, 2),
+                     notes=["Fixed price from Admin → Material pricing."])
 
     def _CppPrice(self, Mat, Entry: dict, Notes: list) -> float:
         Defaults = self.Profile.get("defaults", {})

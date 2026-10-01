@@ -125,8 +125,11 @@ async def test_3d_never_runs_automatically_and_uses_default_size_10(HS):
     assert Prod["size_z_mm"] < Prod["size_x_mm"]                         # ring axis aligned to Z
     Price = T["price"]
     assert math.isclose(Price["weight_g"], Prod["volume_mm3"] / 1000 * Price["density_g_cm3"], rel_tol=1e-3)
-    assert Price["status"] == "cost_model_not_configured" and Price["production_cost"] is None
-    assert Price["calculated_price"] is None
+    Row = H.Ctx.MaterialPrices.Row(T["material_id"])                     # Admin → Material pricing table
+    assert Price["density_g_cm3"] == Row["density_g_cm3"] and Price["status"] == "calculated"
+    assert Price["production_cost"] == pytest.approx(Price["weight_g"] * Row["cost_per_g"], abs=0.01)
+    assert Price["calculated_price"] == pytest.approx(Price["weight_g"] * Row["price_per_g"], abs=0.01)
+    assert Price["cost_model_version"] == H.Ctx.MaterialPrices.Current()["version"]
     # Real, persisted stages; background preview + integrity ran after the numbers.
     St = (await H.Client.get(f"/api/admin/3d/{T['id']}/status", headers=Admin)).json()
     Seen = [S["stage"] for S in St["stages"]]

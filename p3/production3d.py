@@ -28,39 +28,12 @@ from p3 import stages as Stages
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.geometry import FastMethodVersion, Scaled, UsSizeToInnerDiameterMm
-from p3.settings import RepoRoot
 
 Logger = logging.getLogger("p3.production3d")
 DefaultSize = 10.0
-CostModelPath = RepoRoot / "config" / "production_costs.json"
 Terminal = ("measured", "needs_review", "failed", "cancelled")
 Waiting = ("requested", "generating", "queued", "measuring")
 MaxRoundness = 0.04            # bore deviation from a circle above this → needs review
-
-
-def LoadCostModel(PathObj: Path = CostModelPath) -> dict:
-    try:
-        return json.loads(Path(PathObj).read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {"version": "unconfigured", "currency": "USD", "metal_price_per_gram": {}}
-
-
-def Price(Model: dict, MaterialId: str, WeightG: float | None) -> dict:
-    """Production cost and 3D calculated price, or why they cannot be calculated. Never guesses."""
-    PerGram = (Model.get("metal_price_per_gram") or {}).get(MaterialId)
-    Fixed, PerGramProd, Markup = (Model.get("production_fixed_per_piece"), Model.get("production_per_gram"),
-                                  Model.get("price_markup"))
-    if WeightG is None:
-        return {"status": "needs_review", "reason": "weight unavailable (volume not reliable)"}
-    if PerGram is None or Fixed is None or PerGramProd is None:
-        return {"status": "cost_model_not_configured", "reason": "metal and production prices are not set"}
-    Metal = WeightG * PerGram
-    Production = Fixed + WeightG * PerGramProd
-    Cost = round(Metal + Production, 2)
-    Out = {"status": "calculated", "production_cost": Cost,
-           "breakdown": {"metal": round(Metal, 2), "production": round(Production, 2)}}
-    Out["calculated_price"] = round(Cost * Markup, 2) if Markup is not None else None
-    return Out
 
 
 def _Seconds(A: str | None, B: str | None) -> float | None:
@@ -281,8 +254,8 @@ class Production3D:
         Gid = Insert("production", G, G["scale_factor"], None)          # scaled STL: exported on demand only
         Mat = Ctx.Catalog.Get(Row["material_id"])
         Weight = round(G["volume_mm3"] / 1000.0 * Mat.DensityGCm3, 3) if Raw["closed_heuristic"] else None
-        Model = LoadCostModel()
-        P = Price(Model, Row["material_id"], Weight)
+        Book = Ctx.MaterialPrices.Current()
+        P = Ctx.MaterialPrices.Price3D(Row["material_id"], Weight)   # weight × cost $/g and × price $/g
         Summary = (Sessions.Summaries(Ctx, [Row["design_id"]]) or [{}])[0]
         Fixed = Summary.get("fixed_price") or {}
         # The fixed price is per material; compare against the material actually used for production.
@@ -293,7 +266,7 @@ class Production3D:
                    "production_cost, calculated_price, currency, cost_model_version, breakdown_json, fixed_price, "
                    "fixed_price_version, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (NewId("prc"), Sid, Gid, Row["material_id"], Mat.DensityGCm3, Weight, P.get("production_cost"),
-                    P.get("calculated_price"), Model.get("currency"), Model.get("version"),
+                    P.get("calculated_price"), Book.get("currency"), Book["version"],
                     Dumps({**P.get("breakdown", {}), "reason": P.get("reason"), "fixed_price_source": Fixed.get("source")}),
                     Fixed.get("unit_price"), Fixed.get("pricing_version"), P["status"], T))
         Status = "needs_review" if Problems else "measured"

@@ -25,6 +25,7 @@ from p3.accounts import AccountNotFound, DuplicateEmail
 from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
 from p3.aipricing import PriceError
+from p3.materialprices import MaterialPriceError
 from p3.usage import AccountActivity
 from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
 
@@ -455,6 +456,28 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
             return Ctx.Models.Restore(_Model(ModelId), str(Body_.get("version_id") or ""), Who.Id)
         except ConfigError as E:
             return _Invalid(E)
+
+    # ── Material pricing (density, price $/g, cost $/g, website fixed price) ─────
+    def _MaterialTable() -> dict:
+        Doc = Ctx.MaterialPrices.Current()
+        return {**Doc, "history": Ctx.MaterialPrices.History(),
+                "rows": [{"id": M.Id, "label": M.Label, "group": M.Group, **Ctx.MaterialPrices.Row(M.Id)}
+                         for M in Ctx.Catalog.Materials.values()]}
+
+    @App_.get("/api/admin/material-prices")
+    async def GetMaterialPrices(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return _MaterialTable()
+
+    @App_.put("/api/admin/material-prices")
+    async def SaveMaterialPrices(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        try:
+            Ctx.MaterialPrices.Save({"materials": Body_.get("materials") or {}}, Who.Id,
+                                    str(Body_.get("note") or "Edited in Admin")[:200])
+        except MaterialPriceError as E:
+            raise HttpError(400, "invalid_material_prices", str(E)) from E
+        return _MaterialTable()
 
     # ── AI price list (cost estimates) ─────────────────────────────────────
     @App_.get("/api/admin/ai-prices")

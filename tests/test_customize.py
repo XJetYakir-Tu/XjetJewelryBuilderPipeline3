@@ -158,7 +158,14 @@ async def test_bag_enforces_size_and_quote_server_side(HDevPricing):
     assert len(R.json()["lines"]) == 1
 
 
+def _ClearFixedPrices(H):
+    """No fixed price in Admin → Material pricing (NA): the website falls back to the pricing profile."""
+    Doc = H.Ctx.MaterialPrices.Current()
+    H.Ctx.MaterialPrices.Save({"materials": {M: {**R, "fixed_price": None} for M, R in Doc["materials"].items()}}, "test")
+
+
 async def test_bag_rejects_fashion_when_pricing_unavailable(H):
+    _ClearFixedPrices(H)
     DesignId, Cand = await _Ready(H)
     Cus = await H.Proceed(DesignId, Cand["id"])
     Cus = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 7})).json()

@@ -584,7 +584,7 @@
                     <template x-for="line in adjustments(t)"><li x-text="line"></li></template>
                   </ol>
                 </div>
-                <p x-show="t.price?.status === 'cost_model_not_configured'" class="text-[11px] text-zinc-500">Production cost and 3D price need the cost model (metal price per gram, production cost, markup) in <code>config/production_costs.json</code> — not configured yet.</p>
+                <p x-show="t.price?.status === 'cost_model_not_configured'" class="text-[11px] text-zinc-500" x-text="'Production cost / 3D price: ' + (t.price?.breakdown?.reason || 'not set') + ' — set it in AI Prompts & Params → Pricing · materials.'"></p>
                 <p x-show="background(t)" class="text-[11px] text-zinc-500" x-text="background(t)"></p>
                 <p x-show="exports3d[t.id]" class="text-[11px] text-sky-800 tabular-nums" x-text="exportLine(t)"></p>
                 <p x-show="downloadNote" class="text-[11px] text-emerald-700" x-text="downloadNote"></p>
@@ -676,6 +676,44 @@
       <button class="underline" @click="exportModels('all', 'txt')">TXT</button>
       <button class="underline" @click="exportModels('all', 'json')">JSON</button>
     </div>
+
+    <!-- Material pricing: one table for weight, 3D cost / price and the website's fixed price -->
+    <section class="card p-5 space-y-3" x-show="mprices">
+      <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <p class="lbl">Pricing · materials</p>
+        <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="mpEdit ? (mpEdit = null) : editMaterialPrices()" x-text="mpEdit ? 'Cancel edit' : 'Edit'"></button>
+      </div>
+      <div class="overflow-x-auto">
+      <table class="w-full !text-xs">
+        <thead><tr><th>Material</th><th class="text-right">Sintered density (g/cc)</th><th class="text-right">Price $/g</th><th class="text-right">Cost $/g</th><th class="text-right">Fixed price $</th></tr></thead>
+        <tbody>
+          <template x-if="!mpEdit"><template x-for="r in (mprices?.rows || [])" :key="r.id"><tr>
+            <td class="whitespace-nowrap"><span class="inline-block w-2.5 h-2.5 rounded-full border border-zinc-300 mr-1.5 align-middle" :style="'background:' + swatch(r.id)"></span><span x-text="r.label"></span></td>
+            <td class="text-right tabular-nums" x-text="num(r.density_g_cm3)"></td>
+            <td class="text-right tabular-nums" x-text="num(r.price_per_g)"></td>
+            <td class="text-right tabular-nums" x-text="num(r.cost_per_g)"></td>
+            <td class="text-right tabular-nums" :class="r.fixed_price == null ? 'text-zinc-400' : 'font-semibold'" x-text="r.fixed_price == null ? 'NA' : '$' + num(r.fixed_price)"></td>
+          </tr></template></template>
+          <template x-if="mpEdit"><template x-for="r in mpEdit" :key="r.id"><tr>
+            <td class="whitespace-nowrap" x-text="r.label"></td>
+            <template x-for="k in ['density_g_cm3', 'price_per_g', 'cost_per_g', 'fixed_price']">
+              <td class="text-right"><input type="number" step="any" min="0" class="inp !py-1 !px-2 w-24 text-right tabular-nums" x-model="r[k]" :placeholder="k === 'fixed_price' ? 'NA' : '—'"></td>
+            </template>
+          </tr></template></template>
+        </tbody>
+      </table>
+      </div>
+      <div x-show="mpEdit" class="flex flex-wrap items-center gap-3">
+        <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="mpNote">
+        <button class="btn" @click="saveMaterialPrices()" :disabled="mpBusy">Save as new version</button>
+      </div>
+      <ul class="text-[11px] text-zinc-500 space-y-0.5 list-disc pl-4">
+        <li><strong>Fixed price</strong> is what the website shows for the material (empty = NA, "Price unavailable"). Update it once there is enough data.</li>
+        <li><strong>Weight</strong> = 3D volume × sintered density · <strong>Production cost</strong> = weight × cost $/g · <strong>3D calculated price</strong> = weight × price $/g.</li>
+      </ul>
+      <p class="text-[11px] text-zinc-400" x-text="'Version ' + mprices?.version + ' · updated ' + dateTime(mprices?.updated_at) + ' by ' + mprices?.updated_by + (mprices?.update_note ? ' — ' + mprices.update_note : '')"></p>
+      <p x-show="mpMsg" class="text-sm" :class="mpErr ? 'text-red-600' : 'text-emerald-700'" x-text="mpMsg"></p>
+    </section>
 
     <!-- AI prices used for cost estimates -->
     <section class="card p-5 space-y-3" x-show="prices">

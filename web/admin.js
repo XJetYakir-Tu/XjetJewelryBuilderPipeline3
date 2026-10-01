@@ -71,6 +71,7 @@ function adminApp() {
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
     mProblems: [], mMessage: '', mBusy: false, preview: null,
     prices: null, pricesEdit: null, pricesBusy: false, pricesMsg: '', pricesErr: false,
+    mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout Clicked']],
     chartKinds: [
       { key: 'images', label: 'Images', color: '#3b82f6' },
@@ -407,6 +408,7 @@ function adminApp() {
     // ── AI prompts & params ────────────────────────────────────────────
     async loadModels(id) {
       this.prices = await this.api('GET', '/api/admin/ai-prices').catch(() => null);
+      this.mprices = await this.api('GET', '/api/admin/material-prices').catch(() => null);
       const r = await this.api('GET', '/api/admin/models');
       this.models = r.models; this.runtimePlaceholders = r.runtime_placeholders;
       const want = id || this.mid || this.models[0].model.id;
@@ -535,6 +537,22 @@ function adminApp() {
       } catch (e) { this.pricesErr = true; this.pricesMsg = e instanceof SyntaxError ? 'Invalid JSON: ' + e.message : e.message; }
       finally { this.pricesBusy = false; }
     },
+    // ── material pricing: density · price $/g · cost $/g · website fixed price ──
+    editMaterialPrices() {
+      this.mpMsg = ''; this.mpNote = '';
+      this.mpEdit = this.mprices.rows.map(r => ({ id: r.id, label: r.label, group: r.group,
+        density_g_cm3: r.density_g_cm3 ?? '', price_per_g: r.price_per_g ?? '', cost_per_g: r.cost_per_g ?? '', fixed_price: r.fixed_price ?? '' }));
+    },
+    async saveMaterialPrices() {
+      this.mpBusy = true; this.mpMsg = ''; this.mpErr = false;
+      try {
+        const materials = Object.fromEntries(this.mpEdit.map(r => [r.id,
+          Object.fromEntries(['density_g_cm3', 'price_per_g', 'cost_per_g', 'fixed_price'].map(k => [k, r[k] === '' ? null : Number(r[k])]))]));
+        this.mprices = await this.api('PUT', '/api/admin/material-prices', { materials, note: this.mpNote || 'Edited in Admin' });
+        this.mpEdit = null; this.mpMsg = 'Saved as ' + this.mprices.version + '. New 3D calculations and the website use it now.';
+      } catch (e) { this.mpErr = true; this.mpMsg = e.message; } finally { this.mpBusy = false; }
+    },
+    num(v, d = 2) { return v == null ? '—' : Number(v).toFixed(d).replace(/\.?0+$/, ''); },
     async exportModels(model, fmt) {
       const r = await fetch(BASE + `/api/admin/models/export?model=${encodeURIComponent(model)}&format=${fmt}`, { headers: { Authorization: 'Bearer ' + this.key } });
       if (!r.ok) { alert('Export failed (' + r.status + ')'); return; }
