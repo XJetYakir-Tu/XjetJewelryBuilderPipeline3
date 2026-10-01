@@ -1,0 +1,23 @@
+# XJet Atelier Pipeline 3 on tron — install to /etc/systemd/system/xjet-jewelry-b2c3.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now xjet-jewelry-b2c3.service
+# Listens on 127.0.0.1 only; nginx publishes it at http://tron/JewelryB2C3/.
+# Configuration (mock/live, base path, keys) lives in the repo's .env (never committed).
+
+[Unit]
+Description=XJet Atelier Pipeline 3 (JewelryB2C3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=yakir
+Group=yakir
+WorkingDirectory=/home/yakir/git/XjetJewelryBuilderPipeline3
+# One worker on purpose: generation jobs run in-process and state is in SQLite.
+ExecStart=/home/yakir/git/XjetJewelryBuilderPipeline3/.venv/bin/uvicorn p3.app:App --host 127.0.0.1 --port 8340 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

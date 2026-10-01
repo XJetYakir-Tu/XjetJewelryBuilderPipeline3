@@ -57,6 +57,9 @@ def _RingImage(Seed: int, Label: str, Size: int = 512) -> bytes:
 _DuplicateImage = None
 
 
+_BundledMovie = Path(__file__).with_name("mock_assets") / "mock_movie.mp4"
+
+
 def _FakeMp4() -> bytes:
     return b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x00" * 64
 
@@ -162,6 +165,8 @@ class MockProvider:
                 Source = self.Uploads.get(Args["image_url"])
                 if Source:
                     Data = await asyncio.get_running_loop().run_in_executor(None, _RenderMp4, Source)
+            if Data is None and self.RenderVideo and _BundledMovie.is_file():
+                Data = _BundledMovie.read_bytes()      # servers without ffmpeg still get a playable clip
             self.Files[Url] = Data or _FakeMp4()
             return {"video": {"url": Url, "content_type": "video/mp4"}}
         if Endpoint == endpoints.Mesh:

@@ -194,3 +194,21 @@ async def test_luxury_order_is_yellow_row_then_rose_row():
     Lux = [M["label"] for G in LoadCatalog().ToJson()["groups"] if G["id"] == "luxury" for M in G["materials"]]
     assert Lux == ["10K Yellow Gold", "14K Yellow Gold", "18K Yellow Gold",
                    "10K Rose Gold", "14K Rose Gold", "18K Rose Gold"]
+
+
+async def test_mock_movie_is_playable_without_ffmpeg(tmp_path, monkeypatch):
+    """Servers without ffmpeg (e.g. tron) still get a real MP4 in mock mode."""
+    import shutil
+    from p3.providers.mock import MockProvider
+    from tests.conftest import Harness
+    monkeypatch.setattr(shutil, "which", lambda Name: None)
+    H = Harness(tmp_path, Provider=MockProvider(LatencyS=0.0, RenderVideo=True))
+    try:
+        DesignId, Cand = await _Ready(H)
+        Cus = await H.Proceed(DesignId, Cand["id"])
+        await H.Idle()
+        Url = (await H.Client.get(f"/api/customizations/{Cus['id']}")).json()["movie"]["movie_url"]
+        Data = H.AssetBytes(Url)
+        assert Data[4:8] == b"ftyp" and len(Data) > 10_000
+    finally:
+        await H.Close()
