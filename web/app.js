@@ -520,6 +520,17 @@ function p3App() {
       return `Refinement ${n}`;
     },
     anyActive(b) { return !!b && (b.status === 'queued' || b.status === 'generating'); },
+    // Muted autoplay can still be limited by the browser (e.g. Edge "Limit media autoplay", power
+    // saving): set the muted property, call play(), and if it is refused retry on the first interaction.
+    startLoadingMovie(el) {
+      el.muted = true; el.defaultMuted = true;
+      const tryPlay = () => el.play().catch(() => {
+        const again = () => { if (el.isConnected) el.play().catch(() => {}); };
+        window.addEventListener('pointerdown', again, { once: true });
+        window.addEventListener('keydown', again, { once: true });
+      });
+      if (el.readyState >= 2) tryPlay(); else el.addEventListener('canplay', tryPlay, { once: true });
+    },
     // The P2 waiting movie is shown while a new design or a refinement is being generated.
     get waitBatch() {
       if (this.pendingBatch) return this.pendingBatch;
