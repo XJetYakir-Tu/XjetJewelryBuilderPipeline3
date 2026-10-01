@@ -41,24 +41,20 @@ The service starts in mock mode, which makes no paid calls. Switch modes from th
 
 ## proto
 
-Two additions to Pipeline 2's deploy files: a portal tile and a forwarding location. P2 application code is not touched.
+`deploy/proto/setup-proto.sh` (run with sudo on proto) makes exactly two insertions:
+- **nginx:** installs `deploy/proto/jewelryb2c3-proxy.conf` as `/etc/nginx/snippets/jewelryb2c3-proxy.conf`, and adds one `include` line before the default `location /` in `/etc/nginx/sites-available/jewelry-b2c`.
+- **portal:** adds the JewelryB2C3 tile (`deploy/proto/portal-tile.html`) after JewelryB2C2 in `/var/www/html/index.html`.
 
-```nginx
-location ^~ /JewelryB2C3 {
-    proxy_pass http://172.16.10.32;        # tron; full path passed through unchanged
-    proxy_set_header Host tron;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_http_version 1.1;
-    proxy_read_timeout 300s;
-    client_max_body_size 20m;
-}
-```
+It backs up all three files to `/var/backups/p3-proto-<timestamp>/` and refuses to edit unless each anchor occurs exactly once. It reloads nginx only if `nginx -t` passes; otherwise it restores the backups automatically. It is idempotent, and `--rollback <backup dir>` undoes it.
+
+**Do not run Pipeline 2's `nginx-install.sh` on proto.** proto's live `jewelry-b2c` site has hand-added routes the script does not know about, such as `/pendant/` (Pendant Maker on :8011) and the `/amulette` redirects, and the script rewrites the whole file.
 
 ## Rollback
 
-- **proto:** remove the location and the tile, run `nginx -t`, then reload.
+- **proto:**
+  ```bash
+  sudo bash ~/p3-proto/setup-proto.sh --rollback /var/backups/p3-proto-<timestamp>
+  ```
 - **tron:**
   ```bash
   sudo systemctl disable --now xjet-jewelry-b2c3.service
