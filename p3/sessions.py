@@ -170,9 +170,13 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             or (Cu[Did][-1] if Cu[Did] else None)
         Line = L[Did][-1] if L[Did] else None
         Material = (Line or Cust or {}).get("material_id")
-        # Customize opens on the catalog default; only a bag line or an explicit change is a choice.
-        MaterialChosen = bool(Line) or any(X["kind"] == "customization_changed"
-                                           and "material_id" in json.loads(X["data_json"] or "{}") for X in Ev)
+        # Customize opens on the default material and US 10; only a bag line or an explicit change is a
+        # choice. Customizations from before event tracking had no default size, so a size there was chosen.
+        Changed = [json.loads(X["data_json"] or "{}") for X in Ev if X["kind"] == "customization_changed"]
+        MaterialChosen = bool(Line) or any("material_id" in X for X in Changed)
+        Tracked = {json.loads(X["data_json"] or "{}").get("candidate_id") for X in Ev if X["kind"] == "customize_opened"}
+        SizeChosen = bool(Line) or any("ring_size" in X and X["ring_size"] is not None for X in Changed) or bool(
+            Cust and Cust["ring_size"] is not None and Cust["candidate_id"] not in Tracked)
         Size = (Line or Cust or {}).get("ring_size")
         Fixed = FixedPrice(Ctx, Line, Ev, Material)
         Thumb = next((X for X in Ready if X["id"] == D["selected_candidate_id"]), Ready[0] if Ready else None)
@@ -196,7 +200,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "generations": sum(1 for X in B[Did] if X["kind"] == "initial"), "refinements": len(RefineBatches),
             "images_ready": len(Ready), "images_failed": sum(1 for X in C[Did] if X["status"] == "failed"),
             "movie_status": (sorted(M[Did], key=lambda X: X["created_at"])[-1]["status"] if M[Did] else None),
-            "ring_size": Size, "material_id": Material, "material_chosen": MaterialChosen,
+            "ring_size": Size, "ring_size_chosen": SizeChosen,
+            "material_id": Material, "material_chosen": MaterialChosen,
             "material_label": (Ctx.Catalog.Get(Material).Label if Material and Ctx.Catalog.Get(Material) else None),
             "add_to_bag": bool(Times["bag"]), "checkout_clicked": bool(Times["checkout_clicked"]),
             "fixed_price": Fixed,

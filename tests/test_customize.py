@@ -15,7 +15,7 @@ async def test_proceed_shows_selected_image_immediately_and_starts_one_movie(H):
     Cus = await H.Proceed(DesignId, Cand["id"])
     assert Cus["image_url"] == Cand["image_url"]
     assert Cus["candidate_id"] == Cand["id"]
-    assert Cus["material_id"] == "silver" and Cus["ring_size"] is None
+    assert Cus["material_id"] == "silver" and Cus["ring_size"] == 10.0          # opens on US 10
     assert Cus["movie"]["status"] in ("queued", "running")
     assert (await H.Design(DesignId))["selected_candidate_id"] == Cand["id"]
     await H.Idle()
@@ -135,6 +135,7 @@ async def test_bag_enforces_size_and_quote_server_side(HDevPricing):
     H = HDevPricing
     DesignId, Cand = await _Ready(H)
     Cus = await H.Proceed(DesignId, Cand["id"])
+    await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": None})   # size cleared
     R = await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})
     assert R.status_code == 409 and R.json()["error"]["code"] == "ring_size_required"
 

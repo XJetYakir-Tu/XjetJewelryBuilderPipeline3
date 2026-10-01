@@ -22,6 +22,10 @@ from p3.movies import MovieService
 MaxQuantity = 10
 
 
+# Customize opens on US 10 (product-owner decision 2026-10-01); the customer can change it.
+DefaultRingSize = 10.0
+
+
 class CustomizeService:
     def __init__(self, Ctx: Context, Images: ImageService, Movies: MovieService):
         self.Ctx = Ctx
@@ -50,12 +54,12 @@ class CustomizeService:
             T = Now()
             Db.Execute("INSERT OR IGNORE INTO customizations (id, design_id, candidate_id, material_id, ring_size, "
                        "quantity, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-                       (NewId("cus"), DesignId, CandidateId, self.Ctx.Catalog.DefaultMaterialId, None, 1, T, T))
+                       (NewId("cus"), DesignId, CandidateId, self.Ctx.Catalog.DefaultMaterialId, DefaultRingSize, 1, T, T))
         self.Movies.Ensure(Who, CandidateId)
         Row = Db.One("SELECT * FROM customizations WHERE design_id = ? AND candidate_id = ?",
                      (DesignId, CandidateId))
         Sessions.Record(self.Ctx, Who.AccountId, "customize_opened", DesignId, candidate_id=CandidateId,
-                        material_id=Row["material_id"], ring_size=Row["ring_size"],
+                        material_id=Row["material_id"], ring_size=Row["ring_size"], defaults=Existing is None,
                         **Sessions.QuoteSnapshot(self.Ctx, Row["material_id"]))
         return self.ToJson(Row)
 

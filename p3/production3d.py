@@ -75,7 +75,7 @@ class Production3D:
                       (CandidateId, DesignId)) if CandidateId else None
         if Cand is None or Cand["status"] != "ready":
             raise HttpError(409, "no_ready_image", "This session has no ready design image to turn into 3D.")
-        CustomerSize = Summary["ring_size"]
+        CustomerSize = Summary["ring_size"] if Summary["ring_size_chosen"] else None   # the default US 10 isn't a choice
         if ProductionSize in (None, ""):
             Size, SizeSource = (float(CustomerSize), "customer") if CustomerSize is not None else (DefaultSize, "default")
         else:

@@ -166,8 +166,8 @@ def SessionDetail(Ctx: Context, Production, DesignId: str) -> dict:
                      "cost_usd": round(sum(Cost), 4) if Cost else None},
         "three_d": ThreeD,
         "three_d_defaults": {
-            "customer_size": Summary["ring_size"],
-            "production_size": Summary["ring_size"] if Summary["ring_size"] is not None else 10.0,
+            "customer_size": Summary["ring_size"] if Summary["ring_size_chosen"] else None,
+            "production_size": Summary["ring_size"] if Summary["ring_size_chosen"] else 10.0,
             "material_id": (Summary["material_id"] if Summary["material_chosen"] else None) or Ctx.Catalog.DefaultMaterialId,
             "customer_material": Summary["material_id"] if Summary["material_chosen"] else None,
             "has_raw_mesh": any(T["hi3d"] and T["hi3d"]["status"] == "ready" for T in ThreeD),

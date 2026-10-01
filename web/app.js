@@ -733,7 +733,30 @@ function p3App() {
     get movieFailed() { return this.movieStatus === 'failed' || this.movieStatus === 'interrupted'; },
     get currentGroup() { return this.groupOfMaterial(this.cust?.material_id) || 'fashion'; },
     get currentMaterial() { return this.material(this.cust?.material_id); },
-    get tint() { return this.currentMaterial?.tint || ''; },
+    get tint() { return this.metalFilter(this.cust?.material_id); },
+    // Metal colour preview. The former CSS filters (sepia/hue-rotate) recoloured the whole picture,
+    // white background included. Each material now has an SVG filter that (1) maps the image's
+    // luminance onto that metal's colour ramp (shadow → base swatch → highlight) and (2) applies it
+    // only where the image is not near-white, so the studio background stays white.
+    metalFilter(id) { return this.material(id) ? `url(#p3-metal-${id})` : ''; },
+    get metalFilterDefs() {
+      const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+      const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+      const f = n => Math.min(1, Math.max(0, n)).toFixed(3);
+      return this.allMaterials.map(m => {
+        const s = hex(m.swatch || '#C8C8C5');
+        // ramp stops at luminance 0, .25, .5, .75, 1 — most of the ring lands on the swatch itself
+        const ramp = [s.map(v => v * 0.18), s.map(v => v * 0.48), s.map(v => v * 0.82), s, mix(s, [1, 1, 1], 0.55)];
+        const table = c => ramp.map(p => f(p[c])).join(' ');
+        return `<filter id="p3-metal-${m.id}" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
+          <feColorMatrix in="SourceGraphic" type="matrix" result="gray" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0"/>
+          <feComponentTransfer in="gray" result="metal"><feFuncR type="table" tableValues="${table(0)}"/><feFuncG type="table" tableValues="${table(1)}"/><feFuncB type="table" tableValues="${table(2)}"/></feComponentTransfer>
+          <feColorMatrix in="SourceGraphic" type="matrix" result="mask" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4 -4 -4 0 11.7"/>
+          <feComposite in="metal" in2="mask" operator="in" result="ring"/>
+          <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="ring"/></feMerge>
+        </filter>`;
+      }).join('');
+    },
 
     toggleGroup(groupId) {
       // Selecting a group reveals its options and selects that group's last-used option;

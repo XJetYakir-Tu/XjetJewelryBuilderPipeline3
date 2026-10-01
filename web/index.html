@@ -80,6 +80,8 @@
     </style>
 </head>
 <body x-data="p3App()" x-init="init()" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white">
+    <!-- Metal recolour filters (one per material), built from the catalog swatches by app.js. -->
+    <svg aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute; width:0; height:0; overflow:hidden" x-html="metalFilterDefs"></svg>
 
     <!-- ── Mode banner: always tells the viewer whether the AI provider is real ── -->
     <div x-show="isMock" x-cloak class="w-full shrink-0 px-4 py-1.5 text-center text-[11px] tracking-wide"
@@ -778,15 +780,11 @@
                                     </button>
                                 </div>
 
-                                <!-- Result actions: Start new · Refine selected · Customize (proceed) -->
+                                <!-- Result actions: Start new · Customize (proceed). Refining is done from the composer. -->
                                 <div x-show="design" class="w-full flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3">
                                     <button @click="startNew()" class="btn-outline flex-1 px-2 py-3.5 leading-tight">
                                         <svg class="w-[18px] h-[18px] mr-2 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                                         Start a New Design
-                                    </button>
-                                    <button @click="focusRefine()" :disabled="!canActOnSelection || !!pendingBatch || submitting" class="btn-outline flex-1 px-2 py-3.5 leading-tight">
-                                        <svg class="w-[16px] h-[16px] mr-2 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.931-8.931z"/></svg>
-                                        Refine Selected
                                     </button>
                                     <button @click="proceed()" :disabled="!canActOnSelection" class="btn-gold stream-glow flex-1 px-2 py-3.5 leading-tight">
                                         Customize Your Ring
@@ -866,39 +864,29 @@
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                     <span class="text-[10px] lg:text-[13px] uppercase tracking-widest text-zinc-500">Your Selected Design</span>
                 </div>
-                <div class="flex items-center justify-center gap-2 pb-2 shrink-0">
-                    <button @click="mediaTab = 'movie'" class="px-3 py-1 rounded-full text-[11px] uppercase tracking-[0.12em] border transition inline-flex items-center gap-1.5"
-                            :class="mediaTab === 'movie' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">
-                        360° Movie
-                        <span class="w-1.5 h-1.5 rounded-full" :class="movieStatus === 'ready' ? 'bg-emerald-400' : (movieFailed ? 'bg-red-400' : 'bg-amber-400 animate-pulse')"></span>
-                    </button>
-                    <button @click="mediaTab = 'image'" class="px-3 py-1 rounded-full text-[11px] uppercase tracking-[0.12em] border transition"
-                            :class="mediaTab === 'image' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">Image</button>
-                </div>
-
                 <div class="flex-1 relative overflow-hidden" style="min-height:320px;">
                     <div class="absolute inset-0 flex items-center justify-center overflow-hidden p-4">
-                        <img x-show="mediaTab === 'image' || movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="'filter:' + tint">
-                        <template x-if="mediaTab === 'movie' && movieStatus === 'ready'">
+                        <img x-show="movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="'filter:' + tint">
+                        <template x-if="movieStatus === 'ready'">
                             <video :src="cust?.movie.movie_url" autoplay loop muted playsinline class="max-w-full max-h-full object-contain" :style="'filter:' + tint"></video>
                         </template>
                     </div>
                     <!-- While the movie is being made (or if it failed) the static image stays visible underneath. -->
-                    <div x-show="mediaTab === 'movie' && (movieBusy || !movieStatus)" class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none">
+                    <div x-show="movieBusy || !movieStatus" class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none">
                         <div class="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-white/90 backdrop-blur border shadow-sm text-zinc-600" style="border-color:#E8DCC4;">
                             <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
                             <span class="text-[11px] uppercase tracking-widest">Creating your 360&deg; movie&hellip;</span>
                         </div>
                     </div>
-                    <div x-show="mediaTab === 'movie' && movieFailed" class="absolute inset-x-0 bottom-4 flex justify-center px-4">
+                    <div x-show="movieFailed" class="absolute inset-x-0 bottom-4 flex justify-center px-4">
                         <div class="flex flex-col sm:flex-row items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 border shadow-sm text-center" style="border-color:#F1B7B7;">
                             <span class="text-[11px] uppercase tracking-widest" style="color:#c03030;">Movie generation failed</span>
                             <span class="text-[11px]" style="color:#777;" x-text="cust?.movie?.error"></span>
                             <button @click="retryMovie()" class="btn-outline px-4 py-1.5">Retry Movie</button>
                         </div>
                     </div>
-                    <button x-show="mediaTab === 'image' || movieStatus === 'ready'"
-                            @click="mediaTab === 'movie' ? openPreview('video', cust?.movie.movie_url) : openPreview('image', cust?.image_url)"
+                    <button
+                            @click="movieStatus === 'ready' ? openPreview('video', cust?.movie.movie_url) : openPreview('image', cust?.image_url)"
                             class="tap absolute top-3 right-3 z-10 p-2 rounded-lg bg-white/80 backdrop-blur border transition hover:bg-white text-[#6F6F6F] hover:text-[#1A1A1A]"
                             style="border-color:#DCDCDC;" title="Enlarge preview" aria-label="Enlarge preview">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
@@ -1127,7 +1115,7 @@
                     <template x-for="l in bagLines" :key="l.id">
                         <div class="border border-zinc-100 rounded-sm p-6 flex gap-5">
                             <div class="w-24 h-24 bg-zinc-50 rounded overflow-hidden shrink-0 flex items-center justify-center border border-zinc-100">
-                                <img :src="l.image_url" :alt="l.title" class="w-full h-full object-contain" :style="'filter:' + (material(l.material_id)?.tint || '')">
+                                <img :src="l.image_url" :alt="l.title" class="w-full h-full object-contain" :style="'filter:' + metalFilter(l.material_id)">
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-base font-medium text-zinc-900" x-text="l.title"></p>

@@ -393,7 +393,7 @@
               <td class="text-xs"><p x-text="dateTime(x.started_at)"></p><p class="text-zinc-400" x-text="ago(x.last_activity_at) + (x.state === 'active' ? ' · active' : '')"></p></td>
               <td class="text-xs max-w-[260px]"><span :class="x.path.endsWith('stopped') || x.path.includes('failed') ? 'text-zinc-500' : 'text-zinc-800'" x-text="x.path"></span></td>
               <td class="text-right tabular-nums" x-text="x.generations + ' / ' + x.refinements"></td>
-              <td x-text="x.ring_size != null ? 'US ' + x.ring_size : '—'"></td>
+              <td x-text="x.ring_size_chosen ? 'US ' + x.ring_size : (x.stage_times.customize ? 'US 10 (default)' : '—')" :class="x.ring_size_chosen ? '' : 'text-zinc-400'"></td>
               <td x-text="x.material_chosen ? x.material_label : '—'"></td>
               <td x-text="x.add_to_bag ? '✓' : '—'" :class="x.add_to_bag ? 'text-emerald-700 font-semibold' : 'text-zinc-300'"></td>
               <td x-text="x.checkout_clicked ? '✓' : '—'" :class="x.checkout_clicked ? 'text-emerald-700 font-semibold' : 'text-zinc-300'"></td>
@@ -428,7 +428,7 @@
           <p class="text-sm text-zinc-500 italic" x-text="'“' + sd.session.prompt + '”'"></p>
           <p class="text-sm font-medium" x-text="sd.session.path"></p>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm pt-2">
-            <div><p class="lbl">Ring size</p><p x-text="sd.session.ring_size != null ? 'US ' + sd.session.ring_size : 'Not selected'"></p></div>
+            <div><p class="lbl">Ring size</p><p x-text="sd.session.ring_size_chosen ? 'US ' + sd.session.ring_size : 'Not selected (default US 10)'"></p></div>
             <div><p class="lbl">Material</p><p x-text="sd.session.material_chosen ? sd.session.material_label : 'Not selected'"></p></div>
             <div><p class="lbl">Fixed price</p><p x-text="priceText(sd.session.fixed_price)"></p>
               <p class="text-[10px] text-zinc-400" x-text="fixedSource(sd.session.fixed_price)"></p></div>
