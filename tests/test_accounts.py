@@ -8,7 +8,7 @@ import pytest
 
 from p3.accounts import InsufficientCredits, Principal
 from p3.accounts.local import HashToken, LocalAccountProvider
-from p3.db import Schema, SessionTables, CustomizationsDdl
+from p3.db import OrderTables, Schema, SessionTables, CustomizationsDdl
 from p3.providers import endpoints
 from tests.conftest import Harness
 
@@ -113,7 +113,7 @@ CREATE TABLE usage_events (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT 
 
 
 def _LegacySchema() -> str:
-    S = Schema.replace(SessionTables, "")                      # v0 had no session tables
+    S = Schema.replace(SessionTables, "").replace(OrderTables, "")   # v0 had no session or order tables
     # v0: Customize choices were per design + option only (no owner column)
     S = S.replace(CustomizationsDdl("customizations"), """
 CREATE TABLE IF NOT EXISTS customizations (

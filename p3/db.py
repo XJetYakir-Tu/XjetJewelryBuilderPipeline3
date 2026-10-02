@@ -208,6 +208,123 @@ CREATE TABLE IF NOT EXISTS price_calculations (
 
 
 
+# ── Orders ───────────────────────────────────────────────────────────────────
+# An order is a snapshot: every price, name, ring ID, address and promo value is copied in at the
+# moment of ordering and never recomputed. The order number (ORD-10001 …) is assigned by a trigger,
+# so every way of creating an order gets one — it is never random and never reused.
+OrderTables = """
+CREATE TABLE IF NOT EXISTS orders (
+    id                  TEXT PRIMARY KEY,
+    order_no            INTEGER UNIQUE,
+    owner_account_id    TEXT NOT NULL,
+    status              TEXT NOT NULL,            -- new | payment_confirmed | three_d_ready | production | qc | shipped | completed | cancelled
+    payment_status      TEXT NOT NULL,            -- pending | paid | failed | refunded | cancelled
+    payment_provider    TEXT,                     -- NULL until a provider is connected (adapter name)
+    payment_ref         TEXT,                     -- the provider's reference (intent / charge id)
+    payment_json        TEXT NOT NULL DEFAULT '{}',
+    customer_json       TEXT NOT NULL,            -- first_name, last_name, email, phone
+    shipping_json       TEXT NOT NULL,            -- recipient, line1, line2, city, region, postal_code, country (ISO) + validation
+    address_validation  TEXT NOT NULL,            -- unverified | verified | corrected | failed
+    shipping_method     TEXT NOT NULL,            -- standard | express
+    currency            TEXT NOT NULL,
+    subtotal            REAL NOT NULL,
+    discount            REAL NOT NULL,
+    shipping            REAL NOT NULL,
+    total               REAL NOT NULL,
+    promo_code          TEXT,
+    promo_json          TEXT,                     -- snapshot: code, kind, value, original_amount, discount, final_amount
+    terms_version       TEXT,
+    terms_accepted_at   TEXT,
+    client_request_id   TEXT,                     -- idempotency: one order per click
+    notes               TEXT,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    UNIQUE (owner_account_id, client_request_id)
+);
+CREATE INDEX IF NOT EXISTS orders_owner ON orders(owner_account_id, created_at);
+CREATE INDEX IF NOT EXISTS orders_status ON orders(status, created_at);
+CREATE TRIGGER IF NOT EXISTS orders_no_assign AFTER INSERT ON orders
+WHEN NEW.order_no IS NULL BEGIN
+  UPDATE orders SET order_no = (SELECT COALESCE(MAX(order_no), 10000) + 1 FROM orders) WHERE id = NEW.id;
+END;
+
+CREATE TABLE IF NOT EXISTS order_lines (
+    id                TEXT PRIMARY KEY,
+    order_id          TEXT NOT NULL REFERENCES orders(id),
+    position          INTEGER NOT NULL,
+    design_id         TEXT NOT NULL REFERENCES designs(id),
+    candidate_id      TEXT NOT NULL REFERENCES candidates(id),
+    bag_line_id       TEXT,
+    customization_id  TEXT,
+    title             TEXT NOT NULL,               -- the design's unique name at order time
+    ring_id           TEXT,                        -- R-1013-A
+    material_id       TEXT NOT NULL,
+    material_label    TEXT NOT NULL,
+    ring_size         REAL NOT NULL,
+    quantity          INTEGER NOT NULL,
+    unit_price        REAL NOT NULL,
+    line_total        REAL NOT NULL,
+    currency          TEXT NOT NULL,
+    pricing_version   TEXT NOT NULL,
+    image_path        TEXT
+);
+CREATE INDEX IF NOT EXISTS order_lines_order ON order_lines(order_id, position);
+CREATE INDEX IF NOT EXISTS order_lines_design ON order_lines(design_id);
+
+CREATE TABLE IF NOT EXISTS order_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id    TEXT NOT NULL REFERENCES orders(id),
+    kind        TEXT NOT NULL,                     -- placed | status | payment | note | email
+    data_json   TEXT NOT NULL DEFAULT '{}',
+    by          TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS order_events_order ON order_events(order_id, id);
+
+CREATE TABLE IF NOT EXISTS promo_codes (
+    id              TEXT PRIMARY KEY,
+    code            TEXT NOT NULL UNIQUE,          -- stored upper-case
+    active          INTEGER NOT NULL DEFAULT 1,
+    kind            TEXT NOT NULL CHECK (kind IN ('percent', 'fixed')),
+    value           REAL NOT NULL,                 -- percent (0–100) or a fixed amount in the order currency
+    starts_at       TEXT,
+    ends_at         TEXT,
+    usage_limit     INTEGER,
+    usage_count     INTEGER NOT NULL DEFAULT 0,
+    materials_json  TEXT,                          -- JSON list of material ids it applies to; NULL = every material
+    min_subtotal    REAL,
+    note            TEXT,
+    created_by      TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+-- Gold (luxury) is not on the fixed-price path yet: the customer asks for a quote instead.
+CREATE TABLE IF NOT EXISTS quote_requests (
+    id                TEXT PRIMARY KEY,
+    request_no        INTEGER UNIQUE,
+    owner_account_id  TEXT NOT NULL,
+    design_id         TEXT NOT NULL REFERENCES designs(id),
+    candidate_id      TEXT NOT NULL REFERENCES candidates(id),
+    title             TEXT NOT NULL,
+    ring_id           TEXT,
+    material_id       TEXT NOT NULL,
+    material_label    TEXT NOT NULL,
+    ring_size         REAL,
+    quantity          INTEGER NOT NULL,
+    customer_json     TEXT NOT NULL,
+    message           TEXT,
+    status            TEXT NOT NULL,               -- new | answered | closed
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS quote_requests_no_assign AFTER INSERT ON quote_requests
+WHEN NEW.request_no IS NULL BEGIN
+  UPDATE quote_requests SET request_no = (SELECT COALESCE(MAX(request_no), 5000) + 1 FROM quote_requests) WHERE id = NEW.id;
+END;
+"""
+
+
 def CustomizationsDdl(Name: str) -> str:
     """Customize choices (material / size / quantity) are per customer AND per design + option: on a
     shared gallery design every customer keeps their own choices."""
@@ -299,7 +416,7 @@ CREATE TABLE IF NOT EXISTS meshes (
     updated_at           TEXT NOT NULL
 );
 
-""" + BagLinesTable + SessionTables + """
+""" + BagLinesTable + SessionTables + OrderTables + """
 CREATE INDEX IF NOT EXISTS designs_owner ON designs(owner_account_id, updated_at);
 CREATE INDEX IF NOT EXISTS bag_lines_owner ON bag_lines(owner_account_id, created_at);
 """

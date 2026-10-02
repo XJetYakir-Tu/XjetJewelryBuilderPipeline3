@@ -54,9 +54,10 @@ async def test_full_journey_is_tracked_with_stage_times(HDevPricing):
     S = H.App.state.Ctx
     from p3 import sessions as Sessions
     X = Sessions.Summaries(S, [Did])[0]
-    assert X["path"] == "Generated → Refined → Customize → Bag → Checkout Clicked"
-    assert X["stage_reached"] == "checkout_clicked" and X["add_to_bag"] and X["checkout_clicked"]
-    assert all(X["stage_times"][K] for K in ("started", "generated", "customize", "bag", "checkout_clicked"))
+    assert X["path"] == "Generated → Selected → Refined → Customize → Bag → Checkout"
+    assert X["stage_reached"] == "checkout_clicked" and X["add_to_bag"] and X["checkout_clicked"] and not X["ordered"]
+    assert all(X["stage_times"][K] for K in ("started", "generated", "selected", "customize", "bag", "checkout_clicked"))
+    assert X["stage_times"]["order"] is None
     assert X["stage_times"]["started"] <= X["stage_times"]["generated"] <= X["stage_times"]["customize"] <= X["stage_times"]["bag"]
     assert (X["generations"], X["refinements"], X["ring_size"], X["material_id"], X["material_chosen"]) == (1, 1, 7.0, "silver", True)
     assert X["fixed_price"]["source"] == "bag_snapshot" and X["fixed_price"]["unit_price"] is not None
@@ -67,11 +68,11 @@ async def test_session_that_stops_before_bag_and_ends_on_new_design(HS):
     H = HS
     Did, _, _ = await _Journey(H, Refine=False, Bag=False)
     D = await _Session(H, Did)
-    assert D["session"]["path"] == "Generated → Customize" and D["session"]["state"] == "active"
+    assert D["session"]["path"] == "Generated → Selected → Customize" and D["session"]["state"] == "active"
     await H.NewDesign("A second, different ring")                       # another New Design ends it
     D = await _Session(H, Did)
     assert D["session"]["state"] == "ended" and D["session"]["end_reason"] == "new_design"
-    assert D["session"]["path"] == "Generated → Customize → stopped" and not D["session"]["add_to_bag"]
+    assert D["session"]["path"] == "Generated → Selected → Customize → stopped" and not D["session"]["add_to_bag"]
     Kinds = [E["kind"] for E in D["timeline"]]
     assert Kinds[0] == "started" and "generated" in Kinds and "customize_opened" in Kinds
     assert [C["ring_size"] for C in D["choices"] if "ring_size" in C][-1] == 7.0         # choice history kept
@@ -98,7 +99,8 @@ async def test_idle_session_ends_and_client_events_are_validated(HS):
     H.Ctx.Db.Execute("UPDATE session_events SET data_json = json_set(data_json, '$.ai_mode', 'live')")
     Dash = (await H.Client.get("/api/admin/dashboard", headers=Admin)).json()
     assert Dash["sessions"] == 1 and Dash["new_design_clicks"] == 1
-    assert [F["sessions"] for F in Dash["funnel"]] == [1, 1, 0, 0, 0]
+    assert [F["stage"] for F in Dash["funnel"]] == ["started", "generated", "selected", "customize", "bag", "checkout_clicked", "order"]
+    assert [F["sessions"] for F in Dash["funnel"]] == [1, 1, 0, 0, 0, 0, 0]
     assert (await H.Client.get("/api/admin/dashboard")).status_code == 403
 
 

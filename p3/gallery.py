@@ -41,7 +41,7 @@ class GalleryService:
             return {}
         Db = self.Ctx.Db
         Q = ",".join("?" * len(DesignIds))
-        Out = {D: {"users": 0, "sessions": 0, "customize": 0, "bag": 0, "checkout": 0, "three_d": 0, "forks": 0,
+        Out = {D: {"users": 0, "sessions": 0, "customize": 0, "bag": 0, "checkout": 0, "orders": 0, "three_d": 0, "forks": 0,
                    "last_used_at": None} for D in DesignIds}
         Users: dict[str, set] = {D: set() for D in DesignIds}
         for U in Db.All(f"SELECT u.* FROM gallery_uses u WHERE u.design_id IN ({Q})", DesignIds):
@@ -56,6 +56,9 @@ class GalleryService:
                 S["bag"] += 1
             if Db.One("SELECT 1 AS x FROM session_events WHERE design_id = ? AND owner_account_id = ? AND kind = 'checkout_clicked'", Args):
                 S["checkout"] += 1
+            if Db.One("SELECT 1 AS x FROM order_lines l JOIN orders o ON o.id = l.order_id WHERE l.design_id = ? AND o.owner_account_id = ? "
+                      "AND o.status != 'cancelled'", Args):
+                S["orders"] += 1
         for D in DesignIds:
             Out[D]["users"] = len(Users[D])
             Out[D]["three_d"] = int(Db.One("SELECT COUNT(*) AS n FROM session_3d WHERE design_id = ?", (D,))["n"])

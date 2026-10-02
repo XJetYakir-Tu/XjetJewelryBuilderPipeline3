@@ -143,7 +143,7 @@ async def test_bag_enforces_size_and_quote_server_side(HDevPricing):
     R = await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})
     assert R.status_code == 200
     Bag = R.json()
-    assert len(Bag["lines"]) == 1 and not Bag["checkout_available"]
+    assert len(Bag["lines"]) == 1 and Bag["checkout_available"]            # a priced, sized fashion line can be ordered
     Line = Bag["lines"][0]
     assert Line["ring_size"] == 8 and Line["quantity"] == 2 and Line["candidate_id"] == Cand["id"]
     assert Line["quote"]["assumed_volume_cm3"] == 1.0

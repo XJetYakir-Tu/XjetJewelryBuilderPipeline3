@@ -10,9 +10,9 @@ append-only session_events table for what those do not keep: material/size histo
 the fixed price shown, bag adds/removes, Bag viewed, Checkout clicked, design reopened, and admin
 actions. Nothing is estimated.
 
-Stages, in order: started → generated → customize → bag → checkout_clicked. Refinements are
-counted alongside ("Generated → Refined ×2 → Customize → Bag"); the 360° movie and 3D are
-separate status tracks.
+Stages, in order: started → generated → selected → customize → bag → checkout_clicked → order.
+Refinements are counted alongside ("Generated → Selected → Refined ×2 → Customize → Bag"); the 360°
+movie and 3D are separate status tracks.
 """
 
 import json
@@ -28,9 +28,9 @@ IdleMinutes = 30
 # Events the customer site may send (POST /api/events). Everything else is recorded server-side.
 ClientEvents = {"new_design_clicked", "design_opened", "bag_viewed", "checkout_clicked"}
 
-StageOrder = ["started", "generated", "customize", "bag", "checkout_clicked"]
-StageLabels = {"started": "Started", "generated": "Generated", "refined": "Refined", "customize": "Customize",
-               "bag": "Bag", "checkout_clicked": "Checkout Clicked"}
+StageOrder = ["started", "generated", "selected", "customize", "bag", "checkout_clicked", "order"]
+StageLabels = {"started": "Started", "generated": "Generated", "selected": "Selected", "refined": "Refined",
+               "customize": "Customize", "bag": "Bag", "checkout_clicked": "Checkout", "order": "Order"}
 
 
 def Record(Ctx: Context, OwnerAccountId: str, Kind: str, DesignId: str | None = None, **Data) -> None:
@@ -217,15 +217,20 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         Cus = [X for X in Cu[Did] if X["owner_account_id"] == Owner]
         Ln = [X for X in L[Did] if X["owner_account_id"] == Owner]
         EvAt = lambda K: _Min(*[X["created_at"] for X in Ev if X["kind"] == K])
+        Customize = _Min(EvAt("customize_opened"), *[X["created_at"] for X in Cus])
         Times = {
             "started": U["started_at"] if U else D["created_at"],
             "generated": (U["started_at"] if InitialReady else None) if U else _Min(*[X["updated_at"] for X in InitialReady]),
-            "customize": _Min(EvAt("customize_opened"), *[X["created_at"] for X in Cus]),
+            # A gallery pick is selected from the start; otherwise the first option chosen (or Customize, which implies one)
+            "selected": U["started_at"] if U else _Min(EvAt("option_selected"), Customize),
+            "customize": Customize,
             "bag": _Min(EvAt("bag_added"), *[X["created_at"] for X in Ln]),
             "checkout_clicked": EvAt("checkout_clicked"),
+            "order": EvAt("order_placed"),
         }
         Reached = [S for S in StageOrder if Times[S]]
         Stage = Reached[-1] if Reached else "started"
+        OrderRefs = list(dict.fromkeys(json.loads(X["data_json"] or "{}").get("order_ref") for X in Ev if X["kind"] == "order_placed"))
         OwnMovies = [X for X in M[Did] if (X["requested_by"] or D["owner_account_id"]) == Owner]
         LastActivity = _Max(U["last_active_at"] if U else D["updated_at"],
                             *([] if U else [X["updated_at"] for X in C[Did]]), *[X["updated_at"] for X in Cus],
@@ -257,12 +262,14 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         Last3D = T3[Did][-1] if T3[Did] else None
         Failed = (not U) and bool(C[Did]) and not InitialReady and all(X["status"] == "failed" for X in C[Did] if X["kind"] == "initial")
         Path = [StageLabels["generated"]] if Times["generated"] else []
+        if Times["selected"]:
+            Path.append(StageLabels["selected"])
         if RefineBatches:
             Path.append(StageLabels["refined"] + (f" ×{len(RefineBatches)}" if len(RefineBatches) > 1 else ""))
-        Path += [StageLabels[S] for S in ("customize", "bag", "checkout_clicked") if Times[S]]
+        Path += [StageLabels[S] for S in ("customize", "bag", "checkout_clicked", "order") if Times[S]]
         if Failed:
             Path.append("Generation failed")
-        if State == "ended" and not Times["bag"]:
+        if State == "ended" and not Times["bag"] and not Times["order"]:
             Path.append("stopped")
         Name, Email = Names.get(Owner, ("", ""))
         SourceCandidate = U["source_candidate_id"] if U else D.get("source_candidate_id")
@@ -285,6 +292,7 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "material_id": Material, "material_chosen": MaterialChosen,
             "material_label": (Ctx.Catalog.Get(Material).Label if Material and Ctx.Catalog.Get(Material) else None),
             "add_to_bag": bool(Times["bag"]), "checkout_clicked": bool(Times["checkout_clicked"]),
+            "ordered": bool(Times["order"]), "order_refs": [R for R in OrderRefs if R],
             "fixed_price": Fixed,
             "three_d_status": Last3D["status"] if Last3D else None, "three_d_id": Last3D["id"] if Last3D else None,
             # Production readiness of the latest result (processing · complete · review_required · failed · cancelled)

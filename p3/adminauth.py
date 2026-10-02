@@ -28,7 +28,7 @@ TouchMinutes = 60                 # last_seen_at is written at most this often
 Schema = """
 CREATE TABLE IF NOT EXISTS admin_sessions (
     id            TEXT PRIMARY KEY,
-    token_hash    TEXT NOT NULL UNIQUE,
+    session_hash    TEXT NOT NULL UNIQUE,
     created_at    TEXT NOT NULL,
     last_seen_at  TEXT NOT NULL,
     expires_at    TEXT NOT NULL,
@@ -59,7 +59,7 @@ def Login(Ctx: Context, Key: str, UserAgent: str | None) -> str | None:
         return None
     Token = secrets.token_urlsafe(32)
     T = datetime.now(timezone.utc)
-    Ctx.Db.Execute("INSERT INTO admin_sessions (id, token_hash, created_at, last_seen_at, expires_at, user_agent) "
+    Ctx.Db.Execute("INSERT INTO admin_sessions (id, session_hash, created_at, last_seen_at, expires_at, user_agent) "
                    "VALUES (?,?,?,?,?,?)", (NewId("adm"), _Hash(Token), _Iso(T), _Iso(T), _Iso(T + timedelta(days=SessionDays)),
                                             (UserAgent or "")[:200]))
     return Token
@@ -69,7 +69,7 @@ def Validate(Ctx: Context, Token: str | None) -> bool:
     """True for a live, unexpired, unrevoked session; slides the expiry while it is in use."""
     if not Token:
         return False
-    Row = Ctx.Db.One("SELECT * FROM admin_sessions WHERE token_hash = ?", (_Hash(Token),))
+    Row = Ctx.Db.One("SELECT * FROM admin_sessions WHERE session_hash = ?", (_Hash(Token),))
     if Row is None or Row["revoked_at"]:
         return False
     T = datetime.now(timezone.utc)
@@ -84,7 +84,7 @@ def Validate(Ctx: Context, Token: str | None) -> bool:
 def Revoke(Ctx: Context, Token: str | None) -> bool:
     if not Token:
         return False
-    return Ctx.Db.Execute("UPDATE admin_sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL",
+    return Ctx.Db.Execute("UPDATE admin_sessions SET revoked_at = ? WHERE session_hash = ? AND revoked_at IS NULL",
                           (Now(), _Hash(Token))) > 0
 
 

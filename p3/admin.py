@@ -21,6 +21,8 @@ from fastapi import Body, FastAPI, Header, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 from p3 import adminauth as AdminAuth
+from p3 import orders as OrdersModule
+from p3 import payments as PaymentsModule
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import AccountNotFound, DuplicateEmail
@@ -113,7 +115,7 @@ def _Pct(Part: int, Whole: int) -> float | None:
     return round(100.0 * Part / Whole, 1) if Whole else None
 
 
-def Dashboard(Ctx: Context) -> dict:
+def Dashboard(Ctx: Context, Orders=None) -> dict:
     """Small, factual overview. Geometry/price statistics appear once 3D data exists."""
     S = Sessions.Summaries(Ctx, IncludeMock=False)                          # mock activity stays out of statistics
     N = len(S)
@@ -193,6 +195,7 @@ def Dashboard(Ctx: Context) -> dict:
             "price_pairs": len(Pairs),
         },
         "cost_model": "configured" if any(G["production_cost"] is not None for G in Geo) else "not_configured",
+        "orders": Orders.Summary() if Orders else None,
         "mock_excluded": True,
         # Admin activity log: every admin action recorded on a journey (3D requests, new-model overrides …).
         "admin_activity": [
@@ -321,7 +324,7 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
         "gallery_usage": Gallery.Usage(DesignId) if Gallery else [],
     }
 
-def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery=None) -> None:
+def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery=None, Orders=None, Promos=None) -> None:
     """Add the admin page and API to the (inner) app. `Page(name)` renders a web/ page."""
 
     def Admin(Authorization: str | None) -> AdminPrincipal:
@@ -408,7 +411,59 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.get("/api/admin/dashboard")
     async def AdminDashboard(authorization: str | None = Header(None)):
         Admin(authorization)
-        return Dashboard(Ctx)
+        return Dashboard(Ctx, Orders)
+
+    # ── orders (operational), promo codes, quote requests ─────────────────
+    @App_.get("/api/admin/orders")
+    async def AdminOrders(status: str | None = None, payment: str | None = None, q: str | None = None,
+                          authorization: str | None = Header(None)):
+        Admin(authorization)
+        return {"orders": Orders.AdminList(status or None, payment or None, q or None),
+                "statuses": [{"id": S, "label": OrdersModule.StatusLabels[S]} for S in OrdersModule.StatusOrder + ["cancelled"]],
+                "payment_statuses": [{"id": S, "label": PaymentsModule.Labels[S]} for S in PaymentsModule.Statuses],
+                "quote_requests": Orders.AdminQuoteRequests()}
+
+    @App_.get("/api/admin/orders/{OrderId}")
+    async def AdminOrder(OrderId: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Orders.AdminGet(OrderId)
+
+    @App_.post("/api/admin/orders/{OrderId}/status")
+    async def AdminOrderStatus(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.SetStatus(OrderId, str(Body_.get("status") or ""), Who.Id, str(Body_.get("note") or ""))
+
+    @App_.post("/api/admin/orders/{OrderId}/payment")
+    async def AdminOrderPayment(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.SetPayment(OrderId, str(Body_.get("status") or ""), Who.Id, str(Body_.get("note") or ""), Body_.get("ref"))
+
+    @App_.post("/api/admin/orders/{OrderId}/note")
+    async def AdminOrderNote(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.AddNote(OrderId, str(Body_.get("note") or ""), Who.Id)
+
+    @App_.get("/api/admin/promo-codes")
+    async def AdminPromos(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return {"promo_codes": Promos.List()}
+
+    @App_.post("/api/admin/promo-codes")
+    async def AdminPromoCreate(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Promos.Save(Body_, Who.Id)
+
+    @App_.patch("/api/admin/promo-codes/{PromoId}")
+    async def AdminPromoEdit(PromoId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        if set(Body_) == {"active"}:
+            return Promos.SetActive(PromoId, bool(Body_["active"]))
+        return Promos.Save(Body_, Who.Id, PromoId)
+
+    @App_.post("/api/admin/quote-requests/{RequestId}/status")
+    async def AdminQuoteStatus(RequestId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Orders.SetQuoteStatus(RequestId, str(Body_.get("status") or ""))
 
     @App_.get("/api/admin/sessions")
     async def ListSessions(include_mock: bool = False, authorization: str | None = Header(None)):
@@ -449,9 +504,15 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             return Stage
         raise HttpError(404, "geometry_not_found", "Unknown file.")
 
-    def _SignedUrl(Sid: str, Stage: str) -> str:
+    def _OrderRef(Raw: str | None) -> str | None:
+        """Only a real-looking order reference reaches a file name (it is informational, never trusted)."""
+        Raw = (Raw or "").strip().upper()
+        return Raw if Raw and __import__("re").fullmatch(r"ORD-\d{1,9}", Raw) else None
+
+    def _SignedUrl(Sid: str, Stage: str, OrderRef: str | None = None) -> str:
         Exp = int(time.time()) + DownloadLinkSeconds
-        return f"{Ctx.Settings.BasePath}/api/admin/3d/{Sid}/stl/{Stage}?exp={Exp}&sig={_DownloadSig(Sid, Stage, Exp)}"
+        Tail = f"&order={OrderRef}" if _OrderRef(OrderRef) else ""
+        return f"{Ctx.Settings.BasePath}/api/admin/3d/{Sid}/stl/{Stage}?exp={Exp}&sig={_DownloadSig(Sid, Stage, Exp)}{Tail}"
 
     @App_.post("/api/admin/3d/{Sid}/download-link")
     async def Download3DLink(Sid: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
@@ -461,7 +522,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         return {"url": _SignedUrl(Sid, Stage), "bytes": Path_.stat().st_size, "expires_in_s": DownloadLinkSeconds}
 
     @App_.get("/api/admin/3d/{Sid}/stl/{Stage}")
-    async def Download3D(Sid: str, Stage: str, exp: int | None = None, sig: str | None = None,
+    async def Download3D(Sid: str, Stage: str, exp: int | None = None, sig: str | None = None, order: str | None = None,
                          authorization: str | None = Header(None)):
         Signed = (exp is not None and sig and exp >= time.time() and Ctx.Settings.AdminKey
                   and hmac.compare_digest(sig, _DownloadSig(Sid, Stage, exp)))
@@ -469,7 +530,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             Admin(authorization)
         Path_ = Production.FilePath(Sid, _Stage(Stage))
         Types = {".stl": "model/stl", ".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
-        Name = Production.FileName(Sid, Stage, Path_.suffix)
+        Name = Production.FileName(Sid, Stage, Path_.suffix, OrderRef=_OrderRef(order))   # ORD-… only when an order exists
         Inline = Stage in ("thumbnail", "preview")
         return FileResponse(Path_, filename=None if Inline else Name,
                             media_type=Types.get(Path_.suffix.lower(), "application/octet-stream"),
@@ -500,11 +561,11 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         return Production.StartExport(Sid)
 
     @App_.get("/api/admin/3d/{Sid}/export/{Jid}")
-    async def Export3DStatus(Sid: str, Jid: str, authorization: str | None = Header(None)):
+    async def Export3DStatus(Sid: str, Jid: str, order: str | None = None, authorization: str | None = Header(None)):
         Admin(authorization)
         S = Production.ExportStatus(Sid, Jid)
         if S["status"] == "done":
-            S["url"] = _SignedUrl(Sid, f"export-{Jid}")
+            S["url"] = _SignedUrl(Sid, f"export-{Jid}", _OrderRef(order))
         return S
 
     @App_.get("/api/admin/storage")

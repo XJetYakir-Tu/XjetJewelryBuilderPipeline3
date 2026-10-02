@@ -58,7 +58,7 @@ async def test_admin_sign_in_is_remembered_by_a_server_side_session_cookie(HA):
     assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
     assert (await H.Client.get("/api/admin/session")).status_code == 200
     Rows = H.Ctx.Db.All("SELECT * FROM admin_sessions")
-    assert len(Rows) == 2 and all(len(R["token_hash"]) == 64 for R in Rows) and Rows[1]["expires_at"] > Rows[1]["created_at"]
+    assert len(Rows) == 2 and all(len(R["session_hash"]) == 64 for R in Rows) and Rows[1]["expires_at"] > Rows[1]["created_at"]
     # Sign out: the session is revoked and the cookie cleared
     assert (await H.Client.post("/api/admin/logout")).json()["ok"]
     assert (await H.Client.get("/api/admin/session")).status_code == 403

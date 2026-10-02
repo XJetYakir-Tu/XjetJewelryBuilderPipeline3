@@ -1,10 +1,7 @@
 """Customize (selection → material/size/quantity → quote) and the bag.
 
-The bag is a server-side, per-access-token list of quote snapshots. There is NO
-checkout, payment, order record or manufacturing hand-off in Pipeline 3 (spec
-section 12); the UI states this plainly.
-
-Purchase rules are enforced here, not just in the browser (spec 4.6):
+The bag is a server-side, per-account list of quote snapshots; checkout (p3/orders.py) turns it into
+an order at today's fixed prices. Purchase rules are enforced here, not just in the browser (spec 4.6):
   * Luxury → never purchasable, never priced;
   * Fashion → purchasable only with a valid server quote and a chosen standard size;
   * ring size and quantity never change the unit price.
@@ -12,6 +9,7 @@ Purchase rules are enforced here, not just in the browser (spec 4.6):
 
 import json
 
+from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import Principal
 from p3.context import Context, HttpError
@@ -162,22 +160,30 @@ class CustomizeService:
     def Bag(self, Who: Principal) -> dict:
         Lines = []
         Totals: dict[str, float] = {}
-        Current: dict[str, str | None] = {}         # material → the pricing version a quote carries today
-        for L in self.Ctx.Db.All("SELECT b.*, c.asset_path, d.title FROM bag_lines b "
-                                 "JOIN candidates c ON c.id = b.candidate_id JOIN designs d ON d.id = b.design_id "
-                                 "WHERE b.owner_account_id = ? ORDER BY b.created_at", (Who.AccountId,)):
+        Current: dict[str, object] = {}             # material → today's quote (version, availability)
+        Rows = self.Ctx.Db.All("SELECT b.*, c.asset_path, d.title FROM bag_lines b "
+                               "JOIN candidates c ON c.id = b.candidate_id JOIN designs d ON d.id = b.design_id "
+                               "WHERE b.owner_account_id = ? ORDER BY b.created_at", (Who.AccountId,))
+        Refs = RingIds.CandidateRefs(self.Ctx.Db, list({L["design_id"] for L in Rows}))
+        Orderable = True
+        for L in Rows:
             Mat = self.Ctx.Catalog.Get(L["material_id"])
             if L["material_id"] not in Current:
-                Current[L["material_id"]] = self.Ctx.Pricing.QuoteFor(L["material_id"]).pricing_version
+                Current[L["material_id"]] = self.Ctx.Pricing.QuoteFor(L["material_id"])
+            Q = Current[L["material_id"]]
+            # Orderable: a purchasable material with a price today and a standard size (checked again at checkout)
+            LineOk = Mat is not None and self.Ctx.Catalog.IsPurchasableGroup(Mat.Group) and Q.IsAvailable \
+                and L["ring_size"] is not None and self.Ctx.Catalog.IsValidSize(L["ring_size"])
+            Orderable = Orderable and LineOk
             Total = round(L["unit_price"] * L["quantity"], 2)
             Totals[L["currency"]] = round(Totals.get(L["currency"], 0) + Total, 2)
-            Lines.append({"id": L["id"], "design_id": L["design_id"], "title": L["title"],
+            Lines.append({"id": L["id"], "design_id": L["design_id"], "title": L["title"], "ring_id": Refs.get(L["candidate_id"]),
                           "candidate_id": L["candidate_id"], "image_url": self.Ctx.AssetUrl(L["asset_path"]),
                           "material_id": L["material_id"], "material_label": Mat.Label if Mat else L["material_id"],
                           "ring_size": L["ring_size"], "quantity": L["quantity"], "unit_price": L["unit_price"],
                           "currency": L["currency"], "line_total": Total, "pricing_version": L["pricing_version"],
-                          "price_is_stale": L["pricing_version"] != Current[L["material_id"]],
+                          "price_is_stale": L["pricing_version"] != Q.pricing_version,
+                          "current_unit_price": Q.unit_price if Q.IsAvailable else None, "orderable": LineOk,
                           "quote": json.loads(L["quote_json"])})
-        return {"lines": Lines, "totals": Totals, "checkout_available": False,
-                "checkout_note": "Ordering is not available in this Pipeline 3 prototype. "
-                                 "The bag holds price snapshots only; no order, payment or production is created."}
+        return {"lines": Lines, "totals": Totals, "checkout_available": bool(Lines) and Orderable,
+                "checkout_note": None if Orderable else "One of the lines cannot be ordered yet — see the line for the reason."}

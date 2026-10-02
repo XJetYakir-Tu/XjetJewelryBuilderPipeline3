@@ -32,6 +32,10 @@ from p3.production3d import Production3D
 from p3.geoqueue import GeometryQueue
 from p3.gallery import GalleryService
 from p3.mail import BuildMailer
+from p3.orders import OrderService
+from p3.promos import PromoService
+from p3.payments import BuildPaymentProvider
+from p3.addressing import BuildValidator
 from p3.registration import RegistrationService
 from p3 import sessions as Sessions
 from p3.usage import BackfillUsageAnnotations
@@ -44,7 +48,7 @@ Logger = logging.getLogger("p3.app")
 
 
 class Services:
-    def __init__(self, Ctx: Context):
+    def __init__(self, Ctx: Context, Mailer=None):
         self.Ctx = Ctx
         self.Images = ImageService(Ctx)
         self.Movies = MovieService(Ctx)
@@ -54,6 +58,9 @@ class Services:
         self.Geometry = GeometryQueue(Ctx)                       # one heavy local STL job at a time, persisted
         self.Production3D = Production3D(Ctx, self.Meshes, self.Geometry)   # admin-only; never automatic
         self.Gallery = GalleryService(Ctx)                       # Inspiration Gallery: curated XJet designs
+        self.Promos = PromoService(Ctx)                          # promo codes (Admin), evaluated server-side
+        # Checkout + orders: payment and address validation sit behind adapters (none connected yet).
+        self.Orders = OrderService(Ctx, self.Customize, self.Promos, BuildPaymentProvider(), BuildValidator(), Mailer)
 
     def Reconcile(self) -> dict:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),
@@ -97,7 +104,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.Models = ModelConfigStore(Ctx.Db)        # seeds v1 from generation.json + prompts on first start
     Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
     Ctx.Pricing.Book = Ctx.MaterialPrices         # the website's fixed price per material comes from it
-    Svc = Services(Ctx)
+    Mailer = BuildMailer(S.DataDir)
+    Svc = Services(Ctx, Mailer)
     Ctx.MaterialPrices.OnSave.append(Svc.Production3D.RepriceMissing)
     Sessions.BackfillBagEvents(Ctx)               # bag lines can be removed later; keep their bag_added
     Sessions.BackfillDesignModes(Ctx)             # mark older sessions mock / live from their requests
@@ -105,7 +113,6 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     if Annotated:
         Logger.info("Annotated %d earlier usage events with provider/endpoint", Annotated)
     Modes = ModeManager(Ctx, Mode, ModeSource, Factories)
-    Mailer = BuildMailer(S.DataDir)
     Registration = RegistrationService(Ctx, Mailer)
 
     @asynccontextmanager
@@ -140,7 +147,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.exception_handler(HttpError)
     async def _HttpError(_Req: Request, E: HttpError):
-        return JSONResponse(status_code=E.Status, content={"error": {"code": E.Code, "message": E.Message}})
+        Err = {"code": E.Code, "message": E.Message}
+        if getattr(E, "Problems", None):              # field-level problems (checkout forms)
+            Err["problems"] = E.Problems
+        return JSONResponse(status_code=E.Status, content={"error": Err})
 
     @App_.exception_handler(InsufficientCredits)
     async def _NoCredits(_Req: Request, E: InsufficientCredits):
@@ -159,7 +169,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def DevPage():
         return HTMLResponse(_VersionedPage("dev.html", Base))
 
-    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db), Svc.Gallery)
+    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db), Svc.Gallery,
+                  Svc.Orders, Svc.Promos)
 
     App_.mount("/static", StaticFiles(directory=WebDir), name="static")
     App_.mount("/assets", StaticFiles(directory=S.AssetsDir), name="assets")
@@ -310,6 +321,36 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.delete("/api/bag/{LineId}")
     async def RemoveFromBag(LineId: str, x_access_token: str | None = Header(None)):
         return Svc.Customize.RemoveFromBag(Tok(x_access_token), LineId)
+
+    # ── checkout & orders (fixed-price materials); gold asks for a quote ──
+    @App_.get("/api/checkout")
+    async def CheckoutInfo(x_access_token: str | None = Header(None)):
+        return Svc.Orders.CheckoutInfo(Tok(x_access_token))
+
+    @App_.post("/api/checkout/quote")
+    async def CheckoutQuote(Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
+        return Svc.Orders.Quote(Tok(x_access_token), Body_.get("promo_code"), str(Body_.get("shipping_method") or "standard"))
+
+    @App_.post("/api/checkout/address")
+    async def CheckoutAddress(Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
+        Tok(x_access_token)
+        return Svc.Orders.ValidateAddress(Body_.get("address") or Body_)
+
+    @App_.post("/api/orders")
+    async def PlaceOrder(Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        return Svc.Orders.Create(Tok(x_access_token), Body_, Background.add_task)
+
+    @App_.get("/api/orders")
+    async def MyOrders(x_access_token: str | None = Header(None)):
+        return {"orders": Svc.Orders.List(Tok(x_access_token))}
+
+    @App_.get("/api/orders/{OrderId}")
+    async def MyOrder(OrderId: str, x_access_token: str | None = Header(None)):
+        return Svc.Orders.Get(Tok(x_access_token), OrderId)
+
+    @App_.post("/api/quote-requests")
+    async def RequestQuote(Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        return Svc.Orders.RequestQuote(Tok(x_access_token), Body_, Background.add_task)
 
     # ── developer-only mesh tools ────────────────────────────────────────
     @App_.get("/api/dev/status")

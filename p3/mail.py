@@ -91,6 +91,73 @@ def TokenEmail(Name: str, Token: str, LoginUrl: str) -> tuple[str, str]:
         </table>"""))
 
 
+def _Money(V, Cur="USD") -> str:
+    return ("$" if Cur == "USD" else Cur + " ") + f"{float(V or 0):,.2f}"
+
+
+def _Esc(V) -> str:
+    return html.escape(str(V if V is not None else ""))
+
+
+def OrderConfirmationEmail(Order: dict) -> tuple[str, str]:
+    """Order received: what, where, totals, payment status, what happens next. Every customer value
+    is escaped; nothing about production cost or 3D pricing is ever in it."""
+    C = Order["customer"]
+    Rows = "".join(f"""
+          <tr>
+            <td style="padding:8px 0;border-bottom:1px solid #EDE8DF;{_Font}font-size:14px;">
+              <strong>{_Esc(L['title'])}</strong><br>
+              <span style="color:#6F6F6F;font-size:12px;">Ring ID {_Esc(L['ring_id'] or '—')} · {_Esc(L['material_label'])} · US {_Esc(f"{L['ring_size']:g}")} · ×{_Esc(L['quantity'])}</span>
+            </td>
+            <td align="right" style="padding:8px 0;border-bottom:1px solid #EDE8DF;{_Font}font-size:14px;white-space:nowrap;">{_Esc(_Money(L['line_total'], L['currency']))}</td>
+          </tr>""" for L in Order["lines"])
+    Totals = [("Subtotal", Order["subtotal"])]
+    if Order.get("discount"):
+        Totals.append((f"Promo {Order.get('promo_code') or ''}", -Order["discount"]))
+    Totals.append((Order.get("shipping_label") or "Shipping", Order["shipping"]))
+    TotalRows = "".join(f"""
+          <tr><td style="padding:4px 0;{_Font}font-size:13px;color:#6F6F6F;">{_Esc(K)}</td>
+              <td align="right" style="padding:4px 0;{_Font}font-size:13px;">{_Esc(_Money(V, Order['currency']) if V else 'Free')}</td></tr>"""
+                        for K, V in Totals)
+    Address = "<br>".join(_Esc(L) for L in Order["address_lines"])
+    return (f"Order {Order['ref']} received — XJet Atelier", _Layout(f"Thank you — order {_Esc(Order['ref'])} received", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(C.get('first_name') or '')}</p>
+        <p style="margin:0 0 20px;">We have received your order. Your ring is reserved: our team now reviews the design for
+           production feasibility and confirms it to you before anything is made.</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{Rows}</table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">{TotalRows}
+          <tr><td style="padding:8px 0 0;{_Font}font-size:16px;font-weight:700;">Total</td>
+              <td align="right" style="padding:8px 0 0;{_Font}font-size:16px;font-weight:700;">{_Esc(_Money(Order['total'], Order['currency']))}</td></tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
+          <tr>
+            <td valign="top" width="50%" style="{_Font}font-size:13px;line-height:1.6;">
+              <p style="margin:0 0 4px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#9A7230;font-weight:700;">Ships to</p>
+              {Address}<br><span style="color:#6F6F6F;">{_Esc(Order.get('shipping_label') or '')} · {_Esc(Order.get('shipping_eta') or '')}</span>
+            </td>
+            <td valign="top" width="50%" style="{_Font}font-size:13px;line-height:1.6;">
+              <p style="margin:0 0 4px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#9A7230;font-weight:700;">Payment</p>
+              <strong>{_Esc(Order['payment_label'])}</strong><br><span style="color:#6F6F6F;">{_Esc(Order.get('payment_message') or '')}</span>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:28px 0 0;font-size:12px;color:#8F8F8F;">Prices in US dollars; import duties or VAT, where charged, are paid by the recipient.
+           Questions? Reply to this email and quote {_Esc(Order['ref'])}.</p>"""))
+
+
+def QuoteRequestEmail(Request: dict) -> tuple[str, str]:
+    C = Request["customer"]
+    Size = f"US {Request['ring_size']:g}" if Request.get("ring_size") is not None else "size to be confirmed"
+    return (f"Your quote request {Request['ref']} — XJet Atelier", _Layout("We have received your request", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(C.get('first_name') or '')}</p>
+        <p style="margin:0 0 16px;">Thank you for your interest in <strong>{_Esc(Request['title'])}</strong>
+           (Ring ID {_Esc(Request['ring_id'] or '—')}) in <strong>{_Esc(Request['material_label'])}</strong>, {_Esc(Size)}, ×{_Esc(Request['quantity'])}.</p>
+        <p style="margin:0 0 16px;">Gold pieces are quoted individually. A specialist will come back to you within one business day
+           with a price and the next steps. Your reference is <strong>{_Esc(Request['ref'])}</strong>.</p>
+        {('<p style="margin:0 0 16px;font-size:13px;color:#6F6F6F;">Your note: ' + _Esc(Request['message']) + '</p>') if Request.get('message') else ''}
+        <p style="margin:20px 0 0;font-size:12px;color:#8F8F8F;">Questions? Reply to this email and quote {_Esc(Request['ref'])}.</p>"""))
+
+
 class OutboxMailer:
     Mode = "outbox"
 
