@@ -175,8 +175,8 @@ class GalleryService:
             Db.Execute("UPDATE designs SET updated_at = ? WHERE id = ?", (T, R["design_id"]))
             return R["design_id"]
         Use = self.UseFor(Who, R["design_id"])
-        if Use:
-            Db.Execute("UPDATE gallery_uses SET last_active_at = ? WHERE id = ?", (T, Use["id"]))
+        if Use:                                                     # also restores a removed link
+            Db.Execute("UPDATE gallery_uses SET last_active_at = ?, removed_at = NULL WHERE id = ?", (T, Use["id"]))
             Sessions.Record(self.Ctx, Who.AccountId, "gallery_reopened", R["design_id"], gallery_item_id=ItemId,
                             use_id=Use["id"])
             return R["design_id"]

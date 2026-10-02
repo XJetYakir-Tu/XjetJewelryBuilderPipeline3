@@ -113,6 +113,7 @@ const EVENTS = {
   gallery_started: ['Started from gallery', 'bg-amber-100 text-amber-800'],
   gallery_reopened: ['Reopened from gallery', 'bg-amber-100 text-amber-800'],
   gallery_refined: ['Refined from gallery', 'bg-violet-100 text-violet-700'],
+  design_removed: ['Removed from My Designs', 'bg-zinc-200 text-zinc-600'],
   refinement: ['Refinement', 'bg-violet-100 text-violet-700'],
   movie: ['360° movie', 'bg-purple-100 text-purple-700'],
   mesh: ['3D', 'bg-green-100 text-green-700'],

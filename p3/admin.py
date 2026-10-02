@@ -143,7 +143,10 @@ def Dashboard(Ctx: Context) -> dict:
         "SELECT r.measurement_json, b.design_id FROM raw_geometry r JOIN meshes m ON m.id = r.mesh_id "
         "JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id WHERE r.status = 'measured'")
         if R["design_id"] in LiveDesigns]
-    Raws = [R for R in Raws if R.get("bore_ok") and R.get("inner_diameter") and R.get("closed_heuristic", True)]
+    Measured = Raws
+    Raws = [R for R in Measured if R.get("bore_ok") and R.get("inner_diameter") and R.get("closed_heuristic", True)]
+    Created = sum(1 for R in Ctx.Db.All("SELECT b.design_id FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
+                                        "JOIN batches b ON b.id = c.batch_id WHERE m.status = 'ready'") if R["design_id"] in LiveDesigns)
     Book = Ctx.MaterialPrices
     Mats = list(dict.fromkeys(Mandatory + tuple(Ctx.Catalog.Materials)))
 
@@ -177,6 +180,8 @@ def Dashboard(Ctx: Context) -> dict:
         "selected_for_3d": Selected3D, "selected_for_3d_pct": _Pct(Selected3D, N),
         "geometry": {
             "measured": len(Geo), "models": len(Raws),
+            # 3D parts behind the by-size table: Hi3D models created, measured, and used in the averages
+            "models_created": Created, "models_measured": len(Measured), "models_used": len(Raws),
             "avg_volume_cc": round(mean(Volumes) / 1000.0, 3) if Volumes else None,
             "avg_weight_g_by_material": {K: (round(mean(ByMat[K]), 2) if ByMat.get(K) else None)
                                          for K in dict.fromkeys(Mandatory + tuple(ByMat))},

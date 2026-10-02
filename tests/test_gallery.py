@@ -179,9 +179,11 @@ async def test_dashboard_geometry_by_size_scales_measured_models_by_arithmetic(H
     await H.Idle()
     Geo = (await H.Client.get("/api/admin/dashboard", headers=Admin)).json()["geometry"]
     assert Geo["measured"] == 1 and Geo["models"] == 1 and Geo["avg_volume_cc"] > 0
+    assert (Geo["models_created"], Geo["models_measured"], Geo["models_used"]) == (1, 1, 1)
     assert set(Geo["avg_weight_g_by_material"]) >= {"silver", "vermeil", "stainless_steel"}
     Rows = {R["size"]: R for R in Geo["by_size"]}
     Ten = Rows[10]
+    assert all(R["models"] == 1 for R in Geo["by_size"])
     assert Ten["volume_cc"] == pytest.approx(Geo["avg_volume_cc"], rel=1e-3)             # measured at US 10
     assert Rows[7]["volume_cc"] < Rows[8]["volume_cc"] < Ten["volume_cc"] < Rows[11]["volume_cc"]
     Silver = H.Ctx.MaterialPrices.Row("silver")
@@ -189,3 +191,36 @@ async def test_dashboard_geometry_by_size_scales_measured_models_by_arithmetic(H
     assert Ten["materials"]["silver"]["price_3d"] == pytest.approx(Ten["materials"]["silver"]["weight_g"] * Silver["price_per_g"], abs=0.2)
     assert Geo["fixed_basis"]["volume_cc"] == 1.0 and Geo["fixed_basis"]["materials"]["silver"]["weight_g"] == pytest.approx(Silver["density_g_cm3"])
     assert Geo["fixed_basis"]["materials"]["silver"]["fixed_price"] == Silver["fixed_price"]
+
+
+async def test_remove_from_my_designs_hides_it_for_the_customer_and_keeps_the_admin_journey(HG):
+    H = HG
+    Did, Cand, Item = await _Curated(H)
+    Token, _ = H.Ctx.Accounts.IssueToken("customer")
+    Cust = {"X-Access-Token": Token}
+    await H.Client.post(f"/api/gallery/{Item['id']}/start", json={}, headers=Cust)
+    Own = (await H.Client.post("/api/designs", data={"prompt": "My own band"}, headers=Cust)).json()["design_id"]
+    await H.Idle()
+    assert [d["id"] for d in (await H.Client.get("/api/designs", headers=Cust)).json()["designs"]] == [Own, Did]
+    # Removing the shared design unlinks it for the customer; the Admin keeps the journey and the statistics
+    assert (await H.Client.delete(f"/api/designs/{Did}", headers=Cust)).json() == {"removed": True, "shared": True}
+    assert [d["id"] for d in (await H.Client.get("/api/designs", headers=Cust)).json()["designs"]] == [Own]
+    assert (await H.Client.get(f"/api/designs/{Did}", headers=Cust)).status_code == 404
+    Uses = (await H.Client.get(f"/api/admin/gallery/usage/{Did}", headers=Admin)).json()["uses"]
+    assert len(Uses) == 1 and Uses[0]["removed"]
+    assert (await H.Client.get("/api/admin/gallery", headers=Admin)).json()["items"][0]["sessions"] == 1
+    # Starting it again from the gallery restores the same link — still one journey
+    assert (await H.Client.post(f"/api/gallery/{Item['id']}/start", json={}, headers=Cust)).json()["id"] == Did
+    assert (await H.Client.get("/api/designs", headers=Cust)).json()["designs"][0]["id"] == Did
+    assert not (await H.Client.get(f"/api/admin/gallery/usage/{Did}", headers=Admin)).json()["uses"][0]["removed"]
+    assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM gallery_uses")["n"] == 1
+    # Removing a design of their own hides it; the Admin still has the session, marked as removed
+    assert (await H.Client.delete(f"/api/designs/{Own}", headers=Cust)).json() == {"removed": True, "shared": False}
+    assert (await H.Client.get(f"/api/designs/{Own}", headers=Cust)).status_code == 404
+    assert [d["id"] for d in (await H.Client.get("/api/designs", headers=Cust)).json()["designs"]] == [Did]
+    S = (await H.Client.get(f"/api/admin/sessions/{Own}", headers=Admin)).json()
+    assert S["session"]["removed"] and any(E["kind"] == "design_removed" for E in S["timeline"])
+    # Twice, or someone else's design: 404
+    assert (await H.Client.delete(f"/api/designs/{Own}", headers=Cust)).status_code == 404
+    Stranger = {"X-Access-Token": H.Ctx.Accounts.IssueToken("stranger")[0]}
+    assert (await H.Client.delete(f"/api/designs/{Did}", headers=Stranger)).status_code == 404

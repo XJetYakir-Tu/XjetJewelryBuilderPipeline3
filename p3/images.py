@@ -306,8 +306,11 @@ class ImageService:
     def RequireDesign(self, Who: Principal, DesignId: str) -> dict:
         """The customer's own design, or a shared XJet master design they started from the gallery."""
         D = self.Ctx.Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
-        if D is None or (D["owner_account_id"] != Who.AccountId and not self.Ctx.Db.One(
-                "SELECT 1 AS x FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?", (DesignId, Who.AccountId))):
+        Own = D is not None and D["owner_account_id"] == Who.AccountId and not D.get("removed_at")
+        Linked = D is not None and not Own and self.Ctx.Db.One(
+            "SELECT 1 AS x FROM gallery_uses WHERE design_id = ? AND owner_account_id = ? AND removed_at IS NULL",
+            (DesignId, Who.AccountId))
+        if not (Own or Linked):
             raise HttpError(404, "design_not_found", "Design not found.")
         return D
 

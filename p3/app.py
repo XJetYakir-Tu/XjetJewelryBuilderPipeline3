@@ -250,6 +250,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def GetDesign(DesignId: str, x_access_token: str | None = Header(None)):
         return Svc.Designs.Get(Tok(x_access_token), DesignId)
 
+    @App_.delete("/api/designs/{DesignId}")
+    async def RemoveDesign(DesignId: str, x_access_token: str | None = Header(None)):
+        return Svc.Designs.Remove(Tok(x_access_token), DesignId)
+
     @App_.post("/api/designs/{DesignId}/batches")
     async def Refine(DesignId: str, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         return Svc.Images.CreateRefinement(Tok(x_access_token), DesignId, Body_.get("parent_candidate_id"),

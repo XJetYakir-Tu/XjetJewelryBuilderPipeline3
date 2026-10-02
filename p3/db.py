@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS gallery_uses (
     selected_candidate_id  TEXT REFERENCES candidates(id),    -- their own pick within the design
     started_at             TEXT NOT NULL,
     last_active_at         TEXT NOT NULL,
+    removed_at             TEXT,                               -- removed from the customer's My Designs (journey kept)
     UNIQUE (design_id, owner_account_id)
 );
 CREATE INDEX IF NOT EXISTS gallery_uses_owner ON gallery_uses(owner_account_id, last_active_at);
@@ -359,6 +360,11 @@ class Database:
                 MCols = {R[1] for R in Conn.execute("PRAGMA table_info(movies)")}
                 if MCols and "requested_by" not in MCols:
                     Conn.execute("ALTER TABLE movies ADD COLUMN requested_by TEXT")   # who pays for a movie on a shared design
+                if "owner_account_id" in Cols and "removed_at" not in Cols:
+                    Conn.execute("ALTER TABLE designs ADD COLUMN removed_at TEXT")   # removed from My Designs (journey kept)
+                UCols = {R[1] for R in Conn.execute("PRAGMA table_info(gallery_uses)")}
+                if UCols and "removed_at" not in UCols:
+                    Conn.execute("ALTER TABLE gallery_uses ADD COLUMN removed_at TEXT")
                 if "owner_account_id" in Cols:
                     from p3 import ringids
                     ringids.Install(Conn)                 # shared ring IDs (R-1042, R-1042-B …)

@@ -712,6 +712,24 @@ function p3App() {
       catch (e) { this.designsError = e.message; }
       finally { this.designsLoading = false; }
     },
+    // Remove from My Designs: a design of your own is hidden, a shared gallery design is unlinked
+    // (it can be started again from the gallery). The bag is not affected.
+    async removeDesign(p) {
+      const msg = p.shared ? `Remove "${p.title}" from My Designs?\n\nYou can start it again from the Inspiration Gallery at any time.`
+                           : `Remove "${p.title}" from My Designs?\n\nYour bag is not affected.`;
+      if (!confirm(msg)) return;
+      try {
+        await this.api('DELETE', `/api/designs/${encodeURIComponent(p.id)}`);
+        this.designs = this.designs.filter(d => d.id !== p.id);
+        if (this.design?.id === p.id) {
+          this.stopPolling();
+          this.design = null; this.cust = null; this.viewBatchId = null; this.pendingRefineBatchId = null;
+          this.actionError = ''; this.composeError = ''; this.closePreview();
+          this.persist({ designId: null });
+          if (STUDIO_VIEWS.includes(this.view)) this.navigateTo('ai-studio');
+        }
+      } catch (e) { this.designsError = e.message; }
+    },
     get filteredDesigns() {
       const q = this.projectSearch.trim().toLowerCase();
       return q ? this.designs.filter(d => d.title.toLowerCase().includes(q)) : this.designs;

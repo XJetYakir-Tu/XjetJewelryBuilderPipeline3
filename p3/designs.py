@@ -1,8 +1,10 @@
 """Saved designs: list and full state (for reload recovery)."""
 
 from p3 import ringids as RingIds
+from p3 import sessions as Sessions
 from p3.accounts import Principal
-from p3.context import Context
+from p3.context import Context, HttpError
+from p3.db import Now
 from p3.customize import CustomizeService
 from p3.images import ImageService
 
@@ -25,17 +27,37 @@ class DesignService:
     def List(self, Who: Principal) -> list[dict]:
         """The customer's own designs and the shared gallery designs they started, latest activity first."""
         Out = []
-        for D in self.Ctx.Db.All("SELECT * FROM designs WHERE owner_account_id = ? ORDER BY updated_at DESC LIMIT 100", (Who.AccountId,)):
+        for D in self.Ctx.Db.All("SELECT * FROM designs WHERE owner_account_id = ? AND removed_at IS NULL "
+                                 "ORDER BY updated_at DESC LIMIT 100", (Who.AccountId,)):
             Out.append({"id": D["id"], "title": D["title"], "thumbnail_url": self._Thumb(D["id"], D["selected_candidate_id"]),
                         "updated_at": D["updated_at"], "created_at": D["created_at"], "shared": False,
                         "origin": "gallery" if D.get("source_design_id") else "prompt"})
         for U in self.Ctx.Db.All("SELECT u.*, d.title FROM gallery_uses u JOIN designs d ON d.id = u.design_id "
-                                 "WHERE u.owner_account_id = ? ORDER BY u.last_active_at DESC LIMIT 100", (Who.AccountId,)):
+                                 "WHERE u.owner_account_id = ? AND u.removed_at IS NULL ORDER BY u.last_active_at DESC LIMIT 100",
+                                 (Who.AccountId,)):
             Out.append({"id": U["design_id"], "title": U["title"],
                         "thumbnail_url": self._Thumb(U["design_id"], U["selected_candidate_id"] or U["source_candidate_id"]),
                         "updated_at": U["last_active_at"], "created_at": U["started_at"], "shared": True, "origin": "gallery"})
         Out.sort(key=lambda X: X["updated_at"] or "", reverse=True)
         return Out[:100]
+
+    def Remove(self, Who: Principal, DesignId: str) -> dict:
+        """Remove from My Designs: a design of the customer's own is hidden (soft), a shared gallery design
+        is unlinked. The Admin keeps the journey and its statistics; the bag is not affected."""
+        Db = self.Ctx.Db
+        D = Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
+        T = Now()
+        if D and D["owner_account_id"] == Who.AccountId and not D.get("removed_at"):
+            Db.Execute("UPDATE designs SET removed_at = ? WHERE id = ?", (T, DesignId))
+            Sessions.Record(self.Ctx, Who.AccountId, "design_removed", DesignId)
+            return {"removed": True, "shared": False}
+        Use = Db.One("SELECT id FROM gallery_uses WHERE design_id = ? AND owner_account_id = ? AND removed_at IS NULL",
+                     (DesignId, Who.AccountId)) if D else None
+        if Use:
+            Db.Execute("UPDATE gallery_uses SET removed_at = ? WHERE id = ?", (T, Use["id"]))
+            Sessions.Record(self.Ctx, Who.AccountId, "design_removed", DesignId, shared=True, use_id=Use["id"])
+            return {"removed": True, "shared": True}
+        raise HttpError(404, "design_not_found", "Design not found.")
 
     def Get(self, Who: Principal, DesignId: str) -> dict:
         D = self.Images.RequireDesign(Who, DesignId)
@@ -43,7 +65,7 @@ class DesignService:
             "SELECT id FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))]
         # A shared XJet master design: the customer's own selection and choices, the images shared.
         Use = None if D["owner_account_id"] == Who.AccountId else self.Ctx.Db.One(
-            "SELECT * FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?", (DesignId, Who.AccountId))
+            "SELECT * FROM gallery_uses WHERE design_id = ? AND owner_account_id = ? AND removed_at IS NULL", (DesignId, Who.AccountId))
         Selected = (Use["selected_candidate_id"] or Use["source_candidate_id"]) if Use else D["selected_candidate_id"]
         Customization = None
         if Selected:

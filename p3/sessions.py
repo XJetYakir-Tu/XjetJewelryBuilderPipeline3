@@ -267,6 +267,7 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "origin": "gallery" if (U or D.get("source_design_id")) else "prompt",
             "source_ring_id": SourceRefs.get(SourceCandidate) if SourceCandidate else None,
             "shared": bool(U), "use_id": U["id"] if U else None,
+            "removed": bool(U.get("removed_at")) if U else bool(D.get("removed_at")),
             "account_id": Owner, "customer_name": Name, "customer_email": Email,
             "thumbnail_url": Url(Thumb["asset_path"]) if Thumb else None,
             "started_at": Times["started"], "last_activity_at": LastActivity, "state": State, "end_reason": EndReason,

@@ -849,6 +849,9 @@
                                             <span x-show="p.shared" class="shrink-0 text-[9px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#F8F4EE; color:#9A7230;" title="A shared XJet design from the Inspiration Gallery">Gallery</span></div>
                                         <p class="text-[12px] mt-0.5" style="color:#8F8F8F;" x-text="new Date(p.updated_at).toLocaleDateString()"></p>
                                     </div>
+                                    <button @click.stop="removeDesign(p)" class="tap-lg shrink-0 p-1.5 rounded-lg transition text-[#C8C8C8] hover:text-red-500 hover:bg-red-50" title="Remove from My Designs" :aria-label="'Remove ' + p.title + ' from My Designs'">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0l1 12h6l1-12"/></svg>
+                                    </button>
                                 </div>
                             </template>
                         </div>

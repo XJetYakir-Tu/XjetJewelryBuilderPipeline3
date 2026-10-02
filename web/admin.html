@@ -493,12 +493,14 @@
               <p class="text-[11px] text-zinc-400" x-show="dash.cost_model === 'not_configured'">Cost model not configured yet</p></div>
           </div>
           <div class="overflow-x-auto">
-            <p class="lbl mb-2">By ring size — every measured Hi3D model scaled to the size (exact arithmetic), averaged</p>
+            <p class="lbl mb-1">By ring size — every measured Hi3D model scaled to the size (exact arithmetic), averaged</p>
+            <p class="text-[11px] text-zinc-500 mb-2" x-text="dash.geometry.measured + ' 3D part' + (dash.geometry.measured === 1 ? '' : 's') + ' (results) from ' + dash.geometry.models_created + ' Hi3D model' + (dash.geometry.models_created === 1 ? '' : 's') + ' created · ' + dash.geometry.models_measured + ' measured · ' + dash.geometry.models_used + ' used in these averages' + (dash.geometry.models_measured > dash.geometry.models_used ? ' (' + (dash.geometry.models_measured - dash.geometry.models_used) + ' left out: no round bore or open mesh)' : '')"></p>
             <table class="w-full !text-xs">
-              <thead><tr><th>Ring size</th><th class="text-right">Avg volume</th><th class="text-right">Silver</th><th class="text-right">Vermeil</th><th class="text-right">Stainless Steel</th></tr></thead>
+              <thead><tr><th>Ring size</th><th class="text-right" title="Hi3D models used for this row">Models</th><th class="text-right">Avg volume</th><th class="text-right">Silver</th><th class="text-right">Vermeil</th><th class="text-right">Stainless Steel</th></tr></thead>
               <tbody>
                 <template x-for="r in dash.geometry.by_size" :key="r.size"><tr>
                   <td x-text="'US ' + r.size"></td>
+                  <td class="text-right tabular-nums text-zinc-500" x-text="r.models"></td>
                   <td class="text-right tabular-nums" x-text="r.volume_cc != null ? r.volume_cc.toFixed(3) + ' cc' : '—'"></td>
                   <template x-for="m in ['silver','vermeil','stainless_steel']" :key="m">
                     <td class="text-right tabular-nums whitespace-nowrap"><span x-text="r.materials[m]?.weight_g != null ? r.materials[m].weight_g.toFixed(2) + ' g' : '—'"></span><span class="text-zinc-400" x-text="r.materials[m]?.price_3d != null ? ' · $' + r.materials[m].price_3d.toFixed(0) : ''"></span></td>
@@ -506,6 +508,7 @@
                 </tr></template>
                 <tr class="font-medium" style="border-top:2px solid #e4e4e7;">
                   <td>Fixed price basis today</td>
+                  <td></td>
                   <td class="text-right tabular-nums" x-text="dash.geometry.fixed_basis.volume_cc.toFixed(3) + ' cc'"></td>
                   <template x-for="m in ['silver','vermeil','stainless_steel']" :key="m">
                     <td class="text-right tabular-nums whitespace-nowrap"><span x-text="dash.geometry.fixed_basis.materials[m]?.weight_g != null ? dash.geometry.fixed_basis.materials[m].weight_g.toFixed(2) + ' g' : '—'"></span><span class="text-zinc-400" x-text="dash.geometry.fixed_basis.materials[m]?.fixed_price != null ? ' · $' + dash.geometry.fixed_basis.materials[m].fixed_price : ' · NA'"></span></td>
@@ -556,6 +559,7 @@
               <td class="whitespace-nowrap">
                 <span x-show="x.mock" class="badge !text-[9px] !px-1.5 mr-0.5 bg-amber-100 text-amber-800">Mock</span>
                 <span x-show="x.shared" class="badge !text-[9px] !px-1.5 mr-0.5 bg-amber-100 text-amber-800" title="A customer on a shared gallery design">Gallery</span>
+                <span x-show="x.removed" class="badge !text-[9px] !px-1.5 mr-0.5 bg-zinc-200 text-zinc-600" title="Removed from My Designs by the customer">Removed</span>
                 <template x-for="h in [['has_image', 'Image'], ['has_movie', 'Movie'], ['has_3d', '3D']]">
                   <span class="badge !text-[9px] !px-1.5 mr-0.5" :class="x[h[0]] ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-300'" x-text="h[1]"></span>
                 </template></td>
@@ -593,6 +597,7 @@
               <span class="font-mono text-sm px-2 py-0.5 border border-zinc-300 text-zinc-700" title="Ring ID — use it to refer to this design" x-text="sd.session.ring_id"></span>
               <span x-show="sd.session.origin === 'gallery'" class="badge bg-amber-100 text-amber-800" x-text="'Started from gallery · ' + (sd.session.source_ring_id || '')"></span>
               <span x-show="sd.design?.shared" class="badge bg-amber-100 text-amber-800" title="One shared XJet design; this customer's own selection, size and material">Shared XJet design</span>
+              <span x-show="sd.session.removed" class="badge bg-zinc-200 text-zinc-600" title="The customer removed it from My Designs; the journey is kept">Removed by customer</span>
               <span x-show="sd.gallery" class="badge bg-amber-100 text-amber-800" x-text="'In gallery #' + (sd.gallery?.position || '') + ' · ' + (sd.gallery?.sessions || 0) + ' selected'"></span>
               <span x-show="sd.session.mock" class="badge bg-amber-100 text-amber-800">Mock session — not counted in statistics</span>
               <span class="badge" :class="sd.session.state === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'" x-text="sd.session.state === 'active' ? 'Session active' : ('Session ended · ' + (sd.session.end_reason === 'new_design' ? 'new design started' : 'inactive'))"></span>
