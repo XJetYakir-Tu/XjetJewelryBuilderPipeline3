@@ -480,14 +480,61 @@ async def test_shared_ring_ids_for_designs_options_refinements_and_3d_files(HS):
     H.Ctx.Db.Execute("INSERT INTO candidates (id, batch_id, slot, status, seed, created_at, updated_at) "
                      "VALUES ('cnd_r1b', 'bat_r1', 1, 'ready', 1, '2999-01-01T00:00:00+00:00', '2999-01-01T00:00:00+00:00')")
     assert ringids.CandidateRef(H.Ctx.Db, "cnd_r1b") == "R-1001-R1B"
-    # 3D results and downloads carry the ring ID of the exact option.
+    # 3D results and downloads carry the design name and the ring ID of the exact option
+    # (<Design-Name>_<Ring ID>[_<Order ID>]_<Material>_US<size>.stl — no Order ID is invented).
+    from p3.production3d import SlugPart
     T = (await H.Client.post(f"/api/admin/sessions/{B1['design_id']}/3d", json={"candidate_id": Cand}, headers=Admin)).json()
     await H.Idle()
     assert T["ring_id"] == "R-1001-B"
+    Name = SlugPart(D1["session"]["title"])
+    assert Name and "_" not in Name and " " not in Name
     R = await H.Client.get(f"/api/admin/3d/{T['id']}/stl/raw", headers=Admin)
-    assert 'filename="R-1001-B_raw.stl"' in R.headers["content-disposition"]
+    assert f'filename="{Name}_R-1001-B_raw.stl"' in R.headers["content-disposition"]
     E = (await H.Client.post(f"/api/admin/3d/{T['id']}/export", headers=Admin)).json()
     await H.Idle()
     E = (await H.Client.get(f"/api/admin/3d/{T['id']}/export/{E['job_id']}", headers=Admin)).json()
     R = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
-    assert f'filename="R-1001-B_US10_{T["material_id"]}.stl"' in R.headers["content-disposition"]
+    Material = SlugPart(H.Ctx.Catalog.Get(T["material_id"]).Label)
+    assert f'filename="{Name}_R-1001-B_{Material}_US10.stl"' in R.headers["content-disposition"]
+    assert "ORD-" not in R.headers["content-disposition"]
+
+
+async def test_processing_complete_is_not_production_ready_when_the_model_has_warnings(HS, monkeypatch):
+    """Done ≠ approved: a flagged result is "Processing complete — production review required", with the
+    reasons and the next step, while the numbers, the 3D view and the scaled STL stay available."""
+    H = HS
+    from p3 import production3d
+    monkeypatch.setattr(production3d, "MaxRoundness", -1.0)              # every bore counts as "not round"
+    Did = (await H.NewDesign("Plain band"))["design_id"]
+    T = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).json()
+    await H.Idle()
+    T = (await _Session(H, Did))["three_d"][0]
+    assert T["status"] == "needs_review" and T["production_state"] == "review_required"
+    assert [R["code"] for R in T["review"]] == ["bore_not_round"] and T["review"][0]["action"]
+    assert T["geometry"]["production"]["volume_mm3"] > 0 and T["price"]["weight_g"] > 0    # the numbers exist
+    St = (await H.Client.get(f"/api/admin/3d/{T['id']}/status", headers=Admin)).json()
+    assert St["done"] and St["production_state"] == "review_required"
+    assert St["stages"][-1]["stage"] == "review_required" and "review required" in St["stages"][-1]["label"].lower()
+    assert St["raw"]["preview_ready"]                                      # the 3D view is there to inspect it
+    Row = next(X for X in (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]
+               if X["session_id"] == Did)
+    assert Row["three_d_state"] == "review_required" and Row["three_d_review"] and Row["has_3d"]
+    # Downloading the scaled STL works, and does not approve anything
+    E = (await H.Client.post(f"/api/admin/3d/{T['id']}/export", headers=Admin)).json()
+    await H.Idle()
+    assert (await H.Client.get(f"/api/admin/3d/{T['id']}/export/{E['job_id']}", headers=Admin)).json()["status"] == "done"
+    assert (await _Session(H, Did))["three_d"][0]["production_state"] == "review_required"
+    # A clean model is complete — until the background edge check finds open edges
+    monkeypatch.setattr(production3d, "MaxRoundness", 0.04)
+    Did2 = (await H.NewDesign("Twisted band"))["design_id"]
+    T2 = (await H.Client.post(f"/api/admin/sessions/{Did2}/3d", json={}, headers=Admin)).json()
+    await H.Idle()
+    T2 = (await _Session(H, Did2))["three_d"][0]
+    assert T2["status"] == "measured" and T2["production_state"] == "complete" and T2["review"] == []
+    H.Ctx.Db.Execute("UPDATE raw_geometry SET integrity = 'open' WHERE mesh_id = ?", (T2["mesh_id"],))
+    T2 = (await _Session(H, Did2))["three_d"][0]
+    assert T2["status"] == "measured" and T2["production_state"] == "review_required"
+    assert [R["code"] for R in T2["review"]] == ["open_edges"]
+    Row = next(X for X in (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]
+               if X["session_id"] == Did2)
+    assert Row["three_d_state"] == "review_required"

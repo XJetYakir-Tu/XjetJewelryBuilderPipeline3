@@ -156,7 +156,14 @@ async def test_make_it_yours_links_the_customer_to_the_shared_master_design(HG):
     assert (await H.Client.post(f"/api/admin/sessions/{Uses[0]['session_id']}/3d", json={"candidate_id": Cand["id"]},
                                 headers=Admin)).status_code == 409          # another option needs the typed confirmation
     S2 = (await H.Client.get(f"/api/admin/sessions/{Uses[0]['session_id']}", headers=Admin)).json()
-    assert S2["three_d_defaults"]["existing_model"]["candidate_id"] == Sib["id"]
+    Ex = S2["three_d_defaults"]["existing_model"]
+    assert Ex["candidate_id"] == Sib["id"] and Ex["ring_id"] == "R-1001-B" and Ex["measured"] and Ex["preview_ready"]
+    # The journey's own size/material (US 7 · vermeil) already has a result: the scaled STL can be prepared from it
+    assert Ex["journey_3d_id"] == T["id"] and (Ex["journey_size"], Ex["journey_material_id"]) == (7, "vermeil")
+    assert Ex["latest_3d_id"] == T2["id"] and Ex["production_state"] == "complete" and Ex["review"] == []
+    # The master's own page shows the same model (XJet made no choices: default US 10 · silver has no result yet)
+    Mx = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d_defaults"]["existing_model"]
+    assert Mx["ring_id"] == "R-1001-B" and Mx["journey_3d_id"] is None
     Dash = (await H.Client.get("/api/admin/dashboard", headers=Admin)).json()
     assert set(Dash["funnel_by_origin"]) == {"prompt", "gallery"} and [R["size"] for R in Dash["geometry"]["by_size"]] == [7, 8, 10, 11]
     # Removing the tile keeps the customer's link; starting from the tile is no longer possible

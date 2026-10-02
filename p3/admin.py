@@ -264,10 +264,24 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     Mesh = Ctx.Db.One("SELECT m.id, m.candidate_id, m.updated_at FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
                       "JOIN batches b ON b.id = c.batch_id WHERE b.design_id = ? AND m.status = 'ready' "
                       "ORDER BY m.created_at DESC LIMIT 1", (DesignId,))
-    RawGeo = Ctx.Db.One("SELECT faces, status FROM raw_geometry WHERE mesh_id = ?", (Mesh["id"],)) if Mesh else None
+    RawGeo = Ctx.Db.One("SELECT faces, status, integrity, preview_path FROM raw_geometry WHERE mesh_id = ?", (Mesh["id"],)) if Mesh else None
+    # The journey's size/material: the matching result (if any) is what "Prepare / download STL" exports.
+    Size = Summary["ring_size"] if Summary["ring_size_chosen"] else 10.0
+    Material = (Summary["material_id"] if Summary["material_chosen"] else None) or Ctx.Catalog.DefaultMaterialId
+    Matching = next((T for T in ThreeD if Mesh and T["mesh_id"] == Mesh["id"] and T["production_size"] == Size
+                     and T["material_id"] == Material and T["status"] in ("measured", "needs_review")), None) if Mesh else None
+    LatestOnMesh = next((T for T in ThreeD if Mesh and T["mesh_id"] == Mesh["id"] and T["status"] in ("measured", "needs_review")), None)
     ExistingModel = {"mesh_id": Mesh["id"], "candidate_id": Mesh["candidate_id"], "ring_id": Refs.get(Mesh["candidate_id"]),
                      "ready_at": Mesh["updated_at"], "faces": RawGeo["faces"] if RawGeo else None,
-                     "measured": bool(RawGeo and RawGeo["status"] == "measured")} if Mesh else None
+                     "measured": bool(RawGeo and RawGeo["status"] == "measured"),
+                     "preview_ready": bool(RawGeo and RawGeo["preview_path"]),
+                     # Production readiness of the model itself (any result on it flagged → review required)
+                     "production_state": (LatestOnMesh or {}).get("production_state"),
+                     "review": (LatestOnMesh or {}).get("review") or [],
+                     "latest_3d_id": LatestOnMesh["id"] if LatestOnMesh else None,
+                     # The result for this journey's size and material, ready for a scaled STL (None = recalculate first)
+                     "journey_3d_id": Matching["id"] if Matching else None,
+                     "journey_size": Size, "journey_material_id": Material} if Mesh else None
     return {
         "session": Summary,
         "user": User,

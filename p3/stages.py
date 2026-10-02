@@ -14,9 +14,12 @@ from p3.db import Database, Dumps, Now
 Labels = {
     "waiting_hi3d": "Waiting for Hi3D", "generating_3d": "Generating 3D", "downloading_stl": "Downloading STL",
     "queued": "Queued", "calculating_geometry": "Calculating Geometry", "ready": "Ready",
+    # Processing finished but the result carries warnings (bore, roundness, open mesh): production
+    # review is a separate decision from "the numbers are there".
+    "review_required": "Processing complete — production review required",
     "failed": "Failed", "cancelled": "Cancelled", "exporting": "Preparing scaled STL",
 }
-Terminal = ("ready", "failed", "cancelled")
+Terminal = ("ready", "review_required", "failed", "cancelled")
 
 
 def Begin(Db: Database, Subject: str, Stage: str, **Detail) -> None:

@@ -18,6 +18,7 @@ Rules:
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,6 +42,51 @@ def _Seconds(A: str | None, B: str | None) -> float | None:
     if not A or not B:
         return None
     return round((datetime.fromisoformat(B) - datetime.fromisoformat(A)).total_seconds(), 3)
+
+
+def ProductionState(Status: str, Integrity: str | None = None) -> str:
+    """Production readiness, kept apart from processing: processing · complete · review_required ·
+    failed · cancelled. "Complete" means the numbers exist AND nothing was flagged; any warning
+    (no bore, bore not round, open mesh heuristic, open edges found later in the background)
+    makes it review_required — inspecting or downloading the model never approves it."""
+    if Status in ("failed", "cancelled"):
+        return Status
+    if Status in Waiting:
+        return "processing"
+    if Status == "needs_review" or Integrity == "open":
+        return "review_required"
+    return "complete"
+
+
+def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None) -> list[dict]:
+    """Why a result needs production review, each with the recommended next step (shown before the
+    measurements). Empty when the model passed every check."""
+    Items = []
+    if Status in ("failed", "cancelled") or Status in Waiting:
+        return Items
+    Raw = Raw or {}
+    if not Raw.get("bore_ok", True):
+        Items.append({"code": "no_bore", "text": "No ring bore was found — the model may not be a ring.",
+                      "action": "Inspect the model in 3D. If it is not a ring, do not produce it: model a different "
+                                "option (a new Hi3D model) instead."})
+    elif Raw.get("roundness") is not None and Raw["roundness"] > MaxRoundness:
+        Items.append({"code": "bore_not_round", "text": f"The bore is not round ({Raw['roundness'] * 100:.1f}% deviation) — "
+                                                        "the inner diameter is uncertain.",
+                      "action": "Check the inner diameter against the target size in the 3D view before production; "
+                                "size by hand if needed."})
+    if Raw and not Raw.get("closed_heuristic", True):
+        Items.append({"code": "open_mesh_heuristic", "text": "The volume reference check suggests the mesh may not be closed — "
+                                                             "volume and weight may be wrong.",
+                      "action": "Wait for the edge check, then repair the mesh (close the holes) before production."})
+    if Integrity == "open":
+        Items.append({"code": "open_edges", "text": "Open edges were found — the mesh is not watertight.",
+                      "action": "Repair the mesh (close the holes) before production; treat weight and cost as estimates."})
+    return Items
+
+
+def SlugPart(Text: str, Max: int = 40) -> str:
+    """File-name-safe words joined by '-': 'The Orion Ring' → 'The-Orion-Ring'."""
+    return "-".join(re.findall(r"[A-Za-z0-9]+", Text or ""))[:Max].rstrip("-")
 
 
 class Production3D:
@@ -272,14 +318,15 @@ class Production3D:
             Problems.append("The volume reference check suggests the mesh may not be closed — check the volume.")
         if not Raw.get("bore_ok"):
             Db.Update("session_3d", Sid, status="needs_review", error=" ".join(Problems))
-            Stages.Begin(Db, Sid, "ready", needs_review=True)
+            Stages.Begin(Db, Sid, "review_required", problems=Problems)
             return
         G = Scaled(Raw, UsSizeToInnerDiameterMm(Row["production_size"]))
         Gid = Insert("production", G, G["scale_factor"], None)          # scaled STL: exported on demand only
         Weight = self._Price(Row, Gid, G["volume_mm3"] if Raw["closed_heuristic"] else None)
         Status = "needs_review" if Problems else "measured"
         Db.Update("session_3d", Sid, status=Status, error=" ".join(Problems) or None)
-        Stages.Begin(Db, Sid, "ready", needs_review=bool(Problems))
+        # Processing is complete either way; the production decision is a separate state.
+        Stages.Begin(Db, Sid, "review_required" if Problems else "ready", **({"problems": Problems} if Problems else {}))
         Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
         Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid,
                         status=Status, inner_diameter_mm=G["inner_diameter_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
@@ -429,6 +476,7 @@ class Production3D:
                     "AND status IN ('queued','running')", (R["mesh_id"],))
         return {
             "id": Sid, "status": R["status"], "error": R["error"], "server_now": Now(),
+            "production_state": ProductionState(R["status"], Raw["integrity"] if Raw else None),
             "done": R["status"] in Terminal, "stages": All,
             "queue": {"ahead": self.Queue.Ahead(Job), "job_id": Job["id"]} if Job else None,
             "can_cancel": bool(Job),
@@ -453,10 +501,16 @@ class Production3D:
         Cand = Db.One("SELECT asset_path FROM candidates WHERE id = ?", (R["candidate_id"],))
         Mat = self.Ctx.Catalog.Get(R["material_id"])
         Prod = Geo.get("production") or {}
+        RawRow = Db.One("SELECT measurement_json, integrity FROM raw_geometry WHERE mesh_id = ?", (R["mesh_id"],))
+        RawMeasured = json.loads(RawRow["measurement_json"]) if RawRow and RawRow["measurement_json"] else None
+        Integrity = RawRow["integrity"] if RawRow else None
         return {
             **R, "target_inner_diameter_mm": UsSizeToInnerDiameterMm(R["production_size"]),
             "material_label": Mat.Label if Mat else R["material_id"], "density_g_cm3": Mat.DensityGCm3 if Mat else None,
             "image_url": Url(Cand["asset_path"]) if Cand else None,
+            # Production readiness is separate from processing: warnings → review_required, never "Ready".
+            "production_state": ProductionState(R["status"], Integrity),
+            "review": ReviewItems(R["status"], RawMeasured, Integrity),
             "raw_available": bool(Mesh and Mesh["status"] == "ready"),
             "hi3d": Mesh and {"mesh_id": Mesh["id"], "status": Mesh["status"], "endpoint": Mesh["endpoint"],
                               "provider": "mock" if (Mesh["provider_request_id"] or "").startswith("mockreq_") else
@@ -505,12 +559,20 @@ class Production3D:
 
     StlPath = FilePath
 
-    def FileName(self, Sid: str, Stage: str, Suffix: str) -> str:
-        """Download names that carry the shared ring ID: R-1042-B_raw.stl, R-1042-B_US10_14k-yellow.stl …"""
+    def FileName(self, Sid: str, Stage: str, Suffix: str, OrderRef: str | None = None) -> str:
+        """Operational download names, searchable months later:
+             <Design-Name>_<Ring ID>[_<Order ID>]_<Material>_US<size>.stl   e.g. Aurora-Twist_R-1013-A_ORD-10482_Silver_US10.stl
+             <Design-Name>_<Ring ID>_raw.stl                                 the Hi3D model as delivered
+        The Order ID appears only when an order exists — it is never invented."""
+        Db = self.Ctx.Db
         R = self._Row(Sid)
-        Ring = RingIds.CandidateRef(self.Ctx.Db, R["candidate_id"]) or Sid
-        Size = f"US{R['production_size']:g}"
+        D = Db.One("SELECT title FROM designs WHERE id = ?", (R["design_id"],))
+        Ring = RingIds.CandidateRef(Db, R["candidate_id"]) or Sid
+        Mat = self.Ctx.Catalog.Get(R["material_id"])
+        Parts = [SlugPart(D["title"]) if D else "", Ring]
         if Stage.startswith("export-") or Stage == "production":
-            return f"{Ring}_{Size}_{R['material_id']}{Suffix}"
-        return f"{Ring}_{Stage}{Suffix}"
+            Parts += [OrderRef or "", SlugPart(Mat.Label if Mat else R["material_id"]), f"US{R['production_size']:g}"]
+        else:
+            Parts.append(Stage)
+        return "_".join(P for P in Parts if P) + Suffix
 

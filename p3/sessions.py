@@ -106,6 +106,11 @@ def _Parse(Iso: str | None) -> datetime | None:
     return datetime.fromisoformat(Iso) if Iso else None
 
 
+def _ProductionState(Status: str, Integrity: str | None) -> str:
+    from p3.production3d import ProductionState          # late import: production3d imports this module
+    return ProductionState(Status, Integrity)
+
+
 def _Min(*Values):
     V = [X for X in Values if X]
     return min(V) if V else None
@@ -171,7 +176,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
                     f"WHERE b.design_id IN ({Q})", Ids)
     Lines = Db.All(f"SELECT * FROM bag_lines WHERE design_id IN ({Q}) ORDER BY created_at", Ids)
     Events = Db.All(f"SELECT * FROM session_events WHERE design_id IN ({Q}) ORDER BY created_at", Ids)
-    ThreeD = Db.All(f"SELECT * FROM session_3d WHERE design_id IN ({Q}) ORDER BY created_at", Ids)
+    ThreeD = Db.All(f"SELECT s.*, r.integrity FROM session_3d s LEFT JOIN raw_geometry r ON r.mesh_id = s.mesh_id "
+                    f"WHERE s.design_id IN ({Q}) ORDER BY s.created_at", Ids)
     Owners = list({D["owner_account_id"] for D, _ in Journeys} | {U["owner_account_id"] for U in Uses})
     QO = ",".join("?" * len(Owners))
     # A newer journey by the same customer ends the previous session ("new_design").
@@ -281,6 +287,9 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "add_to_bag": bool(Times["bag"]), "checkout_clicked": bool(Times["checkout_clicked"]),
             "fixed_price": Fixed,
             "three_d_status": Last3D["status"] if Last3D else None, "three_d_id": Last3D["id"] if Last3D else None,
+            # Production readiness of the latest result (processing · complete · review_required · failed · cancelled)
+            "three_d_state": _ProductionState(Last3D["status"], Last3D["integrity"]) if Last3D else None,
+            "three_d_review": any(_ProductionState(X["status"], X["integrity"]) == "review_required" for X in T3[Did]),
             "user_status": Status.get(Owner, "unknown"),
             "has_image": bool(Ready), "has_movie": any(X["status"] == "ready" for X in M[Did]),
             "has_3d": any(X["status"] in ("measured", "needs_review") for X in T3[Did]),

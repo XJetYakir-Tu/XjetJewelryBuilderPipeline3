@@ -34,7 +34,15 @@ const THREE_D = {
   requested: ['Requested', 'bg-zinc-100 text-zinc-600'], generating: ['Hi3D running', 'bg-sky-100 text-sky-800'],
   queued: ['Queued', 'bg-sky-100 text-sky-800'],
   measuring: ['Measuring', 'bg-sky-100 text-sky-800'], measured: ['Measured', 'bg-emerald-100 text-emerald-800'],
-  needs_review: ['Needs review', 'bg-amber-100 text-amber-800'], failed: ['Failed', 'bg-red-100 text-red-700'],
+  needs_review: ['Review required', 'bg-amber-100 text-amber-800'], failed: ['Failed', 'bg-red-100 text-red-700'],
+  cancelled: ['Cancelled', 'bg-zinc-100 text-zinc-600'],
+};
+// Production readiness, separate from processing: "complete" only when nothing was flagged.
+const PROD_STATE = {
+  processing: ['Processing', 'bg-sky-100 text-sky-800'],
+  complete: ['Ready for production', 'bg-emerald-100 text-emerald-800'],
+  review_required: ['Processing complete — production review required', 'bg-amber-100 text-amber-800'],
+  failed: ['Failed', 'bg-red-100 text-red-700'],
   cancelled: ['Cancelled', 'bg-zinc-100 text-zinc-600'],
 };
 const GL = { renderer: null, failed: false, scene: null, camera: null, light: null, mesh: null, controls: null, io: null, raf: 0, soft: null };
@@ -335,6 +343,21 @@ function adminApp() {
         await this.loadSession();
       } catch (e) { this.newModel.error = e.message; this.newModel.busy = false; }
     },
+    // Existing (master) model: the normal actions reuse it — view, recalculate, scaled STL — no Hi3D call.
+    viewMasterModel() {
+      const id = this.sd?.three_d_defaults.existing_model?.latest_3d_id;
+      const t = this.sd.three_d.find(x => x.id === id && this.previewReady(x)) || this.sd.three_d.find(x => this.previewReady(x));
+      if (!t) return;
+      this.show3d(t);
+      this.$refs.viewer?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    },
+    async exportJourneyStl() {
+      const id = this.sd?.three_d_defaults.existing_model?.journey_3d_id;
+      const t = this.sd.three_d.find(x => x.id === id);
+      if (t) await this.exportStl(t);
+    },
+    prodLabel(s) { return (PROD_STATE[s] || [s || '—'])[0]; },
+    prodClass(s) { return (PROD_STATE[s] || [, 'bg-zinc-100 text-zinc-500'])[1]; },
     // Large hover preview next to the thumbnail, kept inside the window.
     showZoom(ev, src, label) {
       const r = ev.currentTarget.getBoundingClientRect(), size = Math.min(340, window.innerWidth - 32);
@@ -382,7 +405,9 @@ function adminApp() {
       const s = this.live3d[t.id]; if (!s || !s.stages.length) return '';
       const first = s.stages[0], last = s.stages[s.stages.length - 1];
       const total = this.clockText(new Date(last.ended_at || this.now()).getTime() - new Date(first.started_at).getTime());
-      if (s.done) return (s.status === 'failed' ? 'Failed' : s.status === 'cancelled' ? 'Cancelled' : 'Ready') + ' — Total ' + total;
+      // Done ≠ ready: warnings keep the result at "production review required" (also when the
+      // background edge check finds open edges after the numbers were shown).
+      if (s.done) return ({ failed: 'Failed', cancelled: 'Cancelled', review_required: 'Processing complete — production review required' }[s.production_state] || 'Ready') + ' — Total ' + total;
       const open = [...s.stages].reverse().find(x => !x.ended_at) || last;
       const parts = [open.label];
       if (open.stage === 'queued' && s.queue) parts.push(s.queue.ahead + ' ahead');

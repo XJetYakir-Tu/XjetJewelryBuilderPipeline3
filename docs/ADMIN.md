@@ -116,6 +116,9 @@ The gallery on the customer site (home page, first 8, and the Inspiration page) 
   - no bore was found;
   - roundness deviation is over 4%;
   - the closed-mesh heuristic disagrees.
+- **Production state is separate from processing** (`production_state`): `processing` · `complete` · `review_required` · `failed` · `cancelled`. A result is never shown as "Ready" while it carries a warning: it reads **Processing complete — production review required**, and the reasons with the recommended next step (`review`: no bore → inspect / model another option; bore not round → check the inner diameter; open-mesh heuristic or open edges found by the background edge check → repair before production) are shown *before* the measurements. Viewing the model or downloading the STL never approves it. The Sessions list shows the same state in its 3D column (`three_d_state`).
+- **Existing model (one per design):** the panel names the model — *Uses Master model R-1013-A* — and offers the normal actions that reuse it: **View 3D**, **Recalculate geometry · US n · material**, **Prepare / download STL** (enabled once a result exists for the journey's size and material). None of them calls Hi3D.
+- **File names** are operational: `<Design-Name>_<Ring ID>[_<Order ID>]_<Material>_US<size>.stl` (e.g. `Aurora-Twist_R-1013-A_ORD-10482_Silver_US10.stl`); the raw Hi3D model is `<Design-Name>_<Ring ID>_raw.stl`. The Order ID appears only when an order exists.
 - **Background, never blocking the numbers:**
   - a light preview (~25k faces, `preview.p3pv`; visual only, never used for numbers);
   - a mesh-integrity check (edge manifoldness → `raw_geometry.integrity`).
