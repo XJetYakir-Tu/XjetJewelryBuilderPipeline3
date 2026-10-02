@@ -160,6 +160,19 @@ class Production3D:
             Sessions.Record(self.Ctx, Design["owner_account_id"], "admin_3d_new_model_override", DesignId,
                             candidate_id=CandidateId, candidate_ring_id=RingIds.CandidateRef(Db, CandidateId),
                             existing_mesh_id=Existing["id"], existing_ring_id=ExistingRef, by=RequestedBy)
+        # A variation of a gallery master (a customer's refinement): its own design, but the master's model
+        # already exists — a new paid model needs the same typed confirmation, so the admin decides on purpose
+        # whether the shape really changed or the master's model should be used (from the master's session).
+        Source = self.SourceModel(Design) if Raw is None and Existing is None else None
+        if Source is not None:
+            if (Override or "").strip() != NewModelConfirmation:
+                raise HttpError(409, "hi3d_source_model_exists",
+                                f"This design is a variation of {Source['title']} ({Source['ring_id']}), which already has a 3D model. "
+                                f"If the shape changed, type {NewModelConfirmation} to create a new paid Hi3D model; otherwise use "
+                                f"the source design's model from its session ({Source['design_ring_id']}).")
+            Sessions.Record(self.Ctx, Design["owner_account_id"], "admin_3d_new_model_override", DesignId,
+                            candidate_id=CandidateId, candidate_ring_id=RingIds.CandidateRef(Db, CandidateId),
+                            source_design_id=Source["design_id"], source_ring_id=Source["ring_id"], by=RequestedBy)
         Mesh = Raw or self.Meshes.Create(CandidateId, None)      # the paid Hi3D call, only when needed
         Sid, T = NewId("s3d"), Now()
         Db.Execute("INSERT INTO session_3d (id, design_id, candidate_id, mesh_id, customer_size, production_size, "
@@ -173,6 +186,19 @@ class Production3D:
         if Raw:
             self._Continue(Mesh["id"])           # measured already → instant; else one queued measure job
         return self.Get(Sid)
+
+    def SourceModel(self, Design: dict) -> dict | None:
+        """For a variation (source_design_id): the source design's ready Hi3D model, if it has one."""
+        if not Design or not Design.get("source_design_id"):
+            return None
+        Db = self.Ctx.Db
+        M = Db.One("SELECT m.id, m.candidate_id, d.id AS design_id, d.title, d.ring_no FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
+                   "JOIN batches b ON b.id = c.batch_id JOIN designs d ON d.id = b.design_id WHERE b.design_id = ? AND m.status = 'ready' "
+                   "ORDER BY m.created_at DESC LIMIT 1", (Design["source_design_id"],))
+        if M is None:
+            return None
+        return {"design_id": M["design_id"], "title": M["title"], "design_ring_id": RingIds.DesignRef(M["ring_no"]),
+                "ring_id": RingIds.CandidateRef(Db, M["candidate_id"]), "mesh_id": M["id"]}
 
     # ── pipeline (event driven: mesh ready → measure job → finalize) ─────
     def _WaitingFor(self, MeshId: str) -> list[dict]:

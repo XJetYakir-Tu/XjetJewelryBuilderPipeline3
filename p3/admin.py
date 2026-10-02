@@ -380,6 +380,8 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
             "has_raw_mesh": any(T["hi3d"] and T["hi3d"]["status"] == "ready" for T in ThreeD),
             # The valid Hi3D model this design already has (reused for every size, material and journey).
             "existing_model": ExistingModel,
+            # A variation of a gallery master: the master's model exists → a new model needs the typed confirmation
+            "source_model": Production.SourceModel(Ctx.Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))) if not Mesh else None,
             "options": [{"id": C["id"], "ring_id": C["ring_id"], "selected": C["selected"]}
                         for B in Batches for C in B["candidates"] if C["status"] == "ready"],
         },
@@ -502,7 +504,18 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
                                                     "Give each master design a distinctive name, or confirm to use it anyway.")
         Ctx.Db.Execute("UPDATE designs SET title = ?, updated_at = ? WHERE id = ?", (Title, Now(), DesignId))
         Sessions.Record(Ctx, D["owner_account_id"], "admin_design_renamed", DesignId, from_title=D["title"], to_title=Title, by=Who.Id)
-        return {"id": DesignId, "title": Title, "was": D["title"]}
+        # Variations that still carry the old name follow the master: "<New> Variation", "<New> Variation II" …
+        Followed = []
+        if Body_.get("cascade", True):
+            from p3.naming import VariationTitle
+            for V in Ctx.Db.All("SELECT id, title, owner_account_id FROM designs WHERE source_design_id = ? AND "
+                                "(lower(title) = lower(?) OR lower(title) LIKE lower(?) || ' variation%')", (DesignId, D["title"], D["title"])):
+                New = VariationTitle(Ctx.Db, Title)
+                Ctx.Db.Execute("UPDATE designs SET title = ?, updated_at = ? WHERE id = ?", (New, Now(), V["id"]))
+                Sessions.Record(Ctx, V["owner_account_id"], "admin_design_renamed", V["id"], from_title=V["title"], to_title=New,
+                                follows=DesignId, by=Who.Id)
+                Followed.append({"id": V["id"], "title": New, "was": V["title"]})
+        return {"id": DesignId, "title": Title, "was": D["title"], "variations": Followed}
 
     # ── orders (operational), promo codes, quote requests ─────────────────
     @App_.get("/api/admin/orders")

@@ -110,6 +110,53 @@ async def test_gallery_master_names_are_distinctive(HX):
     assert (await H.Client.patch("/api/admin/designs/dsg_nope", json={"title": "Nope"}, headers=Admin)).status_code == 404
 
 
+async def test_design_names_are_never_shared_and_variations_follow_their_master(HX):
+    from p3.providers import endpoints
+    H = HX
+    # The same prompt twice: the keyword name is made unique (never two rings called the same)
+    A = await H.NewDesign("simple delicate band")
+    B = await H.NewDesign("simple delicate band")
+    Ta, Tb = (await H.Design(A["design_id"]))["title"], (await H.Design(B["design_id"]))["title"]
+    assert Ta == "The Fil Ring" and Tb == "The Fil Ring II"
+    assert (await H.Design((await H.NewDesign("another delicate band"))["design_id"]))["title"] == "The Fil Ring III"
+    # A customer's refinement of a gallery master is "<Master> Variation", not the master's own name
+    await H.Client.put(f"/api/designs/{A['design_id']}/selection", json={"candidate_id": A["candidates"][0]["id"]})
+    await H.Client.post("/api/admin/gallery", json={"design_id": A["design_id"]}, headers=Admin)
+    await H.Client.patch(f"/api/admin/designs/{A['design_id']}", json={"title": "Fil Twist"}, headers=Admin)
+    Cust = {"X-Access-Token": H.Ctx.Accounts.IssueToken("customer")[0]}
+    Item = (await H.Client.get("/api/gallery")).json()["items"][0]
+    await H.Client.post(f"/api/gallery/{Item['id']}/start", json={}, headers=Cust)
+    Fork = (await H.Client.post(f"/api/designs/{A['design_id']}/batches", json={"parent_candidate_id": A["candidates"][0]["id"],
+                                                                                "instruction": "thinner"}, headers=Cust)).json()
+    await H.Idle()
+    assert (await H.Client.get(f"/api/designs/{Fork['design_id']}", headers=Cust)).json()["title"] == "Fil Twist Variation"
+    Fork2 = (await H.Client.post(f"/api/designs/{A['design_id']}/batches", json={"parent_candidate_id": A["candidates"][1]["id"],
+                                                                                 "instruction": "wider"}, headers=Cust)).json()
+    await H.Idle()
+    assert (await H.Client.get(f"/api/designs/{Fork2['design_id']}", headers=Cust)).json()["title"] == "Fil Twist Variation II"
+    # Renaming the master renames the variations that follow it
+    R = (await H.Client.patch(f"/api/admin/designs/{A['design_id']}", json={"title": "Fil Spiral"}, headers=Admin)).json()
+    assert {V["title"] for V in R["variations"]} == {"Fil Spiral Variation", "Fil Spiral Variation II"}
+    assert (await H.Client.get(f"/api/designs/{Fork['design_id']}", headers=Cust)).json()["title"].startswith("Fil Spiral Variation")
+    # The master has a 3D model → the variation's Generate 3D is not open: the typed confirmation is required
+    T = (await H.Client.post(f"/api/admin/sessions/{A['design_id']}/3d", json={}, headers=Admin)).json()
+    await H.Idle()
+    S = (await H.Client.get(f"/api/admin/sessions/{Fork['design_id']}", headers=Admin)).json()
+    assert S["three_d_defaults"]["existing_model"] is None
+    assert S["three_d_defaults"]["source_model"]["design_id"] == A["design_id"] and S["three_d_defaults"]["source_model"]["ring_id"] == "R-1001-A"
+    Subs = len(H.Provider.SubmissionsFor(endpoints.Mesh))
+    R = await H.Client.post(f"/api/admin/sessions/{Fork['design_id']}/3d", json={}, headers=Admin)
+    assert R.status_code == 409 and R.json()["error"]["code"] == "hi3d_source_model_exists" and "R-1001-A" in R.json()["error"]["message"]
+    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs
+    R = await H.Client.post(f"/api/admin/sessions/{Fork['design_id']}/3d", json={"override": "GENERATE NEW 3D"}, headers=Admin)
+    assert R.status_code == 200 and len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs + 1
+    await H.Idle()
+    S = (await H.Client.get(f"/api/admin/sessions/{Fork['design_id']}", headers=Admin)).json()
+    assert S["three_d_defaults"]["existing_model"] and S["three_d_defaults"]["source_model"] is None
+    Ov = [E for E in S["timeline"] if E["kind"] == "admin_3d_new_model_override"]
+    assert len(Ov) == 1 and Ov[0]["data"]["source_ring_id"] == "R-1001-A"
+
+
 async def test_sessions_carry_every_searchable_identifier(HX):
     H = HX
     Did, O = await _Order(H, "Aurora twist band")

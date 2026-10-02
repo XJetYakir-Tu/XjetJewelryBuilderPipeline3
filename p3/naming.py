@@ -75,6 +75,26 @@ def _NameStyle(Lower: str) -> str | None:
     return None
 
 
+Roman = ["", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX"]
+
+
+def UniqueTitle(Db, Base: str) -> str:
+    """A design name no other design carries (case-insensitive): "The Fil Ring", then "The Fil Ring II",
+    "The Fil Ring III" … Names are how people talk about rings, so two rings never share one."""
+    Base = " ".join((Base or "Ring").split())
+    for N in range(1, 400):
+        Candidate = Base if N == 1 else f"{Base} {Roman[N - 1] if N - 1 < len(Roman) else N}"
+        if not Db.One("SELECT 1 AS x FROM designs WHERE lower(title) = lower(?)", (Candidate,)):
+            return Candidate
+    return f"{Base} {Db.One('SELECT COUNT(*) AS n FROM designs')['n'] + 1}"
+
+
+def VariationTitle(Db, MasterTitle: str) -> str:
+    """A customer's refinement of a gallery master is a design of its own: "<Master> Variation" (unique)."""
+    Base = MasterTitle or "Ring"
+    return UniqueTitle(Db, Base if Base.endswith("Variation") else f"{Base} Variation")
+
+
 def ProductName(Prompt: str) -> str:
     Lower = Prompt.lower()
     Wrap = lambda Core: "The " + _StyleSuffix(Lower, Core) + " Ring"

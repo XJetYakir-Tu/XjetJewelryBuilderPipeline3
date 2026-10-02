@@ -18,7 +18,7 @@ from p3 import assets
 from p3.accounts import Principal, UsageImage
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
-from p3.naming import ProductName
+from p3.naming import ProductName, UniqueTitle, VariationTitle
 from p3.providers import endpoints
 from p3.modelconfig import BuildRequest, ByEndpoint, Render
 from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
@@ -75,11 +75,12 @@ class ImageService:
         if ReferencePng is not None:
             RefPath = f"designs/{DesignId}/references/{BatchId}.png"
             assets.WriteAtomic(self.Ctx.Settings.AssetsDir, RefPath, ReferencePng)
+        Title = UniqueTitle(Db, ProductName(Prompt))             # never the same name as another ring
         with Db.Transaction() as Conn:
             T = Now()
             Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, updated_at, "
                          "ai_mode) VALUES (?,?,?,?,?,?,?,?)",
-                         (DesignId, Who.AccountId, ProductName(Prompt), Prompt, ClientRequestId, T, T, self.Ctx.Provider.Name))
+                         (DesignId, Who.AccountId, Title, Prompt, ClientRequestId, T, T, self.Ctx.Provider.Name))
             self._InsertBatch(Conn, BatchId, DesignId, "initial", None, Prompt, RefPath, None)
         self._StartBatch(BatchId)
         return self.GetBatch(BatchId)
@@ -114,12 +115,13 @@ class ImageService:
         self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, self.Ctx.Gen.Images.CandidatesPerBatch)
         BatchId = NewId("bat")
         Target = NewId("dsg") if Fork else DesignId
+        ForkTitle = VariationTitle(Db, D["title"]) if Fork else None     # "Fil Twist Variation", never the master's own name
         with Db.Transaction() as Conn:
             T = Now()
             if Fork:
                 Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, "
                              "updated_at, ai_mode, source_design_id, source_candidate_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                             (Target, Who.AccountId, D["title"], D["prompt"], ClientRequestId, T, T,
+                             (Target, Who.AccountId, ForkTitle, D["prompt"], ClientRequestId, T, T,
                               self.Ctx.Provider.Name, DesignId, ParentCandidateId))
             self._InsertBatch(Conn, BatchId, Target, "refine", ParentCandidateId, Instruction,
                               Parent["asset_path"], None if Fork else ClientRequestId)

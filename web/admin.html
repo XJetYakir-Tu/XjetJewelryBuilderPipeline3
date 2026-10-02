@@ -70,8 +70,8 @@
       </div>
     </template>
   </div>
-  <!-- Hover preview of a session image (fixed, so the scrolling table cannot clip it) -->
-  <div x-show="zoom" x-cloak class="fixed z-50 pointer-events-none bg-white border border-zinc-200 shadow-xl p-2"
+  <!-- Hover preview of any image in the Admin (fixed, so a scrolling table cannot clip it) -->
+  <div id="zoom-preview" x-show="zoom" x-cloak class="fixed z-50 pointer-events-none bg-white border border-zinc-200 shadow-xl p-2"
        :style="zoom ? { left: zoom.x + 'px', top: zoom.y + 'px', width: zoom.size + 'px' } : {}">
     <img :src="zoom?.src" class="w-full aspect-square object-contain bg-zinc-50" alt="">
     <p class="text-[12px] text-zinc-600 mt-1.5 truncate" x-text="zoom?.label"></p>
@@ -870,7 +870,8 @@
               <template x-for="m in sd.catalog.materials"><option :value="m.id" :selected="m.id === g3.material" x-text="m.label + ' · ' + m.density_g_cm3 + ' g/cm³'"></option></template>
             </select>
           </div>
-          <button class="btn h-[38px]" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.existing_model ? 'Recalculate geometry' : 'Generate 3D'"></button>
+          <button class="btn h-[38px]" x-show="!sd.three_d_defaults.source_model" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.existing_model ? 'Recalculate geometry' : 'Generate 3D'"></button>
+          <button class="btn2 h-[38px] !text-amber-800 !border-amber-400" x-show="sd.three_d_defaults.source_model" @click="openNewModel()">New model for this variation…</button>
           <p class="text-[12px] text-zinc-500" x-text="sd.three_d_defaults.customer_size != null ? 'Customer choice' : 'Default US 10 is used'"></p>
           <p class="text-[12px]" :class="g3.size !== (sd.three_d_defaults.customer_size ?? 10) ? 'text-amber-700' : 'text-zinc-500'" x-text="g3.size !== (sd.three_d_defaults.customer_size ?? 10) ? 'Manual override' : 'Same as customer / default'"></p>
           <p class="text-[12px]" :class="sd.three_d_defaults.customer_material && g3.material !== sd.three_d_defaults.customer_material ? 'text-amber-700' : 'text-zinc-500'"
@@ -903,12 +904,23 @@
             <button class="text-[12px] uppercase tracking-widest underline text-amber-900/70 hover:text-amber-900" @click="openNewModel()">Generate a completely new Hi3D model instead…</button>
           </div>
         </template>
+        <!-- A variation of a gallery master whose model exists: no open "Generate 3D" — the admin decides on purpose -->
+        <template x-if="sd.three_d_defaults.source_model && !sd.three_d_defaults.existing_model">
+          <div class="border border-amber-200 bg-amber-50 p-4 space-y-2">
+            <p class="text-sm font-semibold text-amber-900">This is a variation of <span x-text="sd.three_d_defaults.source_model.title"></span> — the source design already has a 3D model</p>
+            <p class="text-[12px] text-amber-900/80">
+              Source model <span class="font-mono" x-text="sd.three_d_defaults.source_model.ring_id"></span>. If the refinement did not change the shape, use that model:
+              <a class="underline font-medium" :href="'#/sessions/' + encodeURIComponent(sd.three_d_defaults.source_model.design_id)" x-text="'open ' + sd.three_d_defaults.source_model.design_ring_id + ' and recalculate for this customer’s size and material'"></a>.
+              A model for this variation is <strong>another paid Hi3D call</strong> and needs the typed confirmation.
+            </p>
+          </div>
+        </template>
         <!-- Typed confirmation for a second paid Hi3D model -->
         <template x-if="newModel.open">
           <div class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" @click.self="newModel.open = false" @keydown.escape.window="newModel.open = false">
             <div class="card p-6 w-full max-w-lg space-y-4">
-              <p class="text-base font-semibold text-red-700">A 3D model already exists for this design.</p>
-              <p class="text-sm text-zinc-700">Generating a new model will create <strong>another paid Hi3D request</strong>. The existing model (<span class="font-mono" x-text="sd.three_d_defaults.existing_model?.ring_id"></span>) stays available for every size and material. Only do this for a genuinely different image.</p>
+              <p class="text-base font-semibold text-red-700" x-text="sd.three_d_defaults.existing_model ? 'A 3D model already exists for this design.' : 'The source design already has a 3D model.'"></p>
+              <p class="text-sm text-zinc-700">Generating a new model will create <strong>another paid Hi3D request</strong>. The existing model (<span class="font-mono" x-text="sd.three_d_defaults.existing_model?.ring_id || sd.three_d_defaults.source_model?.ring_id"></span>) stays available for every size and material. Only do this for a genuinely different shape.</p>
               <label class="lbl">Option to model</label>
               <select class="inp" x-model="newModel.candidate">
                 <template x-for="o in sd.three_d_defaults.options" :key="o.id"><option :value="o.id" x-text="o.ring_id + (o.selected ? ' · selected' : '') + (o.id === sd.three_d_defaults.existing_model?.candidate_id ? ' · already modelled' : '')"></option></template>

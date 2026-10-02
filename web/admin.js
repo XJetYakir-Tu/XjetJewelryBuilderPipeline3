@@ -177,6 +177,7 @@ function adminApp() {
 
     async init() {
       window.addEventListener('hashchange', () => this.route());
+      this.installZoom();
       try {   // the Sessions filters survive a reload
         const f = JSON.parse(sessionStorage.getItem('p3_admin_filters') || 'null');
         if (f) Object.assign(this, { sq: f.sq || '', sStage: f.sStage || '', sBag: f.sBag || '', s3d: f.s3d || '', sMock: !!f.sMock, sAttention: !!f.sAttention, sSort: f.sSort || 'started' });
@@ -598,13 +599,26 @@ function adminApp() {
     },
     prodLabel(s) { return (PROD_STATE[s] || [s || '—'])[0]; },
     prodClass(s) { return (PROD_STATE[s] || [, 'bg-zinc-100 text-zinc-500'])[1]; },
-    // Large hover preview next to the thumbnail, kept inside the window.
-    showZoom(ev, src, label) {
-      const r = ev.currentTarget.getBoundingClientRect(), size = Math.min(340, window.innerWidth - 32);
+    // Large hover preview next to a thumbnail, kept inside the window.
+    showZoom(ev, src, label, el = null) {
+      const r = (el || ev.currentTarget).getBoundingClientRect(), size = Math.min(420, window.innerWidth - 32, window.innerHeight - 80);
       let x = r.right + 12, y = r.top + r.height / 2 - size / 2;
       if (x + size > window.innerWidth - 16) x = Math.max(16, r.left - size - 12);
       y = Math.max(16, Math.min(y, window.innerHeight - size - 48));
       this.zoom = { src, label, x, y, size };
+    },
+    // Every image in the Admin enlarges on hover (thumbnails in tables, cards, option grids) — one delegated
+    // handler, so new screens get it for free. Big images and the preview itself are left alone.
+    installZoom() {
+      document.addEventListener('mouseover', (e) => {
+        const img = e.target.closest?.('img');
+        if (!img || img.closest('#zoom-preview') || !img.src || img.getBoundingClientRect().width > 260) return;
+        if (this.zoom && this.zoom.src === img.src) return;
+        const row = img.closest('tr, li, article, .card, button');
+        const label = img.dataset.label || img.alt || row?.querySelector('.font-medium, .font-semibold, .font-mono')?.textContent?.trim() || '';
+        this.showZoom(null, img.src, label, img);
+      });
+      document.addEventListener('mouseout', (e) => { if (e.target.closest?.('img') && !e.relatedTarget?.closest?.('img')) this.zoom = null; });
     },
     // ── live 3D status: real persisted stages, polled lightly; the clock ticks locally ──
     setLive(id, s) {
