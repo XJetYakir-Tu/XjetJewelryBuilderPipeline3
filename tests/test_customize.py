@@ -164,6 +164,20 @@ def _ClearFixedPrices(H):
     H.Ctx.MaterialPrices.Save({"materials": {M: {**R, "fixed_price": None} for M, R in Doc["materials"].items()}}, "test")
 
 
+async def test_bag_line_is_stale_only_after_the_material_price_changes(H):
+    DesignId, Cand = await _Ready(H)
+    Cus = await H.Proceed(DesignId, Cand["id"])
+    Cus = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 7})).json()
+    Bag = (await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})).json()
+    Line = Bag["lines"][0]
+    assert Line["pricing_version"] == Cus["quote"]["pricing_version"] and not Line["price_is_stale"]   # just added
+    assert not (await H.Client.get("/api/bag")).json()["lines"][0]["price_is_stale"]
+    Doc = H.Ctx.MaterialPrices.Current()
+    H.Ctx.MaterialPrices.Save({"materials": {M: {**R, "fixed_price": (R["fixed_price"] or 0) + 5 if M == "silver" else R["fixed_price"]}
+                                             for M, R in Doc["materials"].items()}}, "test", "silver +5")
+    assert (await H.Client.get("/api/bag")).json()["lines"][0]["price_is_stale"]        # the table changed
+
+
 async def test_bag_rejects_fashion_when_pricing_unavailable(H):
     _ClearFixedPrices(H)
     DesignId, Cand = await _Ready(H)

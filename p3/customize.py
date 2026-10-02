@@ -151,13 +151,15 @@ class CustomizeService:
         return self.Bag(Who)
 
     def Bag(self, Who: Principal) -> dict:
-        CurrentVersion = self.Ctx.Pricing.ProfileVersion
         Lines = []
         Totals: dict[str, float] = {}
+        Current: dict[str, str | None] = {}         # material → the pricing version a quote carries today
         for L in self.Ctx.Db.All("SELECT b.*, c.asset_path, d.title FROM bag_lines b "
                                  "JOIN candidates c ON c.id = b.candidate_id JOIN designs d ON d.id = b.design_id "
                                  "WHERE b.owner_account_id = ? ORDER BY b.created_at", (Who.AccountId,)):
             Mat = self.Ctx.Catalog.Get(L["material_id"])
+            if L["material_id"] not in Current:
+                Current[L["material_id"]] = self.Ctx.Pricing.QuoteFor(L["material_id"]).pricing_version
             Total = round(L["unit_price"] * L["quantity"], 2)
             Totals[L["currency"]] = round(Totals.get(L["currency"], 0) + Total, 2)
             Lines.append({"id": L["id"], "design_id": L["design_id"], "title": L["title"],
@@ -165,7 +167,7 @@ class CustomizeService:
                           "material_id": L["material_id"], "material_label": Mat.Label if Mat else L["material_id"],
                           "ring_size": L["ring_size"], "quantity": L["quantity"], "unit_price": L["unit_price"],
                           "currency": L["currency"], "line_total": Total, "pricing_version": L["pricing_version"],
-                          "price_is_stale": L["pricing_version"] != CurrentVersion,
+                          "price_is_stale": L["pricing_version"] != Current[L["material_id"]],
                           "quote": json.loads(L["quote_json"])})
         return {"lines": Lines, "totals": Totals, "checkout_available": False,
                 "checkout_note": "Ordering is not available in this Pipeline 3 prototype. "
