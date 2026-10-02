@@ -131,6 +131,8 @@ function p3App() {
     homeGallery: [],                                                           // the 8 gallery designs this visit features (random per page load)
     heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the featured rings
     zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
+    openedFromList: false,                                                     // a saved design opened from My Designs: images only, no prompt echo
+    candIndex: 0,                                                              // phone: which of the four options is in view
     previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null, _swipeX: null,
     menuOpen: false,                   // mobile navigation
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
@@ -693,6 +695,7 @@ function p3App() {
       this.submitting = true;
       try {
         const batch = await this.api('POST', '/api/designs', fd);
+        this.openedFromList = false; this.candIndex = 0;
         this.userInput = ''; this.clearUpload();
         await this.openDesign(batch.design_id);
         this.loadDesigns();
@@ -719,6 +722,7 @@ function p3App() {
       this.stopPolling();
       const d = await this.api('GET', `/api/designs/${designId}`);
       this.design = d; this.cust = null; this.pendingRefineBatchId = null;
+      this.openedFromList = true; this.candIndex = 0;
       this.actionError = ''; this.composeError = '';
       const last = d.batches[d.batches.length - 1];
       // Show the newest batch that has something to show; a still-running refinement is shown as progress.
@@ -739,6 +743,17 @@ function p3App() {
 
     batch(id) { return this.design?.batches.find(b => b.id === id); },
     get viewBatch() { return this.batch(this.viewBatchId); },
+    // Phone: the four options are a swipeable row; the dots follow the scroll position
+    candScroll(ev) {
+      const el = ev.target, first = el.querySelector('.cand-card');      // (the first child is Alpine's template)
+      if (!first) return;
+      const step = first.getBoundingClientRect().width + 12;
+      this.candIndex = Math.max(0, Math.min((this.viewBatch?.candidates || []).length - 1, Math.round(el.scrollLeft / step)));
+    },
+    scrollCand(i) {
+      const el = this.$refs.candRow, card = el?.querySelectorAll('.cand-card')[i];
+      if (card) el.scrollTo({ left: card.offsetLeft - 16, behavior: 'smooth' });
+    },
     get pendingBatch() { return this.batch(this.pendingRefineBatchId); },
     get visibleBatches() { return (this.design?.batches || []).filter(b => b.id !== this.pendingRefineBatchId); },
     get selectedId() { return this.design?.selected_candidate_id || null; },
@@ -873,11 +888,13 @@ function p3App() {
           const was = this.design?.title, own = !this.design?.shared;
           this.userInput = '';
           await this.openDesign(b.design_id);
+          this.openedFromList = false;           // just typed: the refinement's prompt echo shows
           this.loadDesigns();
           if (own && this.design?.title) this.showToast(`Saved as a new design “${this.design.title}” — “${was}” stays as it is`, { ms: 7000 });
           return;
         }
         this.design.batches.push(b);
+        this.openedFromList = false; this.candIndex = 0;
         this.pendingRefineBatchId = b.id;      // keep the current grid until the new batch is ready
         this.userInput = '';
         this.ensurePolling();

@@ -39,7 +39,7 @@
         button:not([class*="rounded"]):not([class*="border-b"]) { border-radius: 6px; }
         .btn-gold {
             display: inline-flex; align-items: center; justify-content: center;
-            background: linear-gradient(90deg, #C1995A 0%, #8A561B 100%) !important;
+            background: linear-gradient(90deg, #C9A96E 0%, #B08040 100%) !important;
             color: #1A1A1A !important; font-weight: 600 !important; font-size: 14px !important;
             letter-spacing: 0.08em !important; text-transform: uppercase;
             box-shadow: 0 4px 12px rgba(138, 86, 27, 0.25) !important; border-radius: 6px;
@@ -62,10 +62,13 @@
         .btn-outline:disabled { opacity: 0.45; cursor: not-allowed; }
         .stream-glow { box-shadow: 0 0 22px rgba(201,169,110,0.28); }
         button { font-size: 14px; }
+        body .text-zinc-400 { color: #52525B; }
         .bg-white .text-zinc-400, .bg-zinc-50 .text-zinc-400 { color: #52525B; }
         .bg-white .text-zinc-300, .bg-zinc-50 .text-zinc-300 { color: #71717A; }
         .bg-zinc-900 .text-zinc-400, .bg-zinc-800 .text-zinc-400 { color: #A1A1AA; }
         .step-numeral { color: #E8DFD0 !important; }
+        .cand-card.is-selected { border-color: #8A6420 !important; box-shadow: 0 0 0 3px rgba(138, 100, 32, 0.28); }
+        .cand-row { scrollbar-width: none; } .cand-row::-webkit-scrollbar { display: none; }
         .tap, .tap-lg { position: relative; }
         .tap::after { content: ''; position: absolute; inset: -6px; }
         .tap-lg::after { content: ''; position: absolute; inset: -12px; }
@@ -101,7 +104,7 @@
     </div>
 
     <!-- ── Mode banner: always tells the viewer whether the AI provider is real ── -->
-    <div x-show="isMock" x-cloak class="w-full shrink-0 px-4 py-1.5 text-center text-[11px] tracking-wide"
+    <div x-show="isMock" x-cloak class="w-full shrink-0 px-4 py-1.5 text-center text-[12px] tracking-wide"
          style="background:#FFF4DB; color:#7A4D00; border-bottom:1px solid #F0D9A8;" role="status">
         <span class="font-semibold uppercase tracking-[0.16em]">Mock mode</span>
         · Designs, movies and 3D files are simulated placeholders. No AI provider is called and nothing is charged.
@@ -119,7 +122,7 @@
             <button type="button" class="flex items-center gap-2 md:gap-3" @click="navigateTo('home')" aria-label="XJet Atelier — home">
                 <span class="text-lg md:text-2xl font-bold tracking-[0.08em] md:tracking-[0.15em] uppercase italic brand-font text-zinc-900">XJet</span>
                 <span class="hidden md:block h-4 md:h-5 w-[1px] bg-zinc-300"></span>
-                <span class="hidden md:inline text-[10px] md:text-[11px] uppercase tracking-[0.2em] text-zinc-500 font-medium">Atelier</span>
+                <span class="hidden md:inline text-[12px] md:text-[12px] uppercase tracking-[0.2em] text-zinc-500 font-medium">Atelier</span>
             </button>
         </div>
 
@@ -133,25 +136,25 @@
                 <button @click="navigateTo('designers')"   :class="view === 'designers'   ? 'text-black' : 'hover:text-black transition'">About XJet</button>
             </div>
             <div x-show="['ai-studio','review','checkout','order','confirmation'].includes(view)" class="flex items-center gap-1 md:gap-3 leading-none">
-                <button class="text-[10px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
+                <button class="text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
                         :class="view === 'ai-studio' ? 'font-bold text-zinc-900 !border-zinc-900' : 'text-zinc-500 hover:text-zinc-800'"
                         @click="design && navigateTo('ai-studio')">Design</button>
                 <span class="text-zinc-400 text-xs leading-none">—</span>
-                <button class="text-[10px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
+                <button class="text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
                         :class="view === 'review' ? 'font-bold text-zinc-900 !border-zinc-900' : 'text-zinc-500 hover:text-zinc-800'"
                         @click="cust && navigateTo('review')">Customize</button>
                 <span class="text-zinc-400 text-xs leading-none">—</span>
-                <button class="text-[10px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
+                <button class="text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
                         :class="view === 'checkout' ? 'font-bold text-zinc-900 !border-zinc-900' : 'text-zinc-500 hover:text-zinc-800'"
                         @click="navigateTo('checkout')">Bag</button>
                 <span x-show="['order','confirmation'].includes(view)" class="text-zinc-400 text-xs leading-none">—</span>
-                <span x-show="['order','confirmation'].includes(view)" class="text-[10px] md:text-[15px] uppercase tracking-normal md:tracking-widest font-bold text-zinc-900 border-b border-zinc-900 pb-0.5 leading-none">Checkout</span>
+                <span x-show="['order','confirmation'].includes(view)" class="text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest font-bold text-zinc-900 border-b border-zinc-900 pb-0.5 leading-none">Checkout</span>
             </div>
         </div>
 
         <div class="flex items-center justify-end gap-2 md:gap-3">
             <!-- Mode chip -->
-            <span x-show="isMock" x-cloak class="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-[0.14em]"
+            <span x-show="isMock" x-cloak class="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded text-[12px] font-semibold uppercase tracking-[0.14em]"
                   style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;" title="Simulated provider — nothing is generated or charged">
                 <span class="w-1.5 h-1.5 rounded-full" style="background:#D08A00;"></span>Mock
             </span>
@@ -163,24 +166,24 @@
                     <line x1="3" y1="6" x2="21" y2="6" stroke-linecap="round"/>
                     <path stroke-linecap="round" stroke-linejoin="round" d="M16 10a4 4 0 01-8 0"/>
                 </svg>
-                <span class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full bg-black text-white text-[10px] font-bold flex items-center justify-center px-0.5" x-text="bagCount"></span>
+                <span class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full bg-black text-white text-[12px] font-bold flex items-center justify-center px-0.5" x-text="bagCount"></span>
             </button>
-            <button x-show="view === 'home'" @click="resetAIFlow()" class="btn-gold px-6 py-3 text-[11px] uppercase tracking-[0.16em] font-semibold stream-glow transition hidden sm:inline-flex">Start Designing</button>
+            <button x-show="view === 'home'" @click="resetAIFlow()" class="btn-gold px-6 py-3 text-[12px] uppercase tracking-[0.16em] font-semibold stream-glow transition hidden sm:inline-flex">Start Designing</button>
             <!-- Quota coin — visible when logged in; prefixed with the signed-in user's name when known.
                  Click opens the account panel (name, email, access token, usage). -->
             <button type="button" x-show="userSession" @click="toggleAccountPanel()"
                     class="relative hidden md:flex items-center gap-1 select-none group rounded-md px-1.5 py-1 -my-1 transition hover:bg-zinc-100"
                     :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="Account and generations">
                 <span x-show="displayName" x-text="displayName" class="text-[12px] font-medium text-zinc-700 max-w-[160px] truncate" :title="displayName"></span>
-                <span x-show="displayName" class="text-[11px] text-zinc-400 px-0.5" aria-hidden="true">•</span>
+                <span x-show="displayName" class="text-[12px] text-zinc-400 px-0.5" aria-hidden="true">•</span>
                 <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#9A7230" stroke-width="0.5"/>
-                    <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#9A7230" stroke-width="0.7" opacity="0.45"/>
+                    <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
+                    <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
                     <circle cx="8.5" cy="8.5" r="1.4" fill="#7A5A10" opacity="0.5"/>
                 </svg>
-                <span x-text="quotaRemaining" class="text-sm font-semibold tabular-nums" style="color:#C9A96E;"></span>
+                <span x-text="quotaRemaining" class="text-sm font-semibold tabular-nums" style="color:#8A6420;"></span>
                 <svg class="w-3 h-3 text-zinc-400 transition-transform" :class="accountPanelOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                <div x-show="!accountPanelOpen" class="absolute top-full right-0 mt-2 px-3 py-1.5 bg-zinc-900 text-white text-[11px] rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-[300]">
+                <div x-show="!accountPanelOpen" class="absolute top-full right-0 mt-2 px-3 py-1.5 bg-zinc-900 text-white text-[12px] rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-[300]">
                     <span x-text="(displayName ? displayName + ' • ' : '') + quotaText + ' — click for details'"></span>
                     <div class="absolute -top-1 right-2.5 w-2 h-2 bg-zinc-900 rotate-45"></div>
                 </div>
@@ -188,7 +191,7 @@
             <!-- Sign in / Sign out — homepage only -->
             <button x-show="view === 'home'"
                     @click="userSession ? logout() : openRegModal()"
-                    class="tap-lg text-[11px] uppercase tracking-widest transition"
+                    class="tap-lg text-[12px] uppercase tracking-widest transition"
                     style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'"
                     x-text="userSession ? 'Sign out' : 'Sign in'"></button>
             <!-- Exit — all non-home screens; leaves the studio and returns to the homepage (it does not sign out) -->
@@ -221,8 +224,8 @@
             <section class="flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh-57px)] bg-white">
                 <div class="md:w-[46%] px-8 py-6 md:p-10 lg:p-14 2xl:p-20 flex flex-col justify-center">
                     <div class="flex flex-col gap-1 mb-5 md:mb-7 md:mt-8">
-                        <span class="text-[11px] uppercase tracking-[0.22em] font-semibold" style="color:#9A7235">Bespoke Jewellery</span>
-                        <span class="text-[10px] uppercase tracking-[0.22em] font-semibold" style="color:#9A7235">Powered by AI</span>
+                        <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Bespoke Jewellery</span>
+                        <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Powered by AI</span>
                     </div>
                     <h1 class="text-5xl md:text-6xl lg:text-[4rem] 2xl:text-[4.5rem] leading-[1.08] text-zinc-900 mb-6 brand-font" style="text-wrap:balance">
                         Custom Jewelry,<br><span class="italic font-normal" style="color:#B08040">Designed by You</span>
@@ -235,12 +238,12 @@
                         <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Preview it in a 360° movie</div>
                     </div>
                     <div class="flex flex-col sm:flex-row gap-4">
-                        <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-[11px] uppercase tracking-[0.16em] stream-glow transition font-semibold">Start Designing</button>
+                        <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-[12px] uppercase tracking-[0.16em] stream-glow transition font-semibold">Start Designing</button>
                         <button @click="scrollToHowItWorks()" class="btn-outline px-10 py-4 transition">How It Works</button>
                     </div>
                     <p class="mt-5 text-[13px] leading-snug text-zinc-600 max-w-[420px]"><span class="font-semibold text-zinc-800">Rings</span> — the first XJet Atelier collection, made to order in real metal.</p>
                     <!-- Internal testing mode is always marked; live mode is the normal state and needs no badge -->
-                    <p x-show="isMock" x-cloak class="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
+                    <p x-show="isMock" x-cloak class="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
                        style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8" data-testid="home-ai-mode">
                         <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
                     </p>
@@ -258,7 +261,7 @@
                                          :class="i === heroIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.03] pointer-events-none'" :style="i === heroIndex ? 'z-index:2' : 'z-index:1'" decoding="async">
                                 </template>
                             </button>
-                            <span class="absolute top-8 left-4 inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] font-semibold px-3 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-sm" style="color:#9A7230;z-index:3" aria-live="polite">
+                            <span class="absolute top-8 left-4 inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.18em] font-semibold px-3 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-sm" style="color:#8A6420;z-index:3" aria-live="polite">
                                 <span class="w-1.5 h-1.5 rounded-full" style="background:#C9A96E;"></span><span x-text="heroRing.title"></span>
                             </span>
                             <!-- The whole gallery under the main image: tap a ring to show it (the rotation continues from there) -->
@@ -271,7 +274,7 @@
                                     </button>
                                 </template>
                             </div>
-                            <p class="mt-3 text-center text-[11px] uppercase tracking-[0.2em] text-zinc-500">Real rings from the Inspiration Gallery · tap one to make it yours</p>
+                            <p class="mt-3 text-center text-[12px] uppercase tracking-[0.2em] text-zinc-500">Real rings from the Inspiration Gallery · tap one to make it yours</p>
                         </div>
                     </template>
                     <div x-show="!heroRing && galleryState === 'loading'" class="aspect-square rounded-3xl shimmer" style="width:min(92%, 700px, calc(100vh - 260px));" aria-hidden="true"></div>
@@ -281,9 +284,38 @@
                 </div>
             </section>
 
+            <section class="py-24 px-8 md:px-20 bg-white">
+                <div class="text-center mb-12">
+                    <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Inspiration Gallery</span>
+                    <h2 class="text-3xl md:text-4xl brand-font mb-4">What Will You Create?</h2>
+                    <p class="text-zinc-600 text-[15px] max-w-xl mx-auto">Bands, signets, statement and stackable rings — real XJet designs you can make your own, or the spark for one of yours.</p>
+                </div>
+                <!-- Real XJet designs: one tap opens the design; "Make it yours" links the customer to the shared master design -->
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
+                    <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
+                    <template x-for="g in homeGallery" :key="g.id">
+                        <button type="button" @click="openGallery(g)" class="group relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
+                            <img :src="g.image_url" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy">
+                            <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
+                        </button>
+                    </template>
+                    <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery — start with your own idea below.</div>
+                    <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
+                </div>
+                <!-- More than the featured eight: the whole gallery opens in its own grid -->
+                <div x-show="gallery.length > 8" x-cloak class="text-center mt-8">
+                    <button type="button" @click="galleryGridOpen = true" class="inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.2em] font-semibold px-6 py-3 rounded-full border transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" style="color:#8A6420; border-color:#E8DCC4;" onmouseover="this.style.borderColor='#C9A96E'; this.style.background='#FBF7EF'" onmouseout="this.style.borderColor='#E8DCC4'; this.style.background='transparent'">
+                        <span x-text="'View all ' + gallery.length + ' designs'"></span><span aria-hidden="true">→</span>
+                    </button>
+                </div>
+                <div class="text-center mt-10">
+                    <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Your Design</button>
+                </div>
+            </section>
+
             <section id="how-it-works" class="py-24 px-8 md:px-20 bg-zinc-50">
                 <div class="text-center mb-14">
-                    <span class="text-[10px] uppercase tracking-[0.4em] mb-3 block" style="color:#C9A96E">The Process</span>
+                    <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">The Process</span>
                     <h2 class="text-3xl md:text-4xl brand-font mb-4">Custom Jewelry Made Simple</h2>
                     <p class="text-zinc-500 text-sm max-w-lg mx-auto">From idea to finished piece in four simple steps.</p>
                 </div>
@@ -304,39 +336,10 @@
                 <p class="text-center text-sm text-zinc-400 italic">You see your design before anything is made.</p>
             </section>
 
-            <section class="py-24 px-8 md:px-20 bg-white">
-                <div class="text-center mb-12">
-                    <span class="text-[11px] uppercase tracking-[0.4em] mb-3 block" style="color:#C9A96E">Inspiration Gallery</span>
-                    <h2 class="text-3xl md:text-4xl brand-font mb-4">What Will You Create?</h2>
-                    <p class="text-zinc-600 text-[15px] max-w-xl mx-auto">Bands, signets, statement and stackable rings — real XJet designs you can make your own, or the spark for one of yours.</p>
-                </div>
-                <!-- Real XJet designs: one tap opens the design; "Make it yours" links the customer to the shared master design -->
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
-                    <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
-                    <template x-for="g in homeGallery" :key="g.id">
-                        <button type="button" @click="openGallery(g)" class="group relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                            <img :src="g.image_url" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy">
-                            <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#9A7230;">Make it yours →</span></span>
-                        </button>
-                    </template>
-                    <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery — start with your own idea below.</div>
-                    <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#9A7230;">Try again</button></div>
-                </div>
-                <!-- More than the featured eight: the whole gallery opens in its own grid -->
-                <div x-show="gallery.length > 8" x-cloak class="text-center mt-8">
-                    <button type="button" @click="galleryGridOpen = true" class="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] font-semibold px-6 py-3 rounded-full border transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" style="color:#9A7230; border-color:#E8DCC4;" onmouseover="this.style.borderColor='#C9A96E'; this.style.background='#FBF7EF'" onmouseout="this.style.borderColor='#E8DCC4'; this.style.background='transparent'">
-                        <span x-text="'View all ' + gallery.length + ' designs'"></span><span aria-hidden="true">→</span>
-                    </button>
-                </div>
-                <div class="text-center mt-10">
-                    <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Your Design</button>
-                </div>
-            </section>
-
             <section class="py-24 px-8 md:px-20 bg-zinc-900 text-white">
                 <div class="max-w-5xl mx-auto flex flex-col md:flex-row gap-16 items-center">
                     <div class="md:w-1/2">
-                        <span class="text-[10px] uppercase tracking-[0.4em] mb-4 block" style="color:#C9A96E">Technology</span>
+                        <span class="text-[12px] uppercase tracking-[0.4em] mb-4 block" style="color:#8A6420">Technology</span>
                         <h2 class="text-3xl md:text-4xl brand-font mb-6">Made with XJet<br>NanoParticle Jetting™</h2>
                         <p class="text-zinc-400 leading-relaxed mb-8 text-sm">Your design is created digitally and made in real metal with advanced production technology. This allows more detail, more personalization, and more freedom than traditional custom jewelry.</p>
                         <ul class="space-y-3 mb-8">
@@ -344,7 +347,7 @@
                                 <li class="flex items-center gap-3 text-sm text-zinc-400"><span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:#C9A96E"></span><span x-text="b"></span></li>
                             </template>
                         </ul>
-                        <p class="text-[10px] uppercase tracking-widest text-zinc-400">Powered by XJet's advanced metal 3D printing technology.</p>
+                        <p class="text-[12px] uppercase tracking-widest text-zinc-400">Powered by XJet's advanced metal 3D printing technology.</p>
                     </div>
                     <div class="md:w-1/2"><img src="{{BASE}}/static/images/Ink.JPG" alt="" class="rounded-lg shadow-2xl w-full object-cover" onerror="this.style.display='none'"></div>
                 </div>
@@ -363,7 +366,7 @@
                                 <svg class="w-5 h-5" fill="none" stroke="#C9A96E" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" :d="t.icon"/></svg>
                             </div>
                             <div class="text-sm font-semibold text-zinc-800 mb-1" x-text="t.label"></div>
-                            <div class="text-[11px] text-zinc-400 leading-relaxed" x-text="t.sub"></div>
+                            <div class="text-[12px] text-zinc-400 leading-relaxed" x-text="t.sub"></div>
                         </div>
                     </template>
                 </div>
@@ -389,7 +392,7 @@
             </section>
 
             <section class="py-28 px-8 text-center bg-zinc-900 text-white">
-                <h2 class="text-4xl md:text-5xl brand-font mb-6">Your Jewelry.<br><span class="italic" style="color:#C9A96E">Your Design.</span></h2>
+                <h2 class="text-4xl md:text-5xl brand-font mb-6">Your Jewelry.<br><span class="italic" style="color:#8A6420">Your Design.</span></h2>
                 <p class="text-zinc-400 mb-10 max-w-md mx-auto text-sm leading-relaxed">Start with a description or an image. Choose from four designs, refine your favourite and preview it in 360°.</p>
                 <button @click="resetAIFlow()" class="btn-gold px-12 py-5 text-xs uppercase tracking-[0.25em] stream-glow transition">Start Designing Now</button>
             </section>
@@ -397,7 +400,7 @@
             <footer class="px-8 md:px-20 py-10 bg-zinc-900 border-t border-zinc-800 text-zinc-400 text-[12px]">
                 <div class="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div class="flex flex-col gap-1">
-                        <span class="brand-font text-white text-base tracking-[0.12em] uppercase italic">XJet <span class="not-italic text-zinc-400 text-[10px] tracking-[0.2em]">Atelier</span></span>
+                        <span class="brand-font text-white text-base tracking-[0.12em] uppercase italic">XJet <span class="not-italic text-zinc-400 text-[12px] tracking-[0.2em]">Atelier</span></span>
                         <span>© 2026 XJet Ltd. Custom rings designed with AI, produced with NanoParticle Jetting™.</span>
                     </div>
                     <nav aria-label="Legal and support" class="flex flex-wrap gap-x-6 gap-y-2">
@@ -415,7 +418,7 @@
     <template x-if="view === 'inspiration'">
         <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-white">
             <div class="max-w-4xl mx-auto text-center mb-16">
-                <span class="text-[11px] uppercase tracking-[0.4em] mb-3 block" style="color:#C9A96E">Gallery</span>
+                <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Gallery</span>
                 <h2 class="text-4xl brand-font mb-4">What Will You Create?</h2>
                 <p class="text-zinc-600 text-[15px] max-w-xl mx-auto">Bands, signets, statement and stackable rings — real XJet designs. Open one to see it large; make it yours to start from its four options.</p>
             </div>
@@ -424,11 +427,11 @@
                 <template x-for="g in gallery" :key="g.id">
                     <button type="button" @click="openGallery(g)" class="group relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                         <img :src="g.image_url" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy">
-                        <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#9A7230;">Make it yours →</span></span>
+                        <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                     </button>
                 </template>
                 <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery — start with your own idea below.</div>
-                <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#9A7230;">Try again</button></div>
+                <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
             </div>
             <div class="text-center"><button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Your Design</button></div>
         </main>
@@ -439,7 +442,7 @@
         <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-white">
             <div class="max-w-3xl mx-auto">
                 <div class="text-center mb-16">
-                    <span class="text-[10px] uppercase tracking-[0.4em] mb-3 block" style="color:#C9A96E">Questions</span>
+                    <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Questions</span>
                     <h2 class="text-4xl brand-font mb-4">Frequently Asked Questions</h2>
                 </div>
                 <div class="space-y-6" x-data="{ open: null }">
@@ -477,7 +480,7 @@
         <main class="flex-1 overflow-y-auto fade-in bg-white">
             <section class="py-20 px-8 md:px-20 bg-white border-b border-zinc-100">
                 <div class="max-w-4xl mx-auto">
-                    <span class="text-[10px] uppercase tracking-[0.4em] mb-3 block" style="color:#C9A96E">About XJet</span>
+                    <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">About XJet</span>
                     <h2 class="text-4xl brand-font mb-10">The Inkjet Revolution</h2>
                     <div class="space-y-6 text-zinc-600 text-[15px] leading-relaxed">
                         <p>As the pioneer of 3D inkjet technologies, XJet 3D offers a disruptive digital manufacturing solution for metal and ceramic production, delivering exceptional part quality, maximum automation, and superior sustainability benefits. Our technology addresses the challenges of printing <strong class="text-zinc-900">small, complex and high-quality</strong> components at scale for premium products and luxury applications.</p>
@@ -518,7 +521,7 @@
                                     <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" :d="f.icon"/></svg>
                                 </div>
                                 <div class="text-xl font-semibold brand-font text-zinc-900 mb-1" x-text="f.stat"></div>
-                                <div class="text-[11px] uppercase tracking-widest text-zinc-400 leading-tight text-center" x-text="f.label"></div>
+                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center" x-text="f.label"></div>
                             </div>
                         </template>
                     </div>
@@ -535,8 +538,8 @@
                     <h2 class="text-5xl brand-font mb-8">NanoParticle Jetting™</h2>
                     <p class="text-zinc-600 leading-relaxed text-lg mb-8">Unlike traditional 3D printing, NPJ uses liquid dispersion. It prints metal and soluble support simultaneously, enabling internal voids and complex lattices.</p>
                     <div class="grid grid-cols-2 gap-8">
-                        <div><div class="text-3xl font-light mb-1">8μm</div><div class="text-[10px] uppercase tracking-widest text-zinc-400">Layer Thickness</div></div>
-                        <div><div class="text-3xl font-light mb-1">99.8%</div><div class="text-[10px] uppercase tracking-widest text-zinc-400">Metal Density</div></div>
+                        <div><div class="text-3xl font-light mb-1">8μm</div><div class="text-[12px] uppercase tracking-widest text-zinc-400">Layer Thickness</div></div>
+                        <div><div class="text-3xl font-light mb-1">99.8%</div><div class="text-[12px] uppercase tracking-widest text-zinc-400">Metal Density</div></div>
                     </div>
                 </div>
                 <div class="md:w-1/2 space-y-6">
@@ -554,7 +557,7 @@
     <template x-if="view === 'materials'">
         <main class="flex-1 overflow-y-auto fade-in bg-white">
             <section class="px-6 md:px-20 pt-14 md:pt-20 pb-10 text-center">
-                <span class="text-[11px] uppercase tracking-[0.4em] mb-3 block" style="color:#C9A96E">Materials &amp; Pricing</span>
+                <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Materials &amp; Pricing</span>
                 <h2 class="text-4xl brand-font mb-4">Real metal, one fixed price per ring</h2>
                 <p class="text-zinc-600 text-[15px] max-w-2xl mx-auto leading-relaxed">Every ring is printed to order in the metal you choose. Fashion metals have a fixed price per ring — any size, any design. Gold is quoted individually.</p>
             </section>
@@ -579,14 +582,14 @@
                                 </div>
                                 <p class="text-[20px] brand-font text-zinc-900" x-text="materialPriceText(m.id)"></p>
                                 <dl class="text-[13px] text-zinc-700 space-y-2 leading-snug">
-                                    <div><dt class="text-[11px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Appearance</dt><dd x-text="info(m.id).appearance"></dd></div>
-                                    <div><dt class="text-[11px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Finish</dt><dd x-text="info(m.id).finish"></dd></div>
-                                    <div><dt class="text-[11px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Wear &amp; durability</dt><dd x-text="info(m.id).durability"></dd></div>
-                                    <div><dt class="text-[11px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Care</dt><dd x-text="info(m.id).care"></dd></div>
+                                    <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Appearance</dt><dd x-text="info(m.id).appearance"></dd></div>
+                                    <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Finish</dt><dd x-text="info(m.id).finish"></dd></div>
+                                    <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Wear &amp; durability</dt><dd x-text="info(m.id).durability"></dd></div>
+                                    <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Care</dt><dd x-text="info(m.id).care"></dd></div>
                                 </dl>
                                 <div class="mt-auto pt-3 flex items-center justify-between gap-3">
                                     <span class="inline-flex items-center gap-1.5 text-[12px] font-semibold" style="color:#146C43;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Available to order</span>
-                                    <button @click="resetAIFlow()" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#9A7230;">Design in <span x-text="m.label"></span></button>
+                                    <button @click="resetAIFlow()" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#8A6420;">Design in <span x-text="m.label"></span></button>
                                 </div>
                             </div>
                         </article>
@@ -610,7 +613,7 @@
                                 <h4 class="text-[14px] font-semibold text-zinc-900" x-text="m.label"></h4>
                                 <p class="text-[12px] text-zinc-600 leading-snug" x-text="info(m.id).appearance"></p>
                                 <p class="text-[12px] text-zinc-500 leading-snug" x-text="info(m.id).durability"></p>
-                                <p class="text-[11px] uppercase tracking-widest mt-auto pt-1" style="color:#8A561B;">By request</p>
+                                <p class="text-[12px] uppercase tracking-widest mt-auto pt-1" style="color:#8A561B;">By request</p>
                             </div>
                         </template>
                     </div>
@@ -628,7 +631,7 @@
     <template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">
         <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-white">
             <article class="max-w-3xl mx-auto">
-                <p class="text-[11px] uppercase tracking-[0.25em] font-semibold mb-3" style="color:#8A561B;">XJet Atelier</p>
+                <p class="text-[12px] uppercase tracking-[0.25em] font-semibold mb-3" style="color:#8A561B;">XJet Atelier</p>
 
                 <template x-if="view === 'shipping-returns'">
                     <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
@@ -693,7 +696,7 @@
                         <h2 class="text-4xl brand-font text-zinc-900">Contact &amp; Support</h2>
                         <p>Our design team answers within one business day.</p>
                         <div class="rounded-xl p-6" style="background:#FBF7EF; border:1px solid #E8DCC4;">
-                            <p class="text-[11px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A561B;">Email</p>
+                            <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A561B;">Email</p>
                             <a :href="mailto('XJet Atelier — ' + (supportContext || 'a question'))" class="text-lg font-semibold text-zinc-900 underline underline-offset-4 hover:text-black" x-text="SUPPORT_EMAIL"></a>
                             <p class="text-[13px] text-zinc-500 mt-2">Include the name of your design or your Order ID so we can find it quickly. Never send your sign-in code by email.</p>
                             <a :href="mailto('XJet Atelier — ' + (supportContext || 'a question'), supportContext ? 'About: ' + supportContext + '\n\n' : '')" class="btn-gold inline-flex px-6 py-3 mt-4">Contact us</a>
@@ -737,8 +740,8 @@
                 <div class="flex-1 flex flex-col ai-grid-bg overflow-hidden min-w-0">
                     <div class="px-5 py-2 flex items-center justify-between shrink-0" style="border-bottom:1px solid #DCDCDC; background:#FAFAFA;">
                         <!-- Original | Variation 1 | Variation 2 … — tabs that switch the four options shown below -->
-                        <div class="flex items-center gap-1 overflow-x-auto no-scrollbar" role="tablist" aria-label="Design versions" x-show="design">
-                            <span x-show="visibleBatches.length > 1" class="text-[11px] uppercase tracking-[0.14em] text-zinc-500 mr-2 shrink-0">Showing</span>
+                        <div class="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0 flex-1" role="tablist" aria-label="Design versions" x-show="design">
+                            <span x-show="visibleBatches.length > 1" class="hidden sm:inline text-[12px] uppercase tracking-[0.14em] text-zinc-500 mr-2 shrink-0">Showing</span>
                             <template x-for="b in visibleBatches" :key="b.id">
                                 <button @click="viewBatchId = b.id" role="tab" :aria-selected="b.id === viewBatchId"
                                         class="shrink-0 px-3 py-1.5 text-[12px] uppercase tracking-[0.1em] font-semibold transition border-b-2 -mb-[9px] pb-2.5"
@@ -747,9 +750,9 @@
                             </template>
                         </div>
                         <span x-show="!design"></span>
-                        <button x-show="!sidebarOpen" @click="toggleSidebar()" class="tap flex items-center gap-2 text-[11px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#C9A96E]">
+                        <button x-show="!sidebarOpen" @click="toggleSidebar()" class="tap shrink-0 flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420]" aria-label="My Designs">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"/></svg>
-                            My Designs
+                            <span class="hidden sm:inline">My Designs</span>
                         </button>
                     </div>
 
@@ -758,7 +761,7 @@
 
                             <!-- Landing -->
                             <div x-show="!design" class="flex flex-col items-center text-center gap-3">
-                                <span class="text-[12px] uppercase tracking-[0.3em] font-semibold" style="color:#C9A96E;">Design Studio</span>
+                                <span class="text-[12px] uppercase tracking-[0.3em] font-semibold" style="color:#8A6420;">Design Studio</span>
                                 <h1 class="brand-font text-5xl sm:text-6xl leading-[1.05]" style="color:#1A1A1A;">Hello, Designer.</h1>
                                 <p class="text-[15px] text-zinc-600 max-w-md">Describe your ring and we'll create four different designs for you to choose from.</p>
                             </div>
@@ -766,12 +769,10 @@
                             <!-- Design results -->
                             <template x-if="design && viewBatch">
                                 <div class="flex flex-col gap-4 fade-in">
-                                    <!-- The prompt / refinement that produced this batch -->
-                                    <div class="flex gap-3 flex-row-reverse">
-                                        <div class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0 font-semibold mt-0.5 brand-font" style="background:#EEEEEE; color:#555;">U</div>
+                                    <!-- The prompt / refinement just typed in this session (a design opened from My Designs shows its images alone) -->
+                                    <div class="flex gap-3 flex-row-reverse" x-show="!openedFromList || pendingBatch">
+                                        <div class="w-7 h-7 rounded-full flex items-center justify-center text-[12px] shrink-0 font-semibold mt-0.5 brand-font" style="background:#EEEEEE; color:#555;">U</div>
                                         <div class="px-4 py-3 rounded-2xl text-[14px] max-w-[80%] leading-relaxed" style="background:#F0F0F0; color:#333; border:1px solid #E5E5E5;">
-                                            <span x-show="bubbleBatch?.kind === 'refine'" class="block text-[10px] uppercase tracking-[0.14em] font-semibold mb-1" style="color:#9B7040;">Refinement of the selected design</span>
-                                            <span x-show="design?.origin === 'gallery' && bubbleBatch?.kind === 'initial'" class="block text-[10px] uppercase tracking-[0.14em] font-semibold mb-1" style="color:#9B7040;">Started from the Inspiration Gallery</span>
                                             <span x-text="bubbleBatch?.user_text"></span>
                                         </div>
                                     </div>
@@ -793,17 +794,17 @@
                                             </div>
                                             <h2 class="brand-font mt-6 sm:mt-7 text-[24px] sm:text-[30px] font-medium leading-tight" style="color:#2A2A2A;" x-text="waitPreset.title"></h2>
                                             <p class="mt-2.5 max-w-[500px] text-[15px] sm:text-[16px] leading-relaxed" style="color:#6F6F6F;" x-text="waitPreset.message"></p>
-                                            <div class="mt-5 flex items-center justify-center gap-2 h-5 text-[14px]" style="color:#9B7040;">
+                                            <div class="mt-5 flex items-center justify-center gap-2 h-5 text-[14px]" style="color:#8A6420;">
                                                 <span class="w-2 h-2 rounded-full animate-pulse motion-reduce:animate-none shrink-0" style="background:#C9A96E;"></span>
                                                 <span x-text="waitStatus"></span>
                                             </div>
-                                            <p class="mt-3 text-[12px]" style="color:#8F8F8F;" x-text="readyCount(waitBatch) + ' of ' + waitBatch?.desired_count + ' designs ready'"></p>
+                                            <p class="mt-3 text-[12px]" style="color:#6F6F6F;" x-text="readyCount(waitBatch) + ' of ' + waitBatch?.desired_count + ' designs ready'"></p>
                                         </div>
                                     </template>
 
                                     <div x-show="!waitVariant" class="flex flex-col gap-4">
-                                    <p x-show="!viewBatchGenerating" class="text-[15px] sm:text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#A9791F;"
-                                       x-text="viewBatch?.kind === 'refine' ? 'Here are four refinements — select your favourite' : (design?.origin === 'gallery' && viewBatch?.kind === 'initial' ? 'Your gallery pick and its three siblings — select your favourite' : 'Here are your four designs — select your favourite')"></p>
+                                    <p x-show="!viewBatchGenerating" class="text-[15px] sm:text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#8A6420;"
+                                       x-text="viewBatch?.kind === 'refine' ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite'"></p>
 
                                     <div x-show="viewBatch?.status === 'partial'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
                                         <span class="flex-1" x-text="readyCount(viewBatch) + ' of ' + viewBatch?.desired_count + ' designs are ready — some options could not be created.'"></span>
@@ -814,17 +815,18 @@
                                         <button @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold">Try again</button>
                                     </div>
 
-                                    <!-- Four candidates (2x2) -->
-                                    <div class="grid grid-cols-2 gap-3 sm:gap-4 w-full mx-auto" style="max-width:min(640px, max(320px, calc(100dvh - 300px)));">
+                                    <!-- Four candidates: a 2×2 grid from 640 px up; on a phone one large option at a time, swipe to compare -->
+                                    <div class="cand-row flex sm:grid sm:grid-cols-2 gap-3 sm:gap-4 w-full mx-auto overflow-x-auto sm:overflow-visible snap-x snap-mandatory -mx-4 px-4 sm:mx-auto sm:px-0 sm:max-w-[min(640px,max(320px,calc(100dvh_-_300px)))]"
+                                         style="scroll-padding:0 16px;" x-ref="candRow" @scroll.passive="candScroll($event)">
                                         <template x-for="c in (viewBatch?.candidates || [])" :key="c.id">
-                                            <div class="cand-card relative aspect-square rounded-2xl overflow-hidden bg-white border border-zinc-200"
+                                            <div class="cand-card relative aspect-square rounded-2xl overflow-hidden bg-white border border-zinc-200 snap-center shrink-0 w-[78vw] max-w-[360px] sm:w-auto sm:max-w-none"
                                                  :class="{'is-ready': c.status === 'ready', 'is-selected': c.id === selectedId, 'shimmer': c.status === 'pending' || c.status === 'generating'}"
-                                                 @click="select(c)" role="button" :aria-pressed="c.id === selectedId" :aria-label="'Design option ' + (c.slot + 1)">
+                                                 @click="select(c)" role="button" :aria-pressed="c.id === selectedId" :aria-label="'Design option ' + (c.slot + 1) + (c.id === selectedId ? ' (selected)' : '')">
                                                 <template x-if="c.status === 'ready'">
                                                     <img :src="c.image_url" :alt="'Design option ' + (c.slot + 1)" class="w-full h-full object-contain" style="filter:drop-shadow(0 6px 24px rgba(0,0,0,0.08));">
                                                 </template>
                                                 <template x-if="c.status === 'pending' || c.status === 'generating'">
-                                                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[12px]" style="color:#8F8F8F;">
+                                                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[12px]" style="color:#6F6F6F;">
                                                         <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
                                                         <span x-text="'Design ' + (c.slot + 1)"></span>
                                                     </div>
@@ -835,7 +837,9 @@
                                                         <button @click.stop="retrySlot(c)" class="btn-outline px-4 py-2">Retry</button>
                                                     </div>
                                                 </template>
-                                                <span x-show="c.id === selectedId" class="absolute left-2 top-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white" style="background:#1A1A1A; border-radius:0;">Selected</span>
+                                                <span x-show="c.id === selectedId" class="absolute left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-white rounded-md" style="background:#8A6420;">
+                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Selected</span>
+                                                <span x-show="c.status === 'ready' && c.id !== selectedId" class="sm:hidden absolute left-2 top-2 px-2.5 py-1.5 text-[12px] font-medium uppercase tracking-[0.12em] rounded-md bg-white/90 text-zinc-700" style="border:1px solid #E5E5E5;" x-text="'Option ' + (c.slot + 1) + ' · tap to select'"></span>
                                                 <button x-show="c.status === 'ready'" @click.stop="openPreview('image', c.image_url, c)"
                                                         class="absolute top-2 right-2 p-2 rounded-lg bg-white/85 backdrop-blur border transition hover:bg-white text-[#6F6F6F] hover:text-[#1A1A1A]"
                                                         style="border-color:#DCDCDC;" title="Enlarge image" :aria-label="'Enlarge design ' + (c.slot + 1)">
@@ -845,14 +849,24 @@
                                         </template>
                                     </div>
 
+                                    <!-- Phone: which option is in view, and a dot per option (tap a dot to jump) -->
+                                    <div class="sm:hidden flex items-center justify-center gap-3 -mt-1" x-show="(viewBatch?.candidates || []).length > 1">
+                                        <div class="flex items-center gap-2" role="group" aria-label="Options">
+                                            <template x-for="(c, i) in (viewBatch?.candidates || [])" :key="'dot' + c.id">
+                                                <button type="button" @click="scrollCand(i)" class="tap w-2.5 h-2.5 rounded-full transition" :class="i === candIndex ? 'scale-125' : 'opacity-40'" :style="'background:' + (c.id === selectedId ? '#8A6420' : '#1A1A1A')" :aria-label="'Show option ' + (i + 1)"></button>
+                                            </template>
+                                        </div>
+                                        <span class="text-[12px] text-zinc-600" x-text="'Option ' + (candIndex + 1) + ' of ' + (viewBatch?.candidates || []).length + ' · swipe to compare'"></span>
+                                    </div>
                                     <h2 class="brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design?.title"></h2>
 
                                     </div>
                                 </div>
                             </template>
 
-                            <!-- Composer -->
-                            <div class="w-full flex flex-col gap-3" :class="design ? 'mt-auto' : ''">
+                            <!-- Composer: on a phone it sticks to the bottom of the workspace, so the next step is always in reach -->
+                            <div class="w-full flex flex-col gap-3 sticky bottom-0 sm:static -mx-4 px-4 sm:mx-0 sm:px-0 pt-2 sm:pt-0 pb-[max(8px,env(safe-area-inset-bottom))] sm:pb-0 border-t sm:border-0 border-[#E8DDD0] sm:border-transparent"
+                                 :class="design ? 'mt-auto' : ''" style="background:rgba(248,248,248,0.96); backdrop-filter:blur(6px);">
                                 <div x-show="!design" class="w-full flex items-start gap-2 px-3.5 py-2 rounded-lg text-[13px] leading-snug justify-center text-center"
                                      style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;" role="note">
                                     <svg class="w-3.5 h-3.5 shrink-0 mt-[2px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:#B08040;"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5m0-8h.01"/></svg>
@@ -864,7 +878,7 @@
                                         <span class="px-3 py-1.5 rounded-md text-[12px] font-semibold bg-white shadow-sm" style="color:#1A1A1A;" aria-current="true">Refine the selected design</span>
                                         <button type="button" @click="startNew()" class="px-3 py-1.5 rounded-md text-[12px] font-medium transition hover:bg-white/60" style="color:#6F6F6F;">Start a new design</button>
                                     </div>
-                                    <p class="text-[12px]" style="color:#8F8F8F;" x-text="canActOnSelection ? 'Describe the change — you get four new variations of the selected design.' : 'Select one of the designs above to refine it.'"></p>
+                                    <p class="hidden sm:block text-[12px]" style="color:#6F6F6F;" x-text="canActOnSelection ? 'Describe the change — you get four new variations of the selected design.' : 'Select one of the designs above to refine it.'"></p>
                                 </div>
 
 
@@ -886,8 +900,8 @@
                                 <div x-show="uploadedPreview && !design" class="w-full flex flex-col gap-2 px-4 py-3 rounded-2xl" style="background:#F5EFE4; border:1px solid #E8DDD0;">
                                     <div class="flex items-center gap-3">
                                         <img :src="uploadedPreview" alt="Reference image" class="w-16 h-16 rounded-xl object-cover shrink-0">
-                                        <span class="text-[14px] flex-1" style="color:#9B7040;">Reference image attached</span>
-                                        <button @click="clearUpload()" class="tap-lg text-[12px] uppercase tracking-widest text-[#C9A96E] hover:text-[#A07030]">Remove</button>
+                                        <span class="text-[14px] flex-1" style="color:#8A6420;">Reference image attached</span>
+                                        <button @click="clearUpload()" class="tap-lg text-[12px] uppercase tracking-widest text-[#8A6420] hover:text-[#8A6420]">Remove</button>
                                     </div>
                                     <label class="flex items-start gap-2 text-[12px]" style="color:#5A4A2A;">
                                         <input type="checkbox" x-model="rightsConfirmed" class="mt-0.5" style="accent-color:#8A561B;">
@@ -896,22 +910,23 @@
                                 </div>
 
                                 <!-- Refine target -->
-                                <div x-show="design && selectedCandidate" class="w-full flex items-center gap-3 px-3 py-2 rounded-2xl" style="background:#FAF6EE; border:1px solid #E8DDD0;">
+                                <div x-show="design && selectedCandidate" class="hidden sm:flex w-full items-center gap-3 px-3 py-2 rounded-2xl" style="background:#FAF6EE; border:1px solid #E8DDD0;">
                                     <img :src="selectedCandidate?.image_url" alt="" class="w-11 h-11 rounded-lg object-cover shrink-0 bg-white" style="border:1px solid #E8DDD0;">
                                     <div class="flex-1 min-w-0 leading-tight">
-                                        <p class="text-[10px] uppercase tracking-[0.14em] font-semibold" style="color:#9B7040;">Refining this design</p>
+                                        <p class="text-[12px] uppercase tracking-[0.14em] font-semibold" style="color:#8A6420;">Refining this design</p>
                                         <p class="text-[13px] font-medium truncate" style="color:#3A2E12;" x-text="design?.title + ' · option ' + ((selectedCandidate?.slot ?? 0) + 1)"></p>
                                     </div>
-                                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="color:#C9A96E;"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.931-8.931z"/></svg>
+                                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="color:#8A6420;"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.931-8.931z"/></svg>
                                 </div>
 
                                 <div class="w-full flex items-center gap-2 sm:gap-3 rounded-3xl sm:rounded-[24px] px-3 sm:px-4 py-2 sm:py-3 bg-white min-h-[52px] sm:min-h-[72px]"
                                      style="border:2px solid #C9A96E; box-shadow:0 14px 44px rgba(0,0,0,0.09);">
-                                    <button x-show="!design" @click="requestUpload()" class="tap shrink-0 flex items-center justify-center rounded-xl transition w-9 h-9 sm:w-11 sm:h-11 bg-[#FAF6EE] text-[#9B7040] hover:bg-[#F1E7D6]"
+                                    <button x-show="!design" @click="requestUpload()" class="tap shrink-0 flex items-center justify-center rounded-xl transition w-9 h-9 sm:w-11 sm:h-11 bg-[#FAF6EE] text-[#8A6420] hover:bg-[#F1E7D6]"
                                             title="Upload a reference image (or paste one with Ctrl+V)" aria-label="Upload reference image">
                                         <svg class="w-[18px] h-[18px] sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M4.5 19.5h15a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5h-15A1.5 1.5 0 003 6v12a1.5 1.5 0 001.5 1.5z"/><circle cx="8.25" cy="8.25" r="1.25"/></svg>
                                     </button>
                                     <input type="file" x-ref="uploader" class="hidden" @change="handleUpload($event)" accept="image/png,image/jpeg,image/webp">
+                                    <img x-show="design && selectedCandidate" :src="selectedCandidate?.image_url" alt="" class="sm:hidden w-9 h-9 rounded-lg object-cover shrink-0 bg-white" style="border:1px solid #E8DDD0;" :title="'Refining option ' + ((selectedCandidate?.slot ?? 0) + 1)">
                                     <textarea id="p3-composer-input" x-ref="composer" x-model="userInput" @keydown.enter="handleEnterKey($event)"
                                               x-effect="userInput; $el.style.height='auto'; if (userInput && userInput.length) $el.style.height=Math.min($el.scrollHeight, 200)+'px'"
                                               :placeholder="composerPlaceholder" rows="1" :disabled="submitting"
@@ -925,17 +940,17 @@
                                 </div>
                                 <p x-show="composeError" class="text-[13px] px-1" style="color:#A1261D;" x-text="composeError"></p>
                                 <!-- A design that already has a movie, 3D or order is kept as it is: a refinement becomes a new design -->
-                                <p x-show="composerMode === 'refine' && design && !design.shared && design.refinement_creates_new_design" class="text-[12px] px-1" style="color:#8F8F8F;">
+                                <p x-show="composerMode === 'refine' && design && !design.shared && design.refinement_creates_new_design" class="text-[12px] px-1" style="color:#6F6F6F;">
                                     <span x-text="'Your refinement will be saved as a new design — ' + (design?.title || 'this design') + ' ' + ({movie: 'already has a 360° movie', '3d': 'already has a 3D model', order: 'already has an order', quote: 'already has a quote request', gallery: 'is in the Inspiration Gallery'}[design?.refinement_creates_new_design] || 'is already in use') + ', so it stays as it is.'"></span></p>
 
                                 <!-- Generations remaining — anchored right under the prompt input -->
-                                <div x-show="userSession" class="w-full flex items-center justify-end px-1 -mt-1">
+                                <div x-show="userSession" class="hidden sm:flex w-full items-center justify-end px-1 -mt-1">
                                     <button type="button" @click="toggleAccountPanel()"
                                             class="tap-lg flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition hover:bg-zinc-100 max-w-full"
                                             :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="Account and generations">
                                         <svg width="13" height="13" viewBox="0 0 17 17" fill="none" aria-hidden="true" class="shrink-0">
-                                            <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#9A7230" stroke-width="0.5"/>
-                                            <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#9A7230" stroke-width="0.7" opacity="0.45"/>
+                                            <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
+                                            <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
                                         </svg>
                                         <span class="text-[12px] font-medium text-zinc-600 truncate" x-text="(displayName ? displayName + ' • ' : '') + quotaText"></span>
                                         <svg class="w-3 h-3 text-zinc-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
@@ -944,16 +959,17 @@
 
                                 <!-- Result actions: Start new · Customize (proceed). Refining is done from the composer. -->
                                 <div x-show="design" class="w-full flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3">
-                                    <button @click="startNew()" class="btn-outline flex-1 px-2 py-3.5 leading-tight">
+                                    <button @click="startNew()" class="btn-outline hidden sm:inline-flex flex-1 px-2 py-3.5 leading-tight">
                                         <svg class="w-[18px] h-[18px] mr-2 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                                         Start a New Design
                                     </button>
-                                    <button @click="proceed()" :disabled="!canActOnSelection" class="btn-gold stream-glow flex-1 px-2 py-3.5 leading-tight">
-                                        Customize Your Ring
+                                    <button @click="proceed()" :disabled="!canActOnSelection" class="btn-gold stream-glow flex-1 px-2 py-3.5 leading-tight" :title="canActOnSelection ? '' : 'Select one of the four options first'">
+                                        <span class="sm:hidden" x-text="canActOnSelection ? 'Customize option ' + ((selectedCandidate?.slot ?? 0) + 1) : 'Select an option to continue'"></span>
+                                        <span class="hidden sm:inline">Customize Your Ring</span>
                                         <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                                     </button>
                                 </div>
-                                <p x-show="design && !selectedId && !waitVariant" class="text-center text-[12px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
+                                <p x-show="design && !selectedId && !waitVariant" class="hidden sm:block text-center text-[12px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
                                 <p x-show="actionError" class="text-center text-[13px]" style="color:#A1261D;" x-text="actionError"></p>
                             </div>
                         </div>
@@ -971,35 +987,35 @@
                     <div class="w-[308px] flex flex-col h-full overflow-hidden bg-white">
                         <div class="px-4 py-3.5 flex items-center justify-between shrink-0" style="border-bottom:1px solid #DCDCDC;">
                             <p class="text-[15px] uppercase tracking-[0.18em] font-semibold" style="color:#6F6F6F;">My Designs</p>
-                            <button @click="sidebarOpen = false" class="tap-lg transition p-1 rounded-lg text-[#8F8F8F] hover:text-[#555]" title="Close" aria-label="Close My Designs">
+                            <button @click="sidebarOpen = false" class="tap-lg transition p-1 rounded-lg text-[#6F6F6F] hover:text-[#555]" title="Close" aria-label="Close My Designs">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>
                         <div class="px-3 py-2.5 shrink-0" style="border-bottom:1px solid #DCDCDC;">
                             <div class="relative">
-                                <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3" style="color:#8F8F8F;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+                                <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3" style="color:#6F6F6F;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
                                 <input x-model="projectSearch" type="text" placeholder="Search designs…" class="w-full rounded-lg text-[13px] pl-7 pr-3 py-1.5 focus:outline-none transition" style="min-height:40px; background:#F8F8F8; border:1px solid #DCDCDC; color:#1A1A1A;">
                             </div>
                         </div>
                         <div class="flex-1 overflow-y-auto py-2 no-scrollbar" @scroll="zoom = null">
-                            <p x-show="designsLoading" class="text-[12px] text-center py-10 px-4" style="color:#8F8F8F;">Loading your designs…</p>
+                            <p x-show="designsLoading" class="text-[12px] text-center py-10 px-4" style="color:#6F6F6F;">Loading your designs…</p>
                             <div x-show="!designsLoading && designsError" class="text-center py-10 px-4">
-                                <p class="text-[12px]" style="color:#8F8F8F;" x-text="designsError"></p>
-                                <button @click="loadDesigns()" class="mt-2 text-[12px] underline" style="color:#C9A96E;">Retry</button>
+                                <p class="text-[12px]" style="color:#6F6F6F;" x-text="designsError"></p>
+                                <button @click="loadDesigns()" class="mt-2 text-[12px] underline" style="color:#8A6420;">Retry</button>
                             </div>
-                            <p x-show="!designsLoading && !designsError && filteredDesigns.length === 0" class="text-[12px] text-center py-10 px-4 leading-relaxed" style="color:#8F8F8F;">No designs yet.<br>Create your first ring.</p>
+                            <p x-show="!designsLoading && !designsError && filteredDesigns.length === 0" class="text-[12px] text-center py-10 px-4 leading-relaxed" style="color:#6F6F6F;">No designs yet.<br>Create your first ring.</p>
                             <template x-for="p in filteredDesigns" :key="p.id">
                                 <div class="flex items-center gap-3 px-3 py-2.5 mx-1.5 rounded-xl transition cursor-pointer hover:bg-[#F8F8F8]"
                                      :class="design?.id === p.id ? 'bg-[#F8F4EE]' : ''" @click="zoom = null; openDesign(p.id); track('design_opened', p.id)">
                                     <div class="w-16 h-16 rounded-lg overflow-hidden shrink-0" style="border:1px solid #DCDCDC; background:#F4F4F4;"
                                          @mouseenter="p.thumbnail_url && showZoom($event, p.thumbnail_url, p.title)" @mouseleave="zoom = null">
                                         <img x-show="p.thumbnail_url" :src="p.thumbnail_url" alt="" class="w-full h-full object-cover">
-                                        <div x-show="!p.thumbnail_url" class="w-full h-full flex items-center justify-center text-lg brand-font italic" style="color:#8F8F8F;">?</div>
+                                        <div x-show="!p.thumbnail_url" class="w-full h-full flex items-center justify-center text-lg brand-font italic" style="color:#6F6F6F;">?</div>
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-2 min-w-0"><p class="text-[15px] font-medium truncate" style="color:#1A1A1A;" x-text="p.title"></p>
-                                            <span x-show="p.shared" class="shrink-0 text-[9px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#F8F4EE; color:#9A7230;" title="A shared XJet design from the Inspiration Gallery">Gallery</span></div>
-                                        <p class="text-[12px] mt-0.5" style="color:#8F8F8F;" x-text="new Date(p.updated_at).toLocaleDateString()"></p>
+                                            <span x-show="p.shared" class="shrink-0 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#F8F4EE; color:#8A6420;" title="A shared XJet design from the Inspiration Gallery">Gallery</span></div>
+                                        <p class="text-[12px] mt-0.5" style="color:#6F6F6F;" x-text="new Date(p.updated_at).toLocaleDateString()"></p>
                                     </div>
                                     <button @click.stop="removeDesign(p)" class="tap-lg shrink-0 p-1.5 rounded-lg transition text-[#C8C8C8] hover:text-red-500 hover:bg-red-50" title="Remove from My Designs" :aria-label="'Remove ' + p.title + ' from My Designs'">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0l1 12h6l1-12"/></svg>
@@ -1008,11 +1024,11 @@
                             </template>
                         </div>
                         <div class="p-3 shrink-0 space-y-2" style="border-top:1px solid #DCDCDC;">
-                            <button @click="galleryGridOpen = true" class="w-full flex items-center justify-center gap-2 text-[13px] rounded-xl py-2.5 transition border border-[#E8DCC4] hover:border-[#C9A96E]" style="color:#9A7230; background:#FBF7EF;">
+                            <button @click="galleryGridOpen = true" class="w-full flex items-center justify-center gap-2 text-[13px] rounded-xl py-2.5 transition border border-[#E8DCC4] hover:border-[#C9A96E]" style="color:#8A6420; background:#FBF7EF;">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                 Inspiration Gallery
                             </button>
-                            <button @click="startNew()" class="w-full flex items-center justify-center gap-2 text-[13px] rounded-xl py-2.5 transition text-[#8F8F8F] border border-[#DCDCDC] hover:text-[#C9A96E] hover:border-[#C9A96E]">
+                            <button @click="startNew()" class="w-full flex items-center justify-center gap-2 text-[13px] rounded-xl py-2.5 transition text-[#6F6F6F] border border-[#DCDCDC] hover:text-[#8A6420] hover:border-[#C9A96E]">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
                                 New Design
                             </button>
@@ -1033,12 +1049,12 @@
             <div class="w-full lg:w-1/2 flex flex-col shrink-0 relative" style="background:#F5F5F7;">
                 <div class="flex items-center justify-center gap-3 py-3 shrink-0">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                    <span class="text-[10px] lg:text-[13px] uppercase tracking-widest text-zinc-500">Your Selected Design</span>
+                    <span class="text-[12px] lg:text-[13px] uppercase tracking-widest text-zinc-500">Your Selected Design</span>
                 </div>
                 <div class="flex items-center justify-center gap-2 pb-2 shrink-0">
-                    <button @click="mediaTab = 'image'" class="px-3 py-1 rounded-full text-[11px] uppercase tracking-[0.12em] border transition"
+                    <button @click="mediaTab = 'image'" class="px-3 py-1 rounded-full text-[12px] uppercase tracking-[0.12em] border transition"
                             :class="mediaTab === 'image' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">Image</button>
-                    <button @click="mediaTab = 'movie'" class="px-3 py-1 rounded-full text-[11px] uppercase tracking-[0.12em] border transition inline-flex items-center gap-1.5"
+                    <button @click="mediaTab = 'movie'" class="px-3 py-1 rounded-full text-[12px] uppercase tracking-[0.12em] border transition inline-flex items-center gap-1.5"
                             :class="mediaTab === 'movie' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">
                         Movie
                         <span class="w-1.5 h-1.5 rounded-full" :class="movieStatus === 'ready' ? 'bg-emerald-400' : (movieFailed ? 'bg-red-400' : 'bg-amber-400 animate-pulse')"></span>
@@ -1056,13 +1072,13 @@
                     <div x-show="mediaTab === 'movie' && (movieBusy || !movieStatus)" class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none">
                         <div class="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-white/90 backdrop-blur border shadow-sm text-zinc-600" style="border-color:#E8DCC4;">
                             <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
-                            <span class="text-[11px] uppercase tracking-widest">Creating your 360&deg; movie&hellip;</span>
+                            <span class="text-[12px] uppercase tracking-widest">Creating your 360&deg; movie&hellip;</span>
                         </div>
                     </div>
                     <div x-show="mediaTab === 'movie' && movieFailed" class="absolute inset-x-0 bottom-4 flex justify-center px-4">
                         <div class="flex flex-col sm:flex-row items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 border shadow-sm text-center" style="border-color:#F1B7B7;">
-                            <span class="text-[11px] uppercase tracking-widest" style="color:#c03030;">Movie generation failed</span>
-                            <span class="text-[11px]" style="color:#777;" x-text="cust?.movie?.error"></span>
+                            <span class="text-[12px] uppercase tracking-widest" style="color:#c03030;">Movie generation failed</span>
+                            <span class="text-[12px]" style="color:#777;" x-text="cust?.movie?.error"></span>
                             <button @click="retryMovie()" class="btn-outline px-4 py-1.5">Retry Movie</button>
                         </div>
                     </div>
@@ -1075,9 +1091,9 @@
                 </div>
 
                 <div class="flex flex-col items-center gap-1 py-3 shrink-0">
-                    <p class="text-[10px] lg:text-[13px] text-zinc-500 uppercase tracking-widest" x-text="design?.title"></p>
-                    <p class="text-[10px] lg:text-[13px] text-zinc-500 uppercase tracking-[0.15em]" x-text="currentMaterial?.label"></p>
-                    <p class="text-[10px] text-zinc-400">Metal colour is a visual preview of the same design.</p>
+                    <p class="text-[12px] lg:text-[13px] text-zinc-500 uppercase tracking-widest" x-text="design?.title"></p>
+                    <p class="text-[12px] lg:text-[13px] text-zinc-500 uppercase tracking-[0.15em]" x-text="currentMaterial?.label"></p>
+                    <p class="text-[12px] text-zinc-400">Metal colour is a visual preview of the same design.</p>
                 </div>
             </div>
 
@@ -1087,7 +1103,7 @@
 
                     <!-- Metal Type: Fashion jewelry / Luxury groups -->
                     <div>
-                        <label class="text-[10px] uppercase tracking-widest font-semibold text-zinc-600 block mb-3">Metal Type</label>
+                        <label class="text-[12px] uppercase tracking-widest font-semibold text-zinc-600 block mb-3">Metal Type</label>
                         <div class="flex flex-col gap-2">
                             <template x-for="g in (catalog?.groups || [])" :key="g.id">
                                 <div>
@@ -1098,9 +1114,9 @@
                                              :style="currentGroup === g.id ? 'background-color:' + (currentMaterial?.swatch || '#ccc') : (g.id === 'luxury' ? 'background:linear-gradient(135deg,#FFD700 0%,#B8860B 100%)' : 'background:linear-gradient(135deg,#C8C8C5 0%,#6E7377 100%)')"></div>
                                         <div class="flex-1">
                                             <div class="text-sm font-semibold text-zinc-800" x-text="g.id === 'fashion' ? 'Fashion Jewelry' : 'Luxury'"></div>
-                                            <div class="text-[11px] text-zinc-500" x-text="currentGroup === g.id ? currentMaterial?.label : (g.id === 'fashion' ? 'Stainless Steel · Silver · Vermeil' : 'Gold options — preview only')"></div>
+                                            <div class="text-[12px] text-zinc-500" x-text="currentGroup === g.id ? currentMaterial?.label : (g.id === 'fashion' ? 'Stainless Steel · Silver · Vermeil' : 'Gold options — preview only')"></div>
                                         </div>
-                                        <span x-show="!g.purchasable" class="text-[9px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B; border:1px solid #E8DCC4;">Preview only</span>
+                                        <span x-show="!g.purchasable" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B; border:1px solid #E8DCC4;">Preview only</span>
                                         <svg :class="groupOpen[g.id] ? 'rotate-180' : ''" class="w-4 h-4 text-zinc-400 transition-transform flex-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                                     </button>
                                     <!-- Fashion: full-width rows (P2 metal rows) -->
@@ -1112,7 +1128,7 @@
                                                 <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="m.id === 'vermeil' ? 'background:linear-gradient(135deg,#D4A840 0%,#C0C0C0 100%)' : 'background-color:' + m.swatch"></div>
                                                 <div>
                                                     <div class="text-sm font-semibold text-zinc-800" x-text="m.label"></div>
-                                                    <div class="text-[11px] text-zinc-500" x-text="copy(m.id).sub"></div>
+                                                    <div class="text-[12px] text-zinc-500" x-text="copy(m.id).sub"></div>
                                                 </div>
                                             </button>
                                         </template>
@@ -1124,7 +1140,7 @@
                                                     :class="cust?.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
                                                     class="border rounded-sm p-2 flex flex-col items-center gap-1.5 transition text-center">
                                                 <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="'background-color:' + m.swatch"></div>
-                                                <div class="text-[10px] font-medium text-zinc-700 leading-tight" x-text="m.label"></div>
+                                                <div class="text-[12px] font-medium text-zinc-700 leading-tight" x-text="m.label"></div>
                                             </button>
                                         </template>
                                     </div>
@@ -1144,7 +1160,7 @@
                             <template x-for="size in (catalog?.ring_sizes.values || [])" :key="size">
                                 <button @click="setSize(size)" role="radio" :aria-checked="sizeConfirmed && cust?.ring_size == size" :aria-label="'US ' + size + (sizeIsSuggested(size) ? ' (suggested)' : '')"
                                         :class="sizeConfirmed && cust?.ring_size == size ? 'bg-black text-white border-black' : (sizeIsSuggested(size) ? 'border-dashed text-zinc-900' : 'border-zinc-200 text-zinc-600 hover:border-zinc-500')"
-                                        :style="sizeIsSuggested(size) ? 'border-color:#9A7230; background:#FBF7EF;' : ''"
+                                        :style="sizeIsSuggested(size) ? 'border-color:#8A6420; background:#FBF7EF;' : ''"
                                         class="w-11 h-11 border text-[13px] font-medium transition rounded-sm" x-text="size"></button>
                             </template>
                         </div>
@@ -1167,14 +1183,14 @@
                         <div class="flex items-baseline gap-3">
                             <span class="font-light brand-font transition-colors duration-500"
                                   :class="priceAvailable ? 'text-3xl text-zinc-900' : 'text-2xl text-zinc-500'" x-text="priceText"></span>
-                            <span x-show="priceAvailable" class="text-[10px] text-zinc-500 uppercase tracking-widest">Per piece</span>
+                            <span x-show="priceAvailable" class="text-[12px] text-zinc-500 uppercase tracking-widest">Per piece</span>
                         </div>
                         <p x-show="priceAvailable" class="text-[12px] text-zinc-500 mt-1.5 leading-snug">
                             Fixed price for <span x-text="currentMaterial?.label"></span>, any size. The final weight is measured when your ring is made.
                         </p>
                         <p x-show="isLuxury" class="text-[12px] text-zinc-500 mt-1.5">Gold rings are quoted individually — request a quote below.</p>
                         <p x-show="!isLuxury && cust?.quote && cust?.quote.pricing_status !== 'available'" class="text-[12px] text-zinc-500 mt-1.5">The price for this material is not available right now.</p>
-                        <span x-show="priceAvailable && !cust?.quote?.profile_approved" class="inline-block mt-2 text-[9px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing — not a real price</span>
+                        <span x-show="priceAvailable && !cust?.quote?.profile_approved" class="inline-block mt-2 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing — not a real price</span>
                     </div>
 
                     <!-- Quantity -->
@@ -1207,8 +1223,8 @@
 
                         <div x-show="bagLines.length > 0" class="border border-zinc-200 rounded-sm divide-y divide-zinc-100">
                             <div class="px-3 py-2 flex items-center justify-between">
-                                <span class="text-[10px] uppercase tracking-widest text-zinc-700">In Your Bag</span>
-                                <span class="text-[10px] uppercase tracking-widest text-zinc-500" x-text="bagCount + (bagCount === 1 ? ' item' : ' items')"></span>
+                                <span class="text-[12px] uppercase tracking-widest text-zinc-700">In Your Bag</span>
+                                <span class="text-[12px] uppercase tracking-widest text-zinc-500" x-text="bagCount + (bagCount === 1 ? ' item' : ' items')"></span>
                             </div>
                             <template x-for="l in bagLines" :key="l.id">
                                 <div class="flex items-center gap-2 px-3 py-2.5 text-[12px]">
@@ -1224,12 +1240,12 @@
                         <button x-show="bagLines.length > 0" @click="goToCheckout()" class="w-full btn-gold py-4 text-[14px] uppercase tracking-widest transition shadow-lg flex items-center justify-center gap-2">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6" stroke-linecap="round"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 10a4 4 0 01-8 0"/></svg>
                             View Bag
-                            <span class="ml-1 px-1.5 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm" x-text="bagCount"></span>
+                            <span class="ml-1 px-1.5 py-0.5 bg-white text-black text-[12px] font-bold rounded-sm" x-text="bagCount"></span>
                         </button>
-                        <button @click="startNew(); navigateTo('ai-studio')" class="w-full border border-zinc-300 py-3 text-[10px] uppercase tracking-widest hover:bg-zinc-50 transition text-zinc-600">+ Start Another Design</button>
+                        <button @click="startNew(); navigateTo('ai-studio')" class="w-full border border-zinc-300 py-3 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition text-zinc-600">+ Start Another Design</button>
                     </div>
 
-                    <div class="space-y-2 text-[10px] text-zinc-500 uppercase tracking-widest pb-4">
+                    <div class="space-y-2 text-[12px] text-zinc-500 uppercase tracking-widest pb-4">
                         <div class="flex items-center gap-2"><span>✓</span><span>2-year warranty</span></div>
                     </div>
                 </div>
@@ -1242,7 +1258,7 @@
             <div class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-zinc-200 px-4 py-3 flex items-center justify-between gap-3" x-show="!showSizeGuide && !quoteReq.open && !previewOpen">
                 <div class="min-w-0 leading-tight">
                     <p class="text-[14px] font-semibold text-zinc-900 truncate" x-text="purchaseSummary"></p>
-                    <p class="text-[11px] text-zinc-500" x-text="isLuxury ? 'Quoted individually' : (sizeConfirmed ? 'Fixed price, any size' : 'Confirm your size to continue')"></p>
+                    <p class="text-[12px] text-zinc-500" x-text="isLuxury ? 'Quoted individually' : (sizeConfirmed ? 'Fixed price, any size' : 'Confirm your size to continue')"></p>
                 </div>
                 <button x-show="!isLuxury" @click="canAddToBag ? addToBag() : document.getElementById('ring-size-heading')?.scrollIntoView({ behavior: 'smooth', block: 'center' })" :disabled="quotePending || (!cust?.can_add_to_bag && sizeConfirmed)" class="btn-black shrink-0 px-4 py-3 !text-[12px]" x-text="canAddToBag ? 'Add to Bag' : (sizeConfirmed ? bagButtonText : 'Choose size')"></button>
                 <button x-show="isLuxury" @click="openQuoteRequest()" class="btn-gold shrink-0 px-4 py-3 !text-[12px]">Request a quote</button>
@@ -1255,7 +1271,7 @@
                     <div class="px-7 py-5 border-b border-zinc-100 flex items-center justify-between shrink-0">
                         <div>
                             <h3 class="text-lg brand-font">Ring Size Guide</h3>
-                            <p class="text-[11px] text-zinc-500 mt-0.5">Choose how to measure your ring size</p>
+                            <p class="text-[12px] text-zinc-500 mt-0.5">Choose how to measure your ring size</p>
                         </div>
                         <button @click="showSizeGuide = false" class="text-zinc-400 hover:text-black text-2xl leading-none" aria-label="Close size guide">&times;</button>
                     </div>
@@ -1274,10 +1290,10 @@
                                 </ol>
                                 <table class="w-full text-sm border-collapse">
                                     <thead><tr>
-                                        <th class="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold pb-2 border-b border-zinc-100 text-left" x-text="kind === 'ring' ? 'Diameter (mm)' : 'Circumference (mm)'"></th>
-                                        <th class="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold pb-2 border-b border-zinc-100 text-left">US/CAN</th>
-                                        <th class="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold pb-2 border-b border-zinc-100 text-left">UK/AUS</th>
-                                        <th class="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold pb-2 border-b border-zinc-100 text-left">German</th>
+                                        <th class="text-[12px] uppercase tracking-widest text-zinc-500 font-semibold pb-2 border-b border-zinc-100 text-left" x-text="kind === 'ring' ? 'Diameter (mm)' : 'Circumference (mm)'"></th>
+                                        <th class="text-[12px] uppercase tracking-widest text-zinc-500 font-semibold pb-2 border-b border-zinc-100 text-left">US/CAN</th>
+                                        <th class="text-[12px] uppercase tracking-widest text-zinc-500 font-semibold pb-2 border-b border-zinc-100 text-left">UK/AUS</th>
+                                        <th class="text-[12px] uppercase tracking-widest text-zinc-500 font-semibold pb-2 border-b border-zinc-100 text-left">German</th>
                                     </tr></thead>
                                     <tbody>
                                         <template x-for="row in sizeGuideRows(kind)" :key="row.us">
@@ -1292,10 +1308,10 @@
                                 </table>
                             </div>
                         </template>
-                        <p class="text-[10px] text-zinc-500 px-7 py-4">Tip: Measure at the end of the day when fingers are slightly larger. Tap any row to select that size.</p>
+                        <p class="text-[12px] text-zinc-500 px-7 py-4">Tip: Measure at the end of the day when fingers are slightly larger. Tap any row to select that size.</p>
                     </div>
                     <div class="px-7 py-4 border-t border-zinc-100 shrink-0">
-                        <button @click="showSizeGuide = false" class="w-full bg-black text-white py-3 text-[10px] uppercase tracking-widest hover:bg-zinc-800 transition">Close Guide</button>
+                        <button @click="showSizeGuide = false" class="w-full bg-black text-white py-3 text-[12px] uppercase tracking-widest hover:bg-zinc-800 transition">Close Guide</button>
                     </div>
                 </div>
             </div>
@@ -1330,9 +1346,9 @@
                                 <p class="text-[12px] text-zinc-500 mt-0.5">Ring ID <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
                                 <p class="text-[13px] text-zinc-600 mt-1"><span x-text="l.material_label"></span> · US <span x-text="l.ring_size"></span> · Qty <span x-text="l.quantity"></span></p>
                                 <div class="flex flex-wrap gap-1.5 mt-2">
-                                    <span x-show="!l.quote.profile_approved" class="text-[10px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing</span>
-                                    <span x-show="l.price_is_stale && l.current_unit_price != null" class="text-[11px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-700" x-text="'Price updated: ' + money(l.current_unit_price, l.currency) + ' each at checkout'"></span>
-                                    <span x-show="!l.orderable" class="text-[11px] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B;">Cannot be ordered yet</span>
+                                    <span x-show="!l.quote.profile_approved" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing</span>
+                                    <span x-show="l.price_is_stale && l.current_unit_price != null" class="text-[12px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-700" x-text="'Price updated: ' + money(l.current_unit_price, l.currency) + ' each at checkout'"></span>
+                                    <span x-show="!l.orderable" class="text-[12px] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B;">Cannot be ordered yet</span>
                                 </div>
                                 <button @click="removeLine(l)" class="tap-lg mt-3 text-[12px] uppercase tracking-widest text-zinc-500 hover:text-red-600 transition">Remove</button>
                             </div>
@@ -1368,14 +1384,14 @@
         <main class="flex-1 overflow-y-auto fade-in bg-white">
             <div class="max-w-5xl mx-auto px-6 pt-8 pb-36 lg:grid lg:grid-cols-[1fr_360px] lg:gap-12 lg:items-start">
                 <div class="min-w-0">
-                    <ol class="flex items-center gap-2 sm:gap-3 text-[11px] uppercase tracking-[0.14em] mb-8" aria-label="Checkout steps">
+                    <ol class="flex items-center gap-2 sm:gap-3 text-[12px] uppercase tracking-[0.14em] mb-8" aria-label="Checkout steps">
                         <template x-for="(s, i) in checkoutSteps" :key="s[0]">
                             <li class="flex items-center gap-2 sm:gap-3">
                                 <button type="button" @click="coGoTo(s[0])" :disabled="i > coStepIndex" class="flex items-center gap-2 disabled:cursor-default"
                                         :class="i === coStepIndex ? 'text-zinc-900 font-semibold' : i < coStepIndex ? 'text-zinc-700' : 'text-zinc-400'" :aria-current="i === coStepIndex ? 'step' : null">
-                                    <span class="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold"
+                                    <span class="w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-semibold"
                                           :class="i < coStepIndex ? 'bg-zinc-900 text-white' : i === coStepIndex ? 'text-white' : 'bg-zinc-100 text-zinc-500'"
-                                          :style="i === coStepIndex ? 'background:#9A7230' : ''" x-text="i < coStepIndex ? '✓' : i + 1"></span>
+                                          :style="i === coStepIndex ? 'background:#8A6420' : ''" x-text="i < coStepIndex ? '✓' : i + 1"></span>
                                     <span class="hidden sm:inline" x-text="s[1]"></span>
                                 </button>
                                 <span x-show="i < checkoutSteps.length - 1" class="w-6 sm:w-10 h-px bg-zinc-200" aria-hidden="true"></span>
@@ -1414,7 +1430,7 @@
                             <p class="text-sm font-semibold text-zinc-900 mb-1">We found a more precise version of your address</p>
                             <p class="text-[13px] text-zinc-600 mb-3" x-text="co.addrCheck?.message"></p>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
-                                <div class="bg-white border border-zinc-200 rounded-lg p-3"><p class="flbl">Suggested</p><p x-text="[co.addrCheck?.suggestion?.line1, co.addrCheck?.suggestion?.line2, co.addrCheck?.suggestion?.city, co.addrCheck?.suggestion?.region, co.addrCheck?.suggestion?.postal_code].filter(Boolean).join(', ')"></p><button @click="coChooseAddress(true)" class="btn-black mt-3 px-4 py-2 !text-[11px]">Use suggested</button></div>
+                                <div class="bg-white border border-zinc-200 rounded-lg p-3"><p class="flbl">Suggested</p><p x-text="[co.addrCheck?.suggestion?.line1, co.addrCheck?.suggestion?.line2, co.addrCheck?.suggestion?.city, co.addrCheck?.suggestion?.region, co.addrCheck?.suggestion?.postal_code].filter(Boolean).join(', ')"></p><button @click="coChooseAddress(true)" class="btn-black mt-3 px-4 py-2 !text-[12px]">Use suggested</button></div>
                                 <div class="bg-white border border-zinc-200 rounded-lg p-3"><p class="flbl">As you typed it</p><p x-text="[co.address.line1, co.address.line2, co.address.city, co.address.region, co.address.postal_code].filter(Boolean).join(', ')"></p><button @click="coChooseAddress(false)" class="btn-outline mt-3 px-4 py-2">Keep mine</button></div>
                             </div>
                         </div>
@@ -1435,9 +1451,9 @@
                     <section x-show="co.step === 'review'" class="space-y-6" aria-labelledby="co-h-review">
                         <div><h2 id="co-h-review" class="text-2xl brand-font">Review &amp; pay</h2><p class="text-[13px] text-zinc-500 mt-1">Check everything, then place your order. Your ring is reserved and our team confirms the design for production before anything is made.</p></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
-                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Contact</p><button @click="coGoTo('details')" class="text-[11px] uppercase tracking-widest underline text-zinc-500 hover:text-black">Edit</button></div>
+                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Contact</p><button @click="coGoTo('details')" class="text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black">Edit</button></div>
                                 <p class="text-zinc-900" x-text="co.customer.first_name + ' ' + co.customer.last_name"></p><p class="text-zinc-600" x-text="co.customer.email"></p><p class="text-zinc-600" x-text="co.customer.phone"></p></div>
-                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Ships to</p><button @click="coGoTo('shipping')" class="text-[11px] uppercase tracking-widest underline text-zinc-500 hover:text-black">Edit</button></div>
+                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Ships to</p><button @click="coGoTo('shipping')" class="text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black">Edit</button></div>
                                 <p class="text-zinc-900" x-text="co.address.recipient"></p>
                                 <p class="text-zinc-600" x-text="[co.address.line1, co.address.line2].filter(Boolean).join(', ')"></p>
                                 <p class="text-zinc-600" x-text="[co.address.city, co.address.region, co.address.postal_code].filter(Boolean).join(' ') + ' · ' + (coCountry?.name || co.address.country)"></p>
@@ -1495,7 +1511,7 @@
                         <div x-show="coQuote?.discount" class="flex justify-between" style="color:#146C43;"><span x-text="'Promo ' + (coQuote?.promo?.code || '')"></span><span x-text="'−' + money(coQuote?.discount || 0, coQuote?.currency)"></span></div>
                         <div class="flex justify-between"><span class="text-zinc-500" x-text="coShipping?.label || 'Delivery'"></span><span x-text="coQuote?.shipping ? money(coQuote.shipping, coQuote.currency) : 'Free'"></span></div>
                         <div class="flex justify-between text-base font-semibold pt-2 border-t border-zinc-200 brand-font"><span>Total</span><span x-text="money(coQuote?.total || 0, coQuote?.currency)"></span></div>
-                        <p class="text-[11px] text-zinc-500 pt-1">US dollars · no sales tax added · duties, where charged, paid by the recipient.</p>
+                        <p class="text-[12px] text-zinc-500 pt-1">US dollars · no sales tax added · duties, where charged, paid by the recipient.</p>
                     </div>
                 </aside>
             </div>
@@ -1520,7 +1536,7 @@
         <main class="flex-1 overflow-y-auto fade-in bg-white">
             <div class="max-w-3xl mx-auto px-6 pt-10 pb-28">
                 <div class="text-center mb-10">
-                    <div class="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-7 h-7" fill="none" stroke="#9A7230" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+                    <div class="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-7 h-7" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
                     <h2 class="text-3xl brand-font text-zinc-900 mb-2">Your order has been received</h2>
                     <p class="text-[15px] text-zinc-700">Order ID <span class="font-mono font-semibold text-zinc-900" x-text="order.ref"></span> · <span x-text="orderDate(order.created_at)"></span></p>
                     <p class="text-[13px] text-zinc-500 mt-2">A confirmation has been sent to <span class="text-zinc-700" x-text="order.customer.email"></span>. Quote the Order ID in any question.</p>
@@ -1570,7 +1586,7 @@
     <div x-show="view === 'home' && devMode" x-cloak class="fixed left-4 bottom-4 z-[90] w-[300px] rounded-xl shadow-2xl border bg-white p-4 text-[12px]"
          style="border-color:#DCDCDC;" role="region" aria-label="Developer AI mode">
         <div class="flex items-center justify-between mb-2">
-            <span class="text-[10px] uppercase tracking-[0.16em] font-semibold text-zinc-500">Developer · internal</span>
+            <span class="text-[12px] uppercase tracking-[0.16em] font-semibold text-zinc-500">Developer · internal</span>
             <button @click="forgetDevKey()" class="text-zinc-400 hover:text-zinc-700" title="Hide and forget the developer key" aria-label="Close developer panel">✕</button>
         </div>
         <div class="flex items-center gap-2 text-[14px] font-semibold text-zinc-900">
@@ -1584,8 +1600,8 @@
         <p class="text-zinc-500 mt-1" x-text="'Set by: ' + (devMode?.source || '')"></p>
         <p x-show="devMode?.active_jobs" class="text-zinc-500 mt-1" x-text="devMode?.active_jobs + ' generation(s) running — switching waits until they finish.'"></p>
         <div class="mt-3 flex gap-2">
-            <button x-show="devMode?.mode === 'live'" @click="switchAiMode('mock')" :disabled="devBusy" class="btn-black flex-1 py-2 !text-[11px]">Switch to Mock</button>
-            <button x-show="devMode?.mode === 'mock' && devMode?.live_available" @click="liveConfirmOpen = true; devError = ''" :disabled="devBusy" class="btn-outline flex-1 py-2 !text-[11px]">Switch to Live…</button>
+            <button x-show="devMode?.mode === 'live'" @click="switchAiMode('mock')" :disabled="devBusy" class="btn-black flex-1 py-2 !text-[12px]">Switch to Mock</button>
+            <button x-show="devMode?.mode === 'mock' && devMode?.live_available" @click="liveConfirmOpen = true; devError = ''" :disabled="devBusy" class="btn-outline flex-1 py-2 !text-[12px]">Switch to Live…</button>
         </div>
         <p x-show="devMode?.mode === 'mock' && !devMode?.live_available" class="text-zinc-400 mt-2">Live mode needs FAL_KEY in the server configuration.</p>
         <p x-show="devError && !liveConfirmOpen" class="mt-2" style="color:#A1261D;" x-text="devError"></p>
@@ -1635,14 +1651,14 @@
                 <!-- Identity -->
                 <div class="px-5 pt-5 pb-4 flex items-start gap-3" style="background:#FBF7EF; border-bottom:1px solid #EFE6D6;">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 brand-font text-[15px] font-semibold"
-                         style="background:linear-gradient(135deg,#C9A96E,#9A7230); color:#1A1A1A;"
+                         style="background:linear-gradient(135deg,#C9A96E,#8A6420); color:#1A1A1A;"
                          x-text="(displayName || 'X').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()"></div>
                     <div class="min-w-0 flex-1">
                         <div class="text-[15px] font-semibold truncate" style="color:#1A1A1A;" x-text="displayName || 'Your account'"></div>
                         <div class="text-[12px] truncate" style="color:#6F6F6F;" x-show="displayEmail" x-text="displayEmail"></div>
                         <div class="text-[12px] italic" style="color:#9A9A9A;" x-show="!displayEmail">No email on record</div>
                     </div>
-                    <button type="button" @click="closeAccountPanel()" class="tap-lg p-1 -m-1 rounded-md transition hover:bg-black/5" aria-label="Close" style="color:#8F8F8F;">
+                    <button type="button" @click="closeAccountPanel()" class="tap-lg p-1 -m-1 rounded-md transition hover:bg-black/5" aria-label="Close" style="color:#6F6F6F;">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
@@ -1651,7 +1667,7 @@
                     <!-- Movie generations (one per finished 360° movie) -->
                     <div>
                         <div class="flex items-baseline justify-between mb-1.5">
-                            <span class="text-[10px] uppercase tracking-[0.2em] font-semibold" style="color:#9A7235;">Movie generations</span>
+                            <span class="text-[12px] uppercase tracking-[0.2em] font-semibold" style="color:#8A6420;">Movie generations</span>
                             <span class="text-[12px]" style="color:#6F6F6F;">
                                 <span class="font-semibold tabular-nums" style="color:#1A1A1A;" x-text="quotaRemaining"></span>
                                 of <span class="tabular-nums" x-text="quotaMax"></span> remaining
@@ -1669,11 +1685,11 @@
 
                     <!-- Sign-in code -->
                     <div>
-                        <div class="text-[10px] uppercase tracking-[0.2em] font-semibold mb-1.5" style="color:#9A7235;">Your sign-in code</div>
+                        <div class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-1.5" style="color:#8A6420;">Your sign-in code</div>
                         <div class="flex items-center gap-2">
                             <code class="flex-1 px-3 py-2 rounded-lg text-[14px] font-semibold tracking-[0.18em] tabular-nums truncate"
                                   style="background:#F6F6F6; border:1px solid #E5E5E5; color:#1A1A1A;" x-text="userSession && userSession.token"></code>
-                            <button type="button" @click="copyAccessToken()" class="btn-outline shrink-0 px-3 py-2 !text-[11px]" :class="tokenCopied ? '!border-[#8A561B] !text-[#8A561B]' : ''">
+                            <button type="button" @click="copyAccessToken()" class="btn-outline shrink-0 px-3 py-2 !text-[12px]" :class="tokenCopied ? '!border-[#8A561B] !text-[#8A561B]' : ''">
                                 <span x-text="tokenCopied ? 'Copied ✓' : 'Copy'"></span>
                             </button>
                         </div>
@@ -1682,12 +1698,12 @@
 
                     <!-- Orders -->
                     <div x-show="orders.length || ordersLoading" x-cloak>
-                        <div class="text-[10px] uppercase tracking-[0.2em] font-semibold mb-1.5" style="color:#9A7235;">My orders</div>
-                        <p x-show="ordersLoading && !orders.length" class="text-[12px]" style="color:#8F8F8F;">Loading…</p>
+                        <div class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-1.5" style="color:#8A6420;">My orders</div>
+                        <p x-show="ordersLoading && !orders.length" class="text-[12px]" style="color:#6F6F6F;">Loading…</p>
                         <ul class="divide-y divide-zinc-100 max-h-40 overflow-y-auto">
                             <template x-for="o in orders" :key="o.id">
                                 <li><button type="button" @click="openOrder(o)" class="w-full flex items-center justify-between gap-3 py-2 text-left hover:bg-zinc-50 rounded px-1 -mx-1 transition">
-                                    <span class="min-w-0"><span class="font-mono text-[12px]" style="color:#1A1A1A;" x-text="o.ref"></span><span class="block text-[11px] truncate" style="color:#8F8F8F;" x-text="orderDate(o.created_at) + ' · ' + o.count + (o.count === 1 ? ' ring' : ' rings') + ' · ' + o.status_label"></span></span>
+                                    <span class="min-w-0"><span class="font-mono text-[12px]" style="color:#1A1A1A;" x-text="o.ref"></span><span class="block text-[12px] truncate" style="color:#6F6F6F;" x-text="orderDate(o.created_at) + ' · ' + o.count + (o.count === 1 ? ' ring' : ' rings') + ' · ' + o.status_label"></span></span>
                                     <span class="text-[12px] shrink-0" style="color:#1A1A1A;" x-text="money(o.total, o.currency)"></span></button></li>
                             </template>
                         </ul>
@@ -1696,7 +1712,7 @@
                     <!-- Actions -->
                     <div class="flex items-center justify-between gap-3 pt-1" style="border-top:1px solid #EFEFEF;">
                         <button type="button" @click="openMyDesignsFromAccount()" class="text-[12px] font-medium pt-3 transition hover:underline" style="color:#1A1A1A;">My Designs →</button>
-                        <button type="button" @click="signOutFromAccount()" class="text-[12px] pt-3 transition hover:underline" style="color:#8F8F8F;">Sign out</button>
+                        <button type="button" @click="signOutFromAccount()" class="text-[12px] pt-3 transition hover:underline" style="color:#6F6F6F;">Sign out</button>
                     </div>
                 </div>
             </div>
@@ -1717,7 +1733,7 @@
 
                 <!-- Header -->
                 <div class="mb-6 text-center">
-                    <p class="text-[11px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
+                    <p class="text-[12px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
                     <h2 id="reg-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel',serif;" x-text="regMode === 'token' ? 'Sign in' : 'Sign in or register'"></h2>
                     <p id="reg-desc" x-show="regMode === 'email'" class="text-[13px] text-zinc-600 mt-2 leading-relaxed">Register with your email and we send you a link to start designing. Your designs are saved to your account.</p>
                     <p x-show="regMode === 'token'" class="text-[13px] text-zinc-600 mt-2 leading-relaxed">Enter the 6-letter sign-in code from your welcome email.</p>
@@ -1746,7 +1762,7 @@
                                placeholder="you@example.com" class="fld" :class="regLoading ? 'opacity-50' : ''">
                     </div>
                     <button type="submit" :disabled="regLoading"
-                            class="btn-gold w-full py-3.5 text-[11px] uppercase tracking-[0.2em] transition stream-glow">
+                            class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                         <span x-show="!regLoading" class="inline-flex items-center">Send Verification Link
                             <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                         </span>
@@ -1773,7 +1789,7 @@
                     </div>
                     <button type="submit"
                             :disabled="regLoading"
-                            class="btn-gold w-full py-3.5 text-[11px] uppercase tracking-[0.2em] transition stream-glow">
+                            class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                         <span x-show="!regLoading" class="inline-flex items-center">Sign in
                             <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                         </span>
@@ -1808,7 +1824,7 @@
              class="fixed left-1/2 -translate-x-1/2 bottom-5 z-[600] flex items-center gap-4 px-5 py-3 rounded-xl shadow-2xl text-[13px] fade-in"
              style="background:#1A1A1A; color:#fff; max-width:min(92vw, 560px);">
             <span x-text="toast?.text"></span>
-            <button x-show="toast?.label" @click="toastAction()" class="shrink-0 font-semibold uppercase tracking-widest text-[11px]" style="color:#E2C27A;" x-text="toast?.label"></button>
+            <button x-show="toast?.label" @click="toastAction()" class="shrink-0 font-semibold uppercase tracking-widest text-[12px]" style="color:#E2C27A;" x-text="toast?.label"></button>
             <button @click="toast = null" class="shrink-0 text-zinc-400 hover:text-white" aria-label="Dismiss">✕</button>
         </div>
     </template>
@@ -1819,8 +1835,8 @@
              @click.self="closeQuoteRequest()" @keydown.escape.window="closeQuoteRequest()" role="dialog" aria-modal="true" aria-labelledby="qr-title">
             <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-7 fade-in max-h-[92vh] overflow-y-auto">
                 <div class="flex items-start justify-between gap-4 mb-4">
-                    <div><p class="text-[10px] uppercase tracking-[0.25em] text-zinc-400 mb-1">Gold · by request</p><h3 id="qr-title" class="brand-font text-2xl text-zinc-900">Request a quote</h3></div>
-                    <button @click="closeQuoteRequest()" class="tap-lg p-1 text-[#8F8F8F] hover:text-[#555]" aria-label="Close">✕</button>
+                    <div><p class="text-[12px] uppercase tracking-[0.25em] text-zinc-400 mb-1">Gold · by request</p><h3 id="qr-title" class="brand-font text-2xl text-zinc-900">Request a quote</h3></div>
+                    <button @click="closeQuoteRequest()" class="tap-lg p-1 text-[#6F6F6F] hover:text-[#555]" aria-label="Close">✕</button>
                 </div>
                 <template x-if="!quoteReq.done">
                     <div class="space-y-4">
@@ -1843,12 +1859,12 @@
                             <button @click="closeQuoteRequest()" class="btn-outline flex-1 py-3">Cancel</button>
                             <button @click="sendQuoteRequest()" :disabled="quoteReq.busy" class="btn-gold flex-1 py-3" x-text="quoteReq.busy ? 'Sending…' : 'Send request'"></button>
                         </div>
-                        <p class="text-[11px] text-zinc-400 text-center">We reply within one business day. Nothing is ordered or charged.</p>
+                        <p class="text-[12px] text-zinc-400 text-center">We reply within one business day. Nothing is ordered or charged.</p>
                     </div>
                 </template>
                 <template x-if="quoteReq.done">
                     <div class="text-center py-4">
-                        <div class="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-6 h-6" fill="none" stroke="#9A7230" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+                        <div class="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-6 h-6" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
                         <h4 class="brand-font text-xl text-zinc-900 mb-2">Request <span class="font-mono" x-text="quoteReq.done.ref"></span> received</h4>
                         <p class="text-[13px] text-zinc-600 leading-relaxed">We have emailed a confirmation to <span class="text-zinc-800" x-text="quoteReq.done.customer.email"></span>. A specialist will reply within one business day with a price and the next steps.</p>
                         <button @click="closeQuoteRequest()" class="btn-black mt-6 px-8 py-3">Done</button>
@@ -1864,21 +1880,21 @@
         <div class="fixed inset-0 z-[105] bg-black/60 flex items-start md:items-center justify-center p-4 overflow-y-auto" @click.self="galleryGridOpen = false" @keydown.escape.window="galleryGridOpen = false" role="dialog" aria-modal="true" aria-label="Inspiration Gallery">
             <div class="bg-white rounded-2xl w-full max-w-5xl shadow-2xl p-6 md:p-8 fade-in">
                 <div class="flex items-start justify-between gap-4 mb-6">
-                    <div><span class="text-[10px] uppercase tracking-[0.4em]" style="color:#C9A96E">Inspiration Gallery</span>
+                    <div><span class="text-[12px] uppercase tracking-[0.4em]" style="color:#8A6420">Inspiration Gallery</span>
                         <h3 class="brand-font text-2xl text-zinc-900 mt-1">Start from a design you love</h3>
                         <p class="text-[12px] text-zinc-500 mt-1" x-text="gallery.length + (gallery.length === 1 ? ' design' : ' designs') + ' · open one to see it large, then make it yours'"></p></div>
-                    <button @click="galleryGridOpen = false" class="tap-lg p-1 text-[#8F8F8F] hover:text-[#555]" aria-label="Close"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                    <button @click="galleryGridOpen = false" class="tap-lg p-1 text-[#6F6F6F] hover:text-[#555]" aria-label="Close"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     <template x-if="galleryState === 'loading'"><template x-for="i in 4" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
                     <template x-for="g in gallery" :key="g.id">
                         <button type="button" @click="openGallery(g)" class="group relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                             <img :src="g.image_url" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy">
-                            <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#9A7230;">Make it yours →</span></span>
+                            <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </button>
                     </template>
                     <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery.</div>
-                    <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#9A7230;">Try again</button></div>
+                    <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
                 </div>
             </div>
         </div>
@@ -1892,7 +1908,7 @@
                     <img :src="galleryItem.image_url" :alt="galleryItem.title" class="max-h-[46vh] md:max-h-[78vh] w-auto object-contain">
                 </div>
                 <div class="md:w-2/5 p-7 md:p-9 flex flex-col justify-center text-center md:text-left gap-4">
-                    <span class="text-[10px] uppercase tracking-[0.4em]" style="color:#C9A96E">Inspiration Gallery</span>
+                    <span class="text-[12px] uppercase tracking-[0.4em]" style="color:#8A6420">Inspiration Gallery</span>
                     <h3 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h3>
                     <p class="brand-font text-xl leading-snug text-zinc-800">Love this design? Make it yours.</p>
                     <p class="text-sm text-zinc-500 leading-relaxed">Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size and watch it in 360°.</p>
@@ -1901,7 +1917,7 @@
                         <button @click="makeItYours()" :disabled="galleryBusy" class="btn-gold py-4 text-xs uppercase tracking-[0.2em] stream-glow transition" x-text="galleryBusy ? 'Opening your design…' : 'Make it yours'"></button>
                         <button @click="closeGallery()" class="btn-outline py-3 text-xs uppercase tracking-[0.2em]">Back to gallery</button>
                     </div>
-                    <p x-show="!userSession" class="text-[11px] text-zinc-400">Sign in or register first — we'll bring you straight back to this design.</p>
+                    <p x-show="!userSession" class="text-[12px] text-zinc-400">Sign in or register first — we'll bring you straight back to this design.</p>
                 </div>
             </div>
         </div>
@@ -1923,7 +1939,7 @@
             </template>
             <div x-show="previewMedia === 'image'" class="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 rounded-lg border bg-white/90 backdrop-blur px-1.5 py-1" style="border-color:#DCDCDC;">
                 <button @click="previewZoomBy(1/1.25)" class="w-8 h-8 flex items-center justify-center text-lg transition rounded text-[#6F6F6F] hover:text-[#1A1A1A]" aria-label="Zoom out">−</button>
-                <button @click="previewResetZoom()" class="min-w-[52px] h-8 flex items-center justify-center text-[11px] font-medium tracking-wider transition rounded text-[#6F6F6F] hover:text-[#1A1A1A]" title="Reset zoom" x-text="Math.round(previewZoom * 100) + '%'"></button>
+                <button @click="previewResetZoom()" class="min-w-[52px] h-8 flex items-center justify-center text-[12px] font-medium tracking-wider transition rounded text-[#6F6F6F] hover:text-[#1A1A1A]" title="Reset zoom" x-text="Math.round(previewZoom * 100) + '%'"></button>
                 <button @click="previewZoomBy(1.25)" class="w-8 h-8 flex items-center justify-center text-lg transition rounded text-[#6F6F6F] hover:text-[#1A1A1A]" aria-label="Zoom in">+</button>
             </div>
             <div class="flex flex-col items-center gap-3" style="width:94vw; height:88vh;" @click.self="closePreview()">
@@ -1945,12 +1961,12 @@
                                 class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-white border-2 transition"
                                 :class="c.id === previewCandidate?.id ? 'border-zinc-900' : 'border-zinc-200 hover:border-zinc-400'">
                             <img :src="c.image_url" alt="" class="w-full h-full object-contain">
-                            <span x-show="c.id === selectedId" class="absolute bottom-0 inset-x-0 text-[9px] uppercase tracking-widest text-white text-center py-0.5" style="background:#1A1A1A;">Selected</span>
+                            <span x-show="c.id === selectedId" class="absolute bottom-0 inset-x-0 text-[12px] uppercase tracking-widest text-white text-center py-0.5" style="background:#1A1A1A;">Selected</span>
                         </button>
                     </template>
                 </div>
                 <div class="shrink-0 flex flex-col sm:flex-row items-center gap-3">
-                    <p x-show="previewMedia === 'image'" class="text-[11px] lg:text-[12px] uppercase tracking-widest text-zinc-600"><span class="hidden sm:inline">Scroll or + / − to zoom · drag to pan · ← → to switch</span><span class="sm:hidden">Tap to zoom · swipe to switch</span></p>
+                    <p x-show="previewMedia === 'image'" class="text-[12px] lg:text-[12px] uppercase tracking-widest text-zinc-600"><span class="hidden sm:inline">Scroll or + / − to zoom · drag to pan · ← → to switch</span><span class="sm:hidden">Tap to zoom · swipe to switch</span></p>
                     <template x-if="previewCandidate">
                         <div>
                             <button x-show="previewCandidate.id !== selectedId" @click="selectFromPreview()" class="btn-black px-6 py-2.5">Select this design</button>
