@@ -862,6 +862,7 @@ function adminApp() {
     },
     placeholdersFor(mc) { return [...new Set(mc.model.params.flatMap(p => p.placeholders))]; },
     rangeText(p) {
+      if (p.internal) return '';                                   // pipeline-only text: no provider default to show
       const parts = [];
       if (p.kind === 'enum') parts.push('Options: ' + p.allowed.join(', '));
       if ((p.kind === 'int' || p.kind === 'number') && (p.min != null || p.max != null))

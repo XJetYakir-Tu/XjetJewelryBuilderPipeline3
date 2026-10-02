@@ -87,7 +87,8 @@ async def test_refine_uses_selected_image_for_all_outputs(H):
 
     Subs = H.Provider.SubmissionsFor(endpoints.ImageEdit)
     assert len(Subs) == N
-    assert len({S[1]["prompt"] for S in Subs}) == 1
+    Prompts = [S[1]["prompt"] for S in Subs]            # the same instruction for all four; each image adds its own variation directive
+    assert __import__("os").path.commonprefix(Prompts).startswith("Add fine milgrain edges") and len(set(Prompts)) == N
     assert Subs[0][1]["prompt"].startswith("Add fine milgrain edges\n\n")
     RefUrls = {S[1]["image_urls"][0] for S in Subs}
     assert len(RefUrls) == 1

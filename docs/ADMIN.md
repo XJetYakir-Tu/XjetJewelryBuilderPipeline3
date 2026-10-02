@@ -239,6 +239,8 @@ Until then the Cost column shows "—".
 
 <suffix>`. No suffix is added on top of it.
 
+**Refinement variations (nano-banana-pro/edit).** A refinement sends four requests with the same instruction and the same reference image; the edit model honours seeds only weakly and is told to preserve everything else, so the four results often came back as the same picture. The edit model's configuration therefore has four pipeline-only fields, `variation_a` … `variation_d`, one directive per image: A the most faithful / conservative version, B a bolder version of the requested change, C an alternative interpretation in proportions or placement, D a different finish or detail treatment — all still preserving the rest of the design. The directive is appended to the end of that image's prompt (the batch's shared prompt stays as rendered); a blank field means that image gets the plain prompt, exactly as before. Refinements only — New Designs from an uploaded photo are untouched. No extra model, request or cost. Existing installations received the four default directives as a new visible version on the first start after the update; edit or blank them in Admin → AI Prompts & Params → nano-banana-pro/edit, and *Preview request* shows image A's payload with all four directives listed.
+
 **Configured vs omitted.** Each parameter is either *configured* (sent) or *not sent*, in which case the provider default applies and is shown in the form. Required provider parameters are always sent: the image `prompt`, and the movie `prompt_expansion_mode`.
 
 **Runtime inputs.** These are supplied by the pipeline and never stored in a configuration:

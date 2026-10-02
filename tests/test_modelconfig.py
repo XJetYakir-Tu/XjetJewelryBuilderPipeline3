@@ -54,7 +54,9 @@ async def test_seeded_version_sends_exactly_the_previous_requests(HM):
                             json={"parent_candidate_id": Sel["id"], "instruction": "Thinner band"})
     await H.Idle()
     E = _Subs(H, endpoints.ImageEdit)[0]
-    assert E["prompt"] == f"Thinner band\n\n{Suffix}" and len(E["image_urls"]) == 1
+    from p3.modelconfig import VariationDefaults
+    assert E["prompt"].startswith(f"Thinner band\n\n{Suffix}") and len(E["image_urls"]) == 1
+    assert E["prompt"][len(f"Thinner band\n\n{Suffix}"):].strip() in VariationDefaults.values()    # + this image's directive (v2)
     assert E["system_prompt"] == _ReadText(Raw["images"]["edit_system_prompt_file"])
     # Movie and mesh: exactly the previous parameters plus the runtime image.
     await H.Proceed(Batch["design_id"], Sel["id"])

@@ -5,7 +5,7 @@ Semantics (spec sections 3, 4.2, 4.3, 7.1):
   * fal nano-banana-pro caps num_images at 4, so each slot is its own
     single-image request with a distinct seed (enables per-slot retry/identity);
   * refinement uses the SELECTED candidate's image as the reference for all four
-    slots with one identical instruction — never text-only as a fallback;
+    slots with the same instruction (refinement images A-D each add their own variation directive) — never text-only as a fallback;
   * exact-duplicate outputs within a batch are retried a bounded number of times;
   * async results only ever write their own candidate row — never the design's
     selection — so late results cannot overwrite a different design.
@@ -20,7 +20,7 @@ from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.naming import NameForPrompt, NameForVariation
 from p3.providers import endpoints
-from p3.modelconfig import BuildRequest, ByEndpoint, Render
+from p3.modelconfig import BuildRequest, ByEndpoint, Render, SlotDirective, WithDirective
 from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
 
 Logger = logging.getLogger("p3.images")
@@ -233,11 +233,15 @@ class ImageService:
         rendered from its template when the batch was created)."""
         Version = self.Ctx.Models.Resolve(Batch["config_version"], Batch["endpoint"])
         Runtime = {"seed": Cand["seed"]}
+        if Batch["kind"] == "refine":
+            Runtime["slot"] = Cand["slot"]            # refinement images A–D each get their own variation directive
         if Batch["reference_asset"]:
             Runtime["image_url"] = await self._ReferenceUrl(Batch)
+        ModelId = ByEndpoint[Batch["endpoint"]]
         Params = {K: V for K, V in Version.Params.items() if K != "prompt"}
-        Args = BuildRequest(ByEndpoint[Batch["endpoint"]], Params, Runtime)
-        Args["prompt"] = Batch["effective_prompt"]
+        Args = BuildRequest(ModelId, Params, Runtime)
+        # The shared prompt rendered when the batch was created, plus this image's directive (if configured)
+        Args["prompt"] = WithDirective(Batch["effective_prompt"], SlotDirective(ModelId, Version.Params, Runtime.get("slot")))
         return Args
 
     async def _ReferenceUrl(self, Batch: dict) -> str:

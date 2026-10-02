@@ -1519,7 +1519,13 @@
 
       <!-- Parameters -->
       <section class="card divide-y divide-zinc-100">
-        <template x-for="p in mc.model.params" :key="mid + p.name">
+        <template x-for="(p, i) in mc.model.params" :key="mid + p.name">
+          <div>
+          <!-- A group heading (e.g. the refinement variations) above the first parameter of the group -->
+          <div x-show="p.group && (i === 0 || mc.model.params[i - 1].group !== p.group)" class="px-5 pt-5 pb-1">
+            <p class="text-[12px] font-semibold uppercase tracking-[0.12em] text-amber-800" x-text="p.group.split(' — ')[0]"></p>
+            <p class="text-[12px] text-zinc-500 leading-snug mt-0.5" x-text="p.group.includes(' — ') ? p.group.slice(p.group.indexOf(' — ') + 3) : ''"></p>
+          </div>
           <div class="p-5 grid grid-cols-1 md:grid-cols-[230px_1fr] gap-4">
             <div class="space-y-1">
               <p class="font-mono text-[13px] font-semibold" x-text="p.name"></p>
@@ -1527,12 +1533,12 @@
               <p class="text-[12px] text-zinc-500" x-text="rangeText(p)"></p>
               <label class="flex items-center gap-2 text-xs pt-1" :class="p.required ? 'text-zinc-500' : ''">
                 <input type="checkbox" :checked="draft[p.name]?.set" :disabled="p.required" @change="setParam(p, $event.target.checked)">
-                <span x-text="p.required ? 'Required — always sent' : 'Configure (send this value)'"></span>
+                <span x-text="p.required ? 'Required — always sent' : p.internal ? 'Use this directive' : 'Configure (send this value)'"></span>
               </label>
             </div>
             <div>
               <div x-show="!draft[p.name]?.set" class="text-sm text-zinc-500 italic py-2"
-                   x-text="'Not sent — provider default: ' + defaultText(p)"></div>
+                   x-text="p.internal ? 'Not used — this image gets the plain prompt, the same as the others (as before).' : 'Not sent — provider default: ' + defaultText(p)"></div>
               <div x-show="draft[p.name]?.set" class="space-y-2">
                 <!-- text / template -->
                 <template x-if="p.kind === 'text' || p.kind === 'template'">
@@ -1598,6 +1604,7 @@
               </div>
             </div>
           </div>
+          </div>
         </template>
       </section>
 
@@ -1627,6 +1634,14 @@
         <p class="text-[12px] text-amber-700">Values marked [SAMPLE …] and example.invalid are sample runtime inputs; real requests use the customer's text, the selected image and a random seed.</p>
         <p class="text-[12px] text-zinc-500" x-text="'POST ' + preview?.endpoint + (preview?.omitted?.length ? ' · not sent (provider defaults): ' + preview.omitted.join(', ') : '')"></p>
         <pre class="bg-zinc-50 border border-zinc-200 p-3 text-[12px] overflow-x-auto max-h-[480px] whitespace-pre-wrap" x-text="JSON.stringify(preview?.payload, null, 2)"></pre>
+        <template x-if="preview?.slot_directives">
+          <div class="text-[12px] text-zinc-600 space-y-1 pt-1">
+            <p class="font-semibold text-zinc-700">Refinement variations — the payload above is image A; images B–D send the same request with their own directive at the end of the prompt:</p>
+            <template x-for="k in ['A', 'B', 'C', 'D']" :key="k">
+              <p><span class="font-mono">Image <span x-text="k"></span>:</span> <span x-text="preview.slot_directives[k] || 'no directive — plain prompt (as before)'"></span></p>
+            </template>
+          </div>
+        </template>
       </section>
 
       <!-- Version history -->

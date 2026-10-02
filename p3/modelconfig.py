@@ -42,6 +42,7 @@ SampleRuntime = {
     "user_prompt": "[SAMPLE customer prompt] A slim rose-gold band with a small leaf motif",
     "image_url": "https://example.invalid/SAMPLE-selected-image.png",
     "seed": 123456789,
+    "slot": 0,                     # the preview shows image A of a refinement (its variation directive, if configured)
 }
 
 
@@ -60,13 +61,15 @@ class Param:
     MaxLength: int | None = None
     Allowed: tuple = ()            # subset of Enum the pipeline supports (empty = all)
     AllowedReason: str = ""
+    Internal: bool = False         # used by the pipeline when it builds the request; never sent as a provider field
+    Group: str = ""                # heading shown above this parameter in the Admin
 
     def ToJson(self) -> dict:
         return {"name": self.Name, "kind": self.Kind, "description": self.Description, "default": self.Default,
                 "enum": list(self.Enum), "allowed": list(self.Allowed or self.Enum), "allowed_reason": self.AllowedReason,
                 "min": self.Min, "max": self.Max, "required": self.Required,
                 "placeholders": list(self.Placeholders), "required_placeholders": list(self.RequiredPlaceholders),
-                "max_length": self.MaxLength}
+                "max_length": self.MaxLength, "internal": self.Internal, "group": self.Group}
 
 
 @dataclass(frozen=True)
@@ -120,6 +123,53 @@ def _ImageParams(AspectDefault: str) -> tuple:
     )
 
 
+# ── refinement variations: the same instruction for all four images, plus one directive per image ──
+# A refinement sends four requests with the same instruction and reference image; the edit model
+# honours seeds only weakly and is told to preserve everything else, so the four results often come
+# back as the same picture. Each image therefore gets its own directive, appended to the end of its
+# prompt (A–D by slot). A blank directive = no addition for that image, exactly as before. Pipeline-
+# only text: never a provider field, no extra request, no extra cost.
+VariationGroup = ("Refinement variations — the same instruction for all four images, plus one directive per image "
+                  "(added to the end of that image's prompt; refinements only, not New Designs from an uploaded photo). "
+                  "Blank = that image gets the plain prompt, as before.")
+VariationDefaults = {
+    "a": "This is image A of four: the most faithful, conservative version. Apply exactly the requested change and "
+         "nothing more; keep every other detail, proportion, finish and the metal identical to the reference image.",
+    "b": "This is image B of four: a bolder version of the requested change. Make the change clearly more pronounced "
+         "than a minimal edit, while every other feature, proportion and the metal of the design stay exactly as in "
+         "the reference image.",
+    "c": "This is image C of four: an alternative interpretation of the requested change in proportions or placement. "
+         "Realise the same change with different proportions or at a different position on the ring, keeping "
+         "everything else identical to the reference image.",
+    "d": "This is image D of four: the requested change with a different finish or detail treatment (surface texture, "
+         "polish, edge or ornament detail), keeping the form and every other feature of the design identical to the "
+         "reference image.",
+}
+VariationLabels = {"a": "Image A — most faithful / conservative version of the requested change.",
+                   "b": "Image B — bolder version of the requested change.",
+                   "c": "Image C — alternative interpretation in proportions or placement.",
+                   "d": "Image D — different finish or detail treatment."}
+_VariationParams = tuple(
+    Param(f"variation_{K}", "text", VariationLabels[K] + " Appended to the end of this image's prompt in a refinement. "
+          "Blank = no directive for this image (same prompt as before).", Default=VariationDefaults[K], MaxLength=2000,
+          Internal=True, Group=VariationGroup)
+    for K in "abcd")
+
+
+def SlotDirective(ModelId: str, Params: dict, Slot) -> str | None:
+    """The configured variation directive for image `Slot` (0–3 → A–D) of this model, or None."""
+    Spec = Models.get(ModelId)
+    if Spec is None or Slot is None or not 0 <= int(Slot) <= 3:
+        return None
+    P = Spec.Param(f"variation_{'abcd'[int(Slot)]}")
+    Value = Params.get(P.Name) if P and P.Internal else None
+    return Value.strip() if isinstance(Value, str) and Value.strip() else None
+
+
+def WithDirective(Prompt: str, Directive: str | None) -> str:
+    return (Prompt or "").rstrip() + "\n\n" + Directive.strip() if Directive else Prompt
+
+
 _ImageFixed = (
     Fixed("num_images", "Always 1: the pipeline sends four separate requests per batch, one image each.", 1),
     Fixed("seed", "A different random seed for each of the four images, chosen when the batch is created.",
@@ -163,7 +213,7 @@ Models: dict[str, ModelSpec] = {S.Id: S for S in (
         "nano-banana-pro-edit", "fal-ai/nano-banana-pro/edit", endpoints.ImageEdit,
         "Refinements (from the selected image) and New Designs with an uploaded reference image (four separate "
         "requests, one image each).", True,
-        _ImageParams("auto"),
+        _ImageParams("auto") + _VariationParams,
         _ImageFixed + (Fixed("image_urls", "The image being edited: the selected design image for a refinement, or the "
                                            "customer's uploaded reference image.", Runtime="image_url"),)),
     ModelSpec(
@@ -335,7 +385,12 @@ def BuildRequest(ModelId: str, Params: dict, Runtime: dict) -> dict:
     Args = {}
     for Name, Value in Params.items():
         P = Spec.Param(Name)
+        if P and P.Internal:
+            continue                                   # pipeline-only (e.g. a variation directive), never a provider field
         Args[Name] = Render(Value, Runtime) if P and P.Kind in ("template", "text") and isinstance(Value, str) else Value
+    Directive = SlotDirective(ModelId, Params, Runtime.get("slot"))
+    if Directive and isinstance(Args.get("prompt"), str):
+        Args["prompt"] = WithDirective(Args["prompt"], Directive)
     for F in Spec.Fixed:
         if F.Runtime == "image_url":
             Url = Runtime.get("image_url")
@@ -438,6 +493,24 @@ class ModelConfigStore:
             V = self._Insert(ModelId, Clean, "seed", "Initial version from config/generation.json and config/prompts")
             self.Db.Execute("UPDATE model_config_versions SET legacy_alias = ? WHERE id = ?", (Aliases.get(ModelId), V.Id))
             self._Activate(ModelId, V.Id, "seed")
+        self._SeedInternalDefaults()
+
+    def _SeedInternalDefaults(self) -> None:
+        """Pipeline-only parameters that arrived after a model was first configured (the refinement variation
+        directives) are added once, as a new visible version with their default texts, so the Admin can see,
+        edit or blank them. Never repeated: once any version of the model carries them, nothing is added."""
+        for ModelId, Spec in Models.items():
+            Internal = [P for P in Spec.Params if P.Internal and P.Default is not None]
+            if not Internal:
+                continue
+            Names = {P.Name for P in Internal}
+            if any(Names & set(json.loads(R["config_json"])) for R in
+                   self.Db.All("SELECT config_json FROM model_config_versions WHERE model = ?", (ModelId,))):
+                continue
+            Params = {**self.Active(ModelId).Params, **{P.Name: P.Default for P in Internal}}
+            V = self._Insert(ModelId, Validate(ModelId, Params), "update",
+                             "Refinement variations A–D added with their default directives (edit or blank them here)")
+            self._Activate(ModelId, V.Id, "update")
 
     def _Row(self, R: dict) -> Version:
         return Version(R["id"], R["model"], R["number"], json.loads(R["config_json"]), R["created_at"],
@@ -533,7 +606,9 @@ class ModelConfigStore:
         Spec = Models[ModelId]
         Clean = Validate(ModelId, Params) if Params is not None else self.Active(ModelId).Params
         Runtime = dict(SampleRuntime)
+        Letters = {K: SlotDirective(ModelId, Clean, I) for I, K in enumerate("ABCD")} if any(P.Internal for P in Spec.Params) else None
         return {"endpoint": Spec.Endpoint, "payload": BuildRequest(ModelId, Clean, Runtime),
+                "slot_directives": Letters,
                 "sample_runtime": {K: V for K, V in Runtime.items()
                                    if K in {"seed", "image_url"} | set(P for Prm in Spec.Params for P in Prm.Placeholders)},
                 "omitted": [P.Name for P in Spec.Params if P.Name not in Clean],
