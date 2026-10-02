@@ -114,6 +114,13 @@ class GalleryService:
                    "JOIN designs d ON d.id = g.design_id JOIN candidates c ON c.id = g.candidate_id WHERE g.id = ?", (ItemId,))
         if R is None or R["candidate_status"] != "ready":
             raise HttpError(404, "gallery_item_not_found", "This gallery design is no longer available.")
+        # The customer already made this design theirs: open that one (moved to the top of My Designs), no duplicate.
+        Mine = Db.One("SELECT id FROM designs WHERE owner_account_id = ? AND source_design_id = ? ORDER BY created_at DESC LIMIT 1",
+                      (Who.AccountId, R["design_id"]))
+        if Mine:
+            Db.Execute("UPDATE designs SET updated_at = ? WHERE id = ?", (Now(), Mine["id"]))
+            Sessions.Record(self.Ctx, Who.AccountId, "design_opened", Mine["id"], via="gallery")
+            return Mine["id"]
         Batch = Db.One("SELECT * FROM batches WHERE id = ?", (R["batch_id"],))
         Cands = Db.All("SELECT * FROM candidates WHERE batch_id = ? AND status = 'ready' AND asset_path IS NOT NULL "
                        "ORDER BY slot", (R["batch_id"],))
@@ -128,6 +135,17 @@ class GalleryService:
             assets.WriteAtomic(S.AssetsDir, Rel, assets.Resolve(S.AssetsDir, C["asset_path"]).read_bytes())
             Copies.append((C, Nid, Rel))
         SelectedNew = next(Nid for C, Nid, _ in Copies if C["id"] == R["candidate_id"])
+        # 360° movies already made for these options travel with them: Customize shows the movie at once
+        # instead of generating (and paying for) the same movie again.
+        MovieCopies = []
+        for C, Nid, _ in Copies:
+            Mv = Db.One("SELECT * FROM movies WHERE candidate_id = ? AND status = 'ready' AND asset_path IS NOT NULL "
+                        "ORDER BY created_at DESC LIMIT 1", (C["id"],))
+            if Mv:
+                Mid = NewId("mov")
+                Rel = f"designs/{NewDesign}/movies/{Mid}.mp4"
+                assets.WriteAtomic(S.AssetsDir, Rel, assets.Resolve(S.AssetsDir, Mv["asset_path"]).read_bytes())
+                MovieCopies.append((Mv, Nid, Mid, Rel))
         with Db.Transaction() as Conn:
             Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, selected_candidate_id, client_request_id, "
                          "created_at, updated_at, ai_mode, source_design_id, source_candidate_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -142,6 +160,10 @@ class GalleryService:
                 Conn.execute("INSERT INTO candidates (id, batch_id, slot, status, seed, attempts, asset_path, content_sha256, "
                              "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                              (Nid, NewBatch, C["slot"], "ready", C["seed"], 0, Rel, C["content_sha256"], T, T))
+            for Mv, Nid, Mid, Rel in MovieCopies:                # no provider request: nothing charged, no quota
+                Conn.execute("INSERT INTO movies (id, candidate_id, config_version, endpoint, status, provider_request_id, "
+                             "asset_path, created_at, updated_at) VALUES (?,?,?,?,'ready',NULL,?,?,?)",
+                             (Mid, Nid, Mv["config_version"], Mv["endpoint"], Rel, T, T))
         Sessions.Record(self.Ctx, Who.AccountId, "gallery_started", NewDesign, gallery_item_id=ItemId,
                         source_design_id=R["design_id"], source_ring_id=RingIds.CandidateRef(Db, R["candidate_id"]))
         return NewDesign

@@ -2,6 +2,7 @@
 
 import pytest
 
+from p3.providers import endpoints
 from tests.conftest import Harness
 
 AdminKey = "gallery-admin-key"
@@ -19,7 +20,8 @@ async def _Curated(H):
     """An XJet design (the harness user) with a chosen image, added to the gallery by the admin."""
     Batch = await H.NewDesign("Twisted bands joined by a small knot")
     Did, Cand = Batch["design_id"], Batch["candidates"][2]
-    await H.Client.put(f"/api/designs/{Did}/selection", json={"candidate_id": Cand["id"]})
+    await H.Proceed(Did, Cand["id"])                                      # XJet made the 360° movie already
+    await H.Idle()
     R = await H.Client.post("/api/admin/gallery", json={"design_id": Did}, headers=Admin)
     assert R.status_code == 200, R.text
     return Did, Cand, R.json()
@@ -79,12 +81,28 @@ async def test_make_it_yours_copies_the_batch_into_the_customers_own_design(HG):
     # A double tap does not make a second design
     Again = await H.Client.post(f"/api/gallery/{Item['id']}/start", json={"client_request_id": "tap-1"}, headers=Cust)
     assert Again.json()["id"] == D["id"]
-    # The customer continues normally: Customize (movie), their own design list; the original is untouched
+    # The movie XJet already made for that option came with the copy: Customize shows it at once, no new movie
+    Mv = H.Ctx.Db.One("SELECT * FROM movies WHERE candidate_id = ?", (Sel["id"],))
+    Src = H.Ctx.Db.One("SELECT * FROM movies WHERE candidate_id = ?", (Cand["id"],))
+    assert Mv["status"] == "ready" and Mv["provider_request_id"] is None and Mv["asset_path"].startswith(f"designs/{D['id']}/movies/")
+    assert H.AssetBytes(H.Ctx.AssetUrl(Mv["asset_path"])) == H.AssetBytes(H.Ctx.AssetUrl(Src["asset_path"]))
+    MovieSubs = len(H.Provider.SubmissionsFor(endpoints.Movie))
     Cus = (await H.Client.post(f"/api/designs/{D['id']}/customize", json={"candidate_id": Sel["id"]}, headers=Cust)).json()
     await H.Idle()
     assert Cus["design_id"] == D["id"] and Cus["candidate_id"] == Sel["id"]
-    Mine = (await H.Client.get("/api/designs", headers=Cust)).json()
-    assert [X["id"] for X in Mine["designs"]] == [D["id"]] if "designs" in Mine else [X["id"] for X in Mine] == [D["id"]]
+    assert Cus["movie"]["status"] == "ready" and len(H.Provider.SubmissionsFor(endpoints.Movie)) == MovieSubs
+    assert (await H.Client.get("/api/session", headers=Cust)).json()["used"] == 0      # still nothing charged
+    # Starting the same gallery design again opens the existing copy, moved to the top of My Designs
+    Own = await H.Client.post("/api/designs", data={"prompt": "My own plain band"}, headers=Cust)
+    assert Own.status_code == 200
+    await H.Idle()
+    Mine = (await H.Client.get("/api/designs", headers=Cust)).json()["designs"]
+    assert [X["id"] for X in Mine][0] == Own.json()["design_id"] and len(Mine) == 2
+    Third = await H.Client.post(f"/api/gallery/{Item['id']}/start", json={"client_request_id": "tap-2"}, headers=Cust)
+    assert Third.json()["id"] == D["id"]
+    Mine = (await H.Client.get("/api/designs", headers=Cust)).json()["designs"]
+    assert [X["id"] for X in Mine] == [D["id"], Own.json()["design_id"]]
+    assert (await H.Client.get("/api/admin/gallery", headers=Admin)).json()["items"][0]["starts"] == 1
     assert (await H.Client.get(f"/api/designs/{Did}", headers=Cust)).status_code == 404      # the XJet original stays XJet's
     Orig = await H.Design(Did)
     assert Orig["selected_candidate_id"] == Cand["id"] and len(Orig["batches"]) == 1

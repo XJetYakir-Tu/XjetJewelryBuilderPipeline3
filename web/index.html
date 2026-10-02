@@ -631,6 +631,7 @@
                                         <div class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0 font-semibold mt-0.5 brand-font" style="background:#EEEEEE; color:#555;">U</div>
                                         <div class="px-4 py-3 rounded-2xl text-[14px] max-w-[80%] leading-relaxed" style="background:#F0F0F0; color:#333; border:1px solid #E5E5E5;">
                                             <span x-show="bubbleBatch?.kind === 'refine'" class="block text-[10px] uppercase tracking-[0.14em] font-semibold mb-1" style="color:#9B7040;">Refinement of the selected design</span>
+                                            <span x-show="design?.origin === 'gallery' && bubbleBatch?.kind === 'initial'" class="block text-[10px] uppercase tracking-[0.14em] font-semibold mb-1" style="color:#9B7040;">Started from the Inspiration Gallery</span>
                                             <span x-text="bubbleBatch?.user_text"></span>
                                         </div>
                                     </div>
