@@ -80,15 +80,15 @@ A **session is one design journey**:
 
 ## Inspiration Gallery
 
-The gallery on the customer site (home page, first 8, and the Inspiration page) shows **real XJet designs**, chosen in the Admin. Code: `p3/gallery.py`, table `gallery_items`.
+The gallery on the customer site (home page, first 8, and the Inspiration page) shows **real XJet designs**, chosen in the Admin. Code: `p3/gallery.py`; tables `gallery_items` (the tiles) and `gallery_uses` (customers on them).
 
-- **Curate:** Sessions → open a session → **Show in gallery** (uses the design's selected image), or **Use in gallery** under any ready option. The **Gallery** tab lists the tiles in display order, with ↑ ↓ and Remove, and how many customers started from each.
-- **Customer:** one tap on a tile opens a large preview — "Love this design? Make it yours." — with **Make it yours** and **Back to gallery**.
-- **Make it yours** copies the batch behind the gallery image (all four options, the customer's own files) into a **new design owned by the customer**, with the gallery image selected. Nothing is generated or charged, no quota is used, and the XJet original is never touched. The customer then continues as with any design: refine, 360° movie, Customize, Bag.
-- **360° movies come with the copy.** A movie already made for one of the options is copied too, so Customize shows it at once instead of generating (and paying for) the same movie again.
-- **No duplicates.** A customer who starts the same gallery design again gets their existing copy, moved to the top of My Designs.
-- **Not signed in:** the normal sign-in opens; the chosen design is remembered in that browser (also across the verification email link) and opens right after sign-in.
-- **Admin visibility:** the copy shows "Started from gallery · R-1013-B" (session header and list), a `gallery_started` event in the journey, and `origin` / `source_ring_id` in the session summary.
+- **One shared master design per tile.** A customer who taps **Make it yours** is *linked* to the XJet design (`gallery_uses`); the design, its images, its 360° movies and its Hi3D raw model are never copied. The customer's own selection lives on the link, their Customize choices in `customizations` (one row per customer, design and option), their bag lines in `bag_lines`.
+- **Curate:** Sessions → open a session → **Show in gallery** (the design's selected image), or **Use in gallery** under any ready option. ↑ ↓ in the Gallery tab set the display order; **Copy link** gives a share link (`…/JewelryB2C3/#gallery=<id>`) that opens the design's preview directly; **Remove** takes the tile off the site (customers keep their links; the design stays listed as "removed from gallery" while it has journeys).
+- **Customer:** one tap opens a large preview — "Love this design? Make it yours." — with **Make it yours** / **Back to gallery**. Signed in: the Design screen opens on the shared design with the gallery image selected ("Your gallery pick and its three siblings"). Not signed in: the sign-in flow opens and the design opens right after. Starting the same design again moves it to the top of My Designs — never a second entry. The gallery is also reachable from the My Designs sidebar (**Inspiration Gallery**).
+- **Costs:** nothing is generated or charged by Make it yours. A 360° movie that exists is shown at once; a movie a customer asks for on another option is charged to *that customer* (`movies.requested_by`). A **refinement** of a shared design becomes a design of the customer's own (`source_design_id` = the master; event `gallery_refined`), so the master never changes.
+- **Journeys:** every customer on a shared design is a session of its own (session id `use_…`) — in Sessions, on the user's page and in the Dashboard funnel — with "Started from gallery · R-1013-A". The master design's own page and each customer's page show **Customers on this gallery design** (who, when, path, size, material, bag, checkout). Generate 3D from a customer's journey uses that customer's size and material; the Hi3D model belongs to the design and is shared.
+- **Gallery tab:** every master design with usage statistics — Selected (journeys), Customers (unique), Customize, Bag, Checkout, 3D, Refined, last used — sortable as Most selected / Most popular / Most added to bag (no "sold" until orders exist); a row opens its customers.
+- **Dashboard:** the funnel is also split by origin (own prompt vs gallery).
 
 ## Generate 3D (admin only)
 

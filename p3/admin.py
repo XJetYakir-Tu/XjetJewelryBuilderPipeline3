@@ -11,6 +11,7 @@ its body with a proper admin role / company sign-in (e.g. SSO) — the routes do
 from dataclasses import dataclass
 
 import asyncio
+import json
 import hashlib
 import hmac
 import time
@@ -28,6 +29,7 @@ from p3.aipricing import PriceError
 from p3.materialprices import MaterialPriceError
 from p3.usage import AccountActivity
 from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
+from p3.geometry import Scaled, UsSizeToInnerDiameterMm
 
 
 @dataclass(frozen=True)
@@ -114,44 +116,79 @@ def Dashboard(Ctx: Context) -> dict:
     """Small, factual overview. Geometry/price statistics appear once 3D data exists."""
     S = Sessions.Summaries(Ctx, IncludeMock=False)                          # mock activity stays out of statistics
     N = len(S)
-    Live = {X["session_id"] for X in S}
+    LiveDesigns = {X["design_id"] for X in S}
 
-    def Reached(Key):
-        return sum(1 for X in S if X["stage_times"].get(Key))
+    def Funnel(Rows):
+        Total = len(Rows)
+        return [{"stage": K, "label": Sessions.StageLabels[K], "sessions": sum(1 for X in Rows if X["stage_times"].get(K)),
+                 "pct": _Pct(sum(1 for X in Rows if X["stage_times"].get(K)), Total)} for K in Sessions.StageOrder]
 
     Clicks = Ctx.Db.One("SELECT COUNT(*) AS n FROM session_events WHERE kind = 'new_design_clicked' "
                         "AND json_extract(data_json, '$.ai_mode') = 'live'")["n"]
     Geo = [G for G in Ctx.Db.All(
         "SELECT g.volume_mm3, p.material_id, p.weight_g, p.fixed_price, p.calculated_price, p.production_cost, s.design_id "
         "FROM geometry_results g JOIN price_calculations p ON p.geometry_id = g.id JOIN session_3d s ON s.id = g.session_3d_id "
-        "WHERE g.stage = 'production'") if G["design_id"] in Live]
-    Selected3D = len({R["design_id"] for R in Ctx.Db.All("SELECT DISTINCT design_id FROM session_3d")} & Live)
+        "WHERE g.stage = 'production'") if G["design_id"] in LiveDesigns]
+    Selected3D = len({R["design_id"] for R in Ctx.Db.All("SELECT DISTINCT design_id FROM session_3d")} & LiveDesigns)
+    Mandatory = ("silver", "vermeil", "stainless_steel")
     ByMat: dict[str, list] = {}
     for G in Geo:
         if G["weight_g"] is not None:
             ByMat.setdefault(G["material_id"], []).append(G["weight_g"])
     Pairs = [(G["fixed_price"], G["calculated_price"]) for G in Geo if G["fixed_price"] and G["calculated_price"]]
     Volumes = [G["volume_mm3"] for G in Geo if G["volume_mm3"]]
+    # Every measured raw model (once per Hi3D model), scaled by arithmetic to the reference sizes, so
+    # the averages do not depend on which size each request happened to ask for.
+    Raws = [json.loads(R["measurement_json"]) for R in Ctx.Db.All(
+        "SELECT r.measurement_json, b.design_id FROM raw_geometry r JOIN meshes m ON m.id = r.mesh_id "
+        "JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id WHERE r.status = 'measured'")
+        if R["design_id"] in LiveDesigns]
+    Raws = [R for R in Raws if R.get("bore_ok") and R.get("inner_diameter") and R.get("closed_heuristic", True)]
+    Book = Ctx.MaterialPrices
+    Mats = list(dict.fromkeys(Mandatory + tuple(Ctx.Catalog.Materials)))
+
+    def MaterialRow(VolumeCc):
+        Out = {}
+        for Mt in Mats:
+            R = Book.Row(Mt)
+            W = VolumeCc * R["density_g_cm3"] if VolumeCc and R.get("density_g_cm3") else None
+            Out[Mt] = {"weight_g": round(W, 2) if W else None,
+                       "price_3d": round(W * R["price_per_g"], 2) if W and R.get("price_per_g") else None,
+                       "cost_3d": round(W * R["cost_per_g"], 2) if W and R.get("cost_per_g") else None,
+                       "fixed_price": R.get("fixed_price")}
+        return Out
+
+    BySize = []
+    for Sz in (7, 8, 10, 11):
+        Vc = [Scaled(R, UsSizeToInnerDiameterMm(Sz))["volume_mm3"] / 1000.0 for R in Raws]
+        V = mean(Vc) if Vc else None
+        BySize.append({"size": Sz, "models": len(Vc), "volume_cc": round(V, 3) if V else None,
+                       "materials": MaterialRow(V)})
     return {
         "sessions": N, "active_sessions": sum(1 for X in S if X["state"] == "active"),
         "new_design_clicks": Clicks,
-        "funnel": [{"stage": K, "label": Sessions.StageLabels[K], "sessions": Reached(K), "pct": _Pct(Reached(K), N)}
-                   for K in Sessions.StageOrder],
+        "funnel": Funnel(S),
+        "funnel_by_origin": {K: {"sessions": len(V), "funnel": Funnel(V)} for K, V in
+                             (("prompt", [X for X in S if X["origin"] != "gallery"]),
+                              ("gallery", [X for X in S if X["origin"] == "gallery"]))},
         "avg_refinements": round(mean([X["refinements"] for X in S]), 2) if S else None,
         "sessions_with_refinement_pct": _Pct(sum(1 for X in S if X["refinements"]), N),
         "generation_failed": sum(1 for X in S if "Generation failed" in X["path"]),
         "selected_for_3d": Selected3D, "selected_for_3d_pct": _Pct(Selected3D, N),
         "geometry": {
-            "measured": len(Geo),
-            "avg_volume_mm3": round(mean(Volumes), 1) if Volumes else None,
-            "avg_weight_g_by_material": {K: round(mean(V), 2) for K, V in ByMat.items()},
+            "measured": len(Geo), "models": len(Raws),
+            "avg_volume_cc": round(mean(Volumes) / 1000.0, 3) if Volumes else None,
+            "avg_weight_g_by_material": {K: (round(mean(ByMat[K]), 2) if ByMat.get(K) else None)
+                                         for K in dict.fromkeys(Mandatory + tuple(ByMat))},
+            "by_size": BySize,
+            # What the website's fixed price assumes today: 1 cm³ of metal.
+            "fixed_basis": {"volume_cc": 1.0, "materials": MaterialRow(1.0)},
             "fixed_vs_3d_price_variance_pct": round(mean([100.0 * (C - F) / F for F, C in Pairs]), 1) if Pairs else None,
             "price_pairs": len(Pairs),
         },
         "cost_model": "configured" if any(G["production_cost"] is not None for G in Geo) else "not_configured",
         "mock_excluded": True,
     }
-
 
 def UserCost(Ctx: Context, AccountId: str, Prices, AllUsage: list | None = None) -> dict:
     """Live (non-mock) sessions of one user and their estimated AI cost at list prices."""
@@ -161,43 +198,47 @@ def UserCost(Ctx: Context, AccountId: str, Prices, AllUsage: list | None = None)
         except AccountNotFound:
             AllUsage = []
     Total, N = 0.0, 0
-    MockIds = Sessions.MockDesignIds(Ctx, AccountId)
-    for D in Ctx.Db.All("SELECT id FROM designs WHERE owner_account_id = ?", (AccountId,)):
+    MockIds = Sessions.MockDesignIds(Ctx)
+    for D in Ctx.Db.All("SELECT id FROM designs WHERE owner_account_id = ? UNION ALL "
+                        "SELECT design_id AS id FROM gallery_uses WHERE owner_account_id = ?", (AccountId, AccountId)):
         if D["id"] in MockIds:
             continue
-        Total += Sessions.Pipeline(Ctx, D["id"], AllUsage, Prices)["total_cost"]
+        Total += Sessions.Pipeline(Ctx, D["id"], AllUsage, Prices, Owner=AccountId)["total_cost"]   # this account's requests
         N += 1
     return {"sessions": N, "ai_cost": round(Total, 4)}
 
 
-def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
-    Summary = (Sessions.Summaries(Ctx, [DesignId]) or [None])[0]
+def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None) -> dict:
+    """One journey: a design for its owner, or (session id = use id) a customer on a shared master design."""
+    Use = Ctx.Db.One("SELECT * FROM gallery_uses WHERE id = ?", (SessionId,)) if SessionId.startswith("use_") else None
+    DesignId = Use["design_id"] if Use else SessionId
+    Summary = (Sessions.Summaries(Ctx, SessionIds=[SessionId]) or [None])[0]
     if Summary is None:
         raise HttpError(404, "session_not_found", "Session not found.")
     Owner = Summary["account_id"]
-    Design = next((G for G in AccountActivity(Ctx, Owner)["designs"] if G["id"] == DesignId), None)
+    MasterOwner = Ctx.Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (DesignId,))["owner_account_id"]
+    Design = next((G for G in AccountActivity(Ctx, MasterOwner)["designs"] if G["id"] == DesignId), None)
     Batches = (Design or {}).get("batches", [])
     Refs = RingIds.CandidateRefs(Ctx.Db, [DesignId])
+    Selected = (Use["selected_candidate_id"] or Use["source_candidate_id"]) if Use else None
     for B in Batches:
         for C in B["candidates"]:
             C["ring_id"] = Refs.get(C["id"])
+            if Use:                                    # the customer's own pick, not XJet's
+                C["selected"] = C["id"] == Selected
     Jobs = {C["id"] for B in Batches for C in B["candidates"]}
     Jobs |= {M["id"] for B in Batches for C in B["candidates"] for M in C["movies"]}
     Jobs |= {R["id"] for R in Ctx.Db.All("SELECT m.id FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
                                          "JOIN batches b ON b.id = c.batch_id WHERE b.design_id = ?", (DesignId,))}
     try:
-        Usage = [U for U in Ctx.Accounts.AdminActivity(Owner)["usage"]
-                 if U["ref_id"] in Jobs and U["kind"] != "generation"]
-    except AccountNotFound:
-        Usage = []
-    Cost = [U["cost_usd"] for U in Usage if U["cost_usd"] is not None]
-    Timeline = Sessions.Timeline(Ctx, DesignId)
-    try:
         AllUsage = Ctx.Accounts.AdminActivity(Owner)["usage"]
         User = Ctx.Accounts.AdminGet(Owner)
     except AccountNotFound:
         AllUsage, User = [], None
-    Flow = Sessions.Pipeline(Ctx, DesignId, AllUsage, Prices)
+    Usage = [U for U in AllUsage if U["ref_id"] in Jobs and U["kind"] != "generation"]
+    Cost = [U["cost_usd"] for U in Usage if U["cost_usd"] is not None]
+    Timeline = Sessions.Timeline(Ctx, DesignId, Owner=Owner, Use=Use)
+    Flow = Sessions.Pipeline(Ctx, DesignId, AllUsage, Prices, Owner=Owner)
     Movie = next((M for B in Batches for C in B["candidates"] if C["selected"] for M in C["movies"] if M["status"] == "ready"), None) \
         or next((M for B in Batches for C in B["candidates"] for M in C["movies"] if M["status"] == "ready"), None)
     Keep = ("material_id", "ring_size", "quantity", "unit_price", "pricing_version", "pricing_status")
@@ -207,19 +248,20 @@ def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
     Last = None                                    # the customer's final selection (changes applied in order)
     for C in Choices:
         Last = {**(Last or {}), **{K: V for K, V in C.items() if V is not None}}
+    SelCand = next((C for B in Batches for C in B["candidates"] if C["selected"]), None)
     return {
         "session": Summary,
         "user": User,
         "pipeline": Flow,
         "cost": {"session": Flow["total_cost"],
-                 "basis": "Estimated at list prices (Admin → AI Prompts & Params → AI prices); mock requests are $0.",
+                 "basis": "Estimated at list prices (Admin → AI Prompts & Params → AI prices); mock requests are $0."
+                          + (" Shared gallery design: only this customer's own requests are counted." if Use else ""),
                  "price_list_version": Prices.Current()["version"]},
         "artifacts": {"image_url": Summary["thumbnail_url"], "movie_url": Movie["url"] if Movie else None,
-                      "ring_id": Refs.get(Sel["id"]) if (Sel := next((C for B in Batches for C in B["candidates"]
-                                                                      if C["selected"]), None)) else None},
+                      "ring_id": Refs.get(SelCand["id"]) if SelCand else None},
         "last_choice": Last,
         "timeline": Timeline,
-        "design": Design,
+        "design": {**Design, "shared": bool(Use), "master_ring_id": Summary["ring_id"]} if Design else None,
         "choices": Choices,
         "ai_usage": {"requests": len(Usage),
                      "by_kind": {K: sum(1 for U in Usage if U["kind"] == K) for K in sorted({U["kind"] for U in Usage})},
@@ -236,8 +278,10 @@ def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
         "catalog": {"ring_sizes": list(Ctx.Catalog.RingSizes),
                     "materials": [{"id": M.Id, "label": M.Label, "density_g_cm3": M.DensityGCm3}
                                   for M in Ctx.Catalog.Materials.values()]},
+        # Shared gallery design: every customer journey on it (the master's own page and each use show it).
+        "gallery": Gallery.ForDesign(DesignId) if Gallery else None,
+        "gallery_usage": Gallery.Usage(DesignId) if Gallery else [],
     }
-
 
 def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery=None) -> None:
     """Add the admin page and API to the (inner) app. `Page(name)` renders a web/ page."""
@@ -307,18 +351,23 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.get("/api/admin/sessions/{DesignId}")
     async def GetSession(DesignId: str, authorization: str | None = Header(None)):
         Admin(authorization)
-        D = SessionDetail(Ctx, Production, DesignId, Prices)
+        D = SessionDetail(Ctx, Production, DesignId, Prices, Gallery)
         for T in D["three_d"]:                          # the Hi3D thumbnail is shown first (an <img>: signed link)
             if (T["live"].get("raw") or {}).get("thumbnail"):
                 T["live"]["thumbnail_url"] = _SignedUrl(T["id"], "thumbnail")
-        D["gallery"] = Gallery.ForDesign(DesignId) if Gallery else None     # is this design in the Inspiration Gallery?
         return D
 
-    @App_.post("/api/admin/sessions/{DesignId}/3d")
-    async def Generate3D(DesignId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+    @App_.post("/api/admin/sessions/{SessionId}/3d")
+    async def Generate3D(SessionId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
         Who = Admin(authorization)
+        Customer, DesignId = None, SessionId
+        if SessionId.startswith("use_"):                 # a customer's journey on a shared master design
+            Customer = (Sessions.Summaries(Ctx, SessionIds=[SessionId]) or [None])[0]
+            if Customer is None:
+                raise HttpError(404, "session_not_found", "Session not found.")
+            DesignId = Customer["design_id"]
         return Production.Request(DesignId, Body_.get("production_size"), Body_.get("material_id") or None,
-                                  Body_.get("candidate_id") or None, RequestedBy=Who.Id)
+                                  Body_.get("candidate_id") or None, RequestedBy=Who.Id, Customer=Customer)
 
     # Large files (a 5M-face STL is ~250 MB) are downloaded natively by the browser — streamed to disk
     # with its progress bar — through a short-lived signed link, instead of being loaded into the page.
@@ -463,6 +512,11 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     async def AdminGallery(authorization: str | None = Header(None)):
         Admin(authorization)
         return {"items": Gallery.AdminList()}
+
+    @App_.get("/api/admin/gallery/usage/{DesignId}")
+    async def AdminGalleryUsage(DesignId: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return {"design_id": DesignId, "uses": Gallery.Usage(DesignId)}
 
     @App_.post("/api/admin/gallery")
     async def AdminGalleryAdd(Body_: dict = Body(...), authorization: str | None = Header(None)):

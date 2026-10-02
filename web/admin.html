@@ -330,34 +330,77 @@
   </main>
 
   <!-- ══════════════════════════ Dashboard ══════════════════════════ -->
-  <!-- ── Inspiration Gallery: the XJet designs shown on the customer site ─────── -->
+  <!-- ── Inspiration Gallery: shared XJet master designs, with usage statistics ─────── -->
   <main x-show="ok && tab === 'gallery'" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4" x-show="galleryItems.some(g => g.sessions)">
+      <template x-for="c in [['sessions','Most selected','journeys started'],['users','Most popular','unique customers'],['bag','Most added to bag','customers who added it to the bag']]" :key="c[0]">
+        <div class="card p-4"><p class="lbl mb-1" x-text="c[1]"></p>
+          <template x-if="galleryTop(c[0])"><div><p class="font-medium" x-text="galleryTop(c[0]).title"></p>
+            <p class="text-[11px] text-zinc-500"><span class="font-mono" x-text="galleryTop(c[0]).ring_id || galleryTop(c[0]).design_ring_id"></span> · <span x-text="galleryTop(c[0])[c[0]] + ' ' + c[2]"></span></p></div></template>
+          <p x-show="!galleryTop(c[0])" class="text-sm text-zinc-400">—</p></div>
+      </template>
+    </section>
     <section class="card p-6 space-y-4">
       <div class="flex flex-wrap items-baseline justify-between gap-3">
-        <p class="lbl">Inspiration Gallery (<span x-text="galleryItems.length"></span>)</p>
-        <p class="text-[11px] text-zinc-400">Shown on the customer home page (first 8) and the Inspiration page, in this order. Add a design from its session page: Sessions → open a session → <strong>Show in gallery</strong>.</p>
+        <p class="lbl">Inspiration Gallery · XJet master designs (<span x-text="galleryItems.length"></span>)</p>
+        <div class="flex flex-wrap items-center gap-3 text-[11px]">
+          <span class="text-zinc-400">Sort</span>
+          <template x-for="o in [['position','Display order'],['sessions','Most selected'],['users','Most popular'],['bag','Most added to bag'],['last_used_at','Last used']]" :key="o[0]">
+            <button class="uppercase tracking-widest" :class="gallerySort === o[0] ? 'text-black underline' : 'text-zinc-500 hover:text-black'" @click="gallerySort = o[0]" x-text="o[1]"></button>
+          </template>
+        </div>
       </div>
-      <p x-show="!galleryItems.length" class="text-sm text-zinc-500">No designs in the gallery yet — customers see "New designs are being added to the gallery".</p>
+      <p class="text-[11px] text-zinc-400">One shared design per tile: customers who choose it are linked to it, never given a copy. Add a design from its session page (Sessions → open a session → <strong>Show in gallery</strong>). ↑ ↓ set the display order on the customer site; a row opens its customers.</p>
+      <p x-show="!galleryItems.length" class="text-sm text-zinc-500">No designs in the gallery yet.</p>
       <div class="overflow-x-auto" x-show="galleryItems.length">
-      <table class="w-full">
-        <thead><tr><th>#</th><th></th><th>Design</th><th>Image</th><th class="text-right">Started by customers</th><th>Added</th><th class="text-right">Actions</th></tr></thead>
-        <tbody>
-          <template x-for="(g, i) in galleryItems" :key="g.id">
-            <tr>
-              <td class="tabular-nums text-zinc-500" x-text="g.position"></td>
-              <td class="w-16"><div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden"><img :src="g.image_url" class="w-full h-full object-cover" alt=""></div></td>
-              <td><a class="font-medium hover:underline" :href="'#/sessions/' + encodeURIComponent(g.design_id)" x-text="g.title"></a><p class="text-[11px] text-zinc-500 truncate max-w-[360px]" x-text="g.prompt"></p></td>
-              <td class="font-mono text-xs whitespace-nowrap"><span x-text="g.ring_id"></span> <span x-show="!g.ready" class="badge bg-red-100 text-red-700 ml-1">image missing</span></td>
-              <td class="text-right tabular-nums" x-text="g.starts"></td>
-              <td class="text-zinc-500 text-xs whitespace-nowrap" x-text="dateTime(g.created_at)"></td>
-              <td class="text-right whitespace-nowrap space-x-3 text-xs">
-                <button class="text-zinc-500 hover:underline disabled:opacity-30" :disabled="i === 0" @click="galleryMove(g.id, 'up')">↑ Up</button>
-                <button class="text-zinc-500 hover:underline disabled:opacity-30" :disabled="i === galleryItems.length - 1" @click="galleryMove(g.id, 'down')">↓ Down</button>
-                <button class="text-red-400 hover:underline" @click="galleryRemove(g)">Remove</button>
+      <table class="w-full !text-xs">
+        <thead><tr><th>#</th><th></th><th>Design</th><th class="text-right" title="Customer journeys started from it">Selected</th><th class="text-right" title="Unique customers">Customers</th><th class="text-right">Customize</th><th class="text-right">Bag</th><th class="text-right">Checkout</th><th class="text-right" title="Admin 3D requests on this design">3D</th><th class="text-right" title="Customers who refined it into a design of their own">Refined</th><th>Last used</th><th class="text-right">Actions</th></tr></thead>
+        <template x-for="(g, i) in gallerySorted()" :key="g.design_id">
+          <tbody>
+            <tr class="hover:bg-zinc-50 cursor-pointer" @click="galleryToggle(g)">
+              <td class="tabular-nums text-zinc-500" x-text="g.in_gallery ? g.position : '—'"></td>
+              <td class="w-14"><div class="w-10 h-10 bg-zinc-100 border border-zinc-200 overflow-hidden"><img x-show="g.image_url" :src="g.image_url" class="w-full h-full object-cover" alt=""></div></td>
+              <td><p class="font-medium" x-text="g.title"></p><p class="text-[11px] text-zinc-500"><span class="font-mono" x-text="g.ring_id || g.design_ring_id"></span><span x-show="!g.in_gallery" class="badge bg-zinc-100 text-zinc-500 ml-1">removed from gallery</span><span x-show="g.in_gallery && !g.ready" class="badge bg-red-100 text-red-700 ml-1">image missing</span></p></td>
+              <td class="text-right tabular-nums font-semibold" x-text="g.sessions"></td>
+              <td class="text-right tabular-nums" x-text="g.users"></td>
+              <td class="text-right tabular-nums" x-text="g.customize"></td>
+              <td class="text-right tabular-nums" x-text="g.bag"></td>
+              <td class="text-right tabular-nums" x-text="g.checkout"></td>
+              <td class="text-right tabular-nums" x-text="g.three_d"></td>
+              <td class="text-right tabular-nums" x-text="g.forks"></td>
+              <td class="text-zinc-500 whitespace-nowrap" x-text="g.last_used_at ? ago(g.last_used_at) : '—'"></td>
+              <td class="text-right whitespace-nowrap space-x-2" @click.stop>
+                <a class="text-zinc-500 hover:underline" :href="'#/sessions/' + encodeURIComponent(g.design_id)">Open</a>
+                <template x-if="g.in_gallery"><span class="space-x-2">
+                  <button class="text-zinc-500 hover:underline" @click="galleryLink(g)" x-text="galleryLinkCopied === g.id ? 'Link copied' : 'Copy link'"></button>
+                  <button class="text-zinc-500 hover:underline disabled:opacity-30" :disabled="gallerySort !== 'position' || i === 0" @click="galleryMove(g.id, 'up')">↑</button>
+                  <button class="text-zinc-500 hover:underline disabled:opacity-30" :disabled="gallerySort !== 'position' || i >= galleryItems.filter(x => x.in_gallery).length - 1" @click="galleryMove(g.id, 'down')">↓</button>
+                  <button class="text-red-400 hover:underline" @click="galleryRemove(g)">Remove</button>
+                </span></template>
               </td>
             </tr>
-          </template>
-        </tbody>
+            <tr x-show="galleryOpen === g.design_id" x-cloak class="bg-zinc-50">
+              <td colspan="12" class="!py-3" @click.stop>
+                <p class="lbl mb-2">Customers on this design — most recent first</p>
+                <p x-show="!(galleryUsage[g.design_id] || []).length" class="text-[11px] text-zinc-400">No customer has started from it yet.</p>
+                <table class="w-full !text-[11px]" x-show="(galleryUsage[g.design_id] || []).length">
+                  <thead><tr><th>Customer</th><th>Started</th><th>Last activity</th><th>Path</th><th>Size</th><th>Material</th><th>Bag</th><th>Checkout</th><th></th></tr></thead>
+                  <tbody><template x-for="u in (galleryUsage[g.design_id] || [])" :key="u.session_id"><tr>
+                    <td><span x-text="u.customer_name || '—'"></span> <span class="badge !text-[9px] !px-1.5" :class="statusClass(u.user_status)" x-text="statusLabel(u.user_status)"></span><p class="text-zinc-500" x-text="u.customer_email"></p></td>
+                    <td class="whitespace-nowrap" x-text="dateTime(u.started_at)"></td>
+                    <td class="whitespace-nowrap" x-text="ago(u.last_activity_at)"></td>
+                    <td x-text="u.path"></td>
+                    <td x-text="u.ring_size != null ? 'US ' + u.ring_size : '—'"></td>
+                    <td x-text="u.material_label || '—'"></td>
+                    <td x-text="u.add_to_bag ? '✓' : '—'"></td>
+                    <td x-text="u.checkout_clicked ? '✓' : '—'"></td>
+                    <td><a class="underline" :href="'#/sessions/' + encodeURIComponent(u.session_id)">Session</a></td>
+                  </tr></template></tbody>
+                </table>
+              </td>
+            </tr>
+          </tbody>
+        </template>
       </table>
       </div>
       <p x-show="galleryMsg" class="text-sm text-red-600" x-text="galleryMsg"></p>
@@ -392,6 +435,18 @@
           </template>
         </div>
         <p class="text-[11px] text-zinc-400 mt-4">Live AI sessions only — activity in Mock Mode is not counted. Checkout is not implemented yet — "Checkout Clicked" counts clicks on the unavailable Checkout button.</p>
+        <div class="mt-5 overflow-x-auto" x-show="dash.funnel_by_origin && dash.funnel_by_origin.gallery.sessions">
+          <p class="lbl mb-2">By origin — own prompt vs Inspiration Gallery</p>
+          <table class="w-full !text-xs">
+            <thead><tr><th>Stage</th><th class="text-right">All</th><th class="text-right" x-text="'Own prompt (' + dash.funnel_by_origin.prompt.sessions + ')'"></th><th class="text-right" x-text="'Gallery (' + dash.funnel_by_origin.gallery.sessions + ')'"></th></tr></thead>
+            <tbody><template x-for="(f, i) in dash.funnel" :key="f.stage"><tr>
+              <td x-text="f.label"></td>
+              <td class="text-right tabular-nums"><span x-text="f.sessions"></span> <span class="text-zinc-400" x-text="f.pct == null ? '' : '· ' + f.pct + '%'"></span></td>
+              <td class="text-right tabular-nums"><span x-text="dash.funnel_by_origin.prompt.funnel[i].sessions"></span> <span class="text-zinc-400" x-text="dash.funnel_by_origin.prompt.funnel[i].pct == null ? '' : '· ' + dash.funnel_by_origin.prompt.funnel[i].pct + '%'"></span></td>
+              <td class="text-right tabular-nums"><span x-text="dash.funnel_by_origin.gallery.funnel[i].sessions"></span> <span class="text-zinc-400" x-text="dash.funnel_by_origin.gallery.funnel[i].pct == null ? '' : '· ' + dash.funnel_by_origin.gallery.funnel[i].pct + '%'"></span></td>
+            </tr></template></tbody>
+          </table>
+        </div>
       </section>
 
       <section class="card p-6" x-show="storage">
@@ -410,14 +465,41 @@
       <section class="card p-6">
         <p class="lbl mb-4">3D geometry and price accuracy</p>
         <div x-show="!dash.geometry.measured" class="text-sm text-zinc-500">No sessions measured in 3D yet. Use <strong>Generate 3D</strong> on a session.</div>
-        <div x-show="dash.geometry.measured" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div><p class="lbl mb-1">Measured</p><p class="text-xl font-semibold" x-text="dash.geometry.measured"></p></div>
-          <div><p class="lbl mb-1">Avg volume</p><p class="text-xl font-semibold" x-text="dash.geometry.avg_volume_mm3 ? dash.geometry.avg_volume_mm3 + ' mm³' : '—'"></p></div>
-          <div><p class="lbl mb-1">Avg weight by material</p>
-            <template x-for="(w, m) in dash.geometry.avg_weight_g_by_material"><p x-text="materialLabel(m) + ': ' + w + ' g'"></p></template></div>
-          <div><p class="lbl mb-1">Fixed vs 3D price</p>
-            <p class="text-xl font-semibold" x-text="dash.geometry.fixed_vs_3d_price_variance_pct == null ? '—' : (dash.geometry.fixed_vs_3d_price_variance_pct > 0 ? '+' : '') + dash.geometry.fixed_vs_3d_price_variance_pct + '%'"></p>
-            <p class="text-[11px] text-zinc-400" x-show="dash.cost_model === 'not_configured'">Cost model not configured yet</p></div>
+        <div x-show="dash.geometry.measured" class="space-y-5">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div><p class="lbl mb-1">Measured results</p><p class="text-xl font-semibold" x-text="dash.geometry.measured"></p>
+              <p class="text-[11px] text-zinc-400" x-text="dash.geometry.models + ' Hi3D model' + (dash.geometry.models === 1 ? '' : 's')"></p></div>
+            <div><p class="lbl mb-1">Avg volume · requested sizes</p><p class="text-xl font-semibold" x-text="dash.geometry.avg_volume_cc != null ? dash.geometry.avg_volume_cc.toFixed(3) + ' cc' : '—'"></p></div>
+            <div><p class="lbl mb-1">Avg weight by material · requested sizes</p>
+              <template x-for="(w, m) in dash.geometry.avg_weight_g_by_material" :key="m"><p x-text="materialLabel(m) + ': ' + (w == null ? '—' : w.toFixed(2) + ' g')"></p></template></div>
+            <div><p class="lbl mb-1">Fixed vs 3D price</p>
+              <p class="text-xl font-semibold" x-text="dash.geometry.fixed_vs_3d_price_variance_pct == null ? '—' : (dash.geometry.fixed_vs_3d_price_variance_pct > 0 ? '+' : '') + dash.geometry.fixed_vs_3d_price_variance_pct + '%'"></p>
+              <p class="text-[11px] text-zinc-400" x-text="dash.geometry.price_pairs + ' comparison' + (dash.geometry.price_pairs === 1 ? '' : 's')"></p>
+              <p class="text-[11px] text-zinc-400" x-show="dash.cost_model === 'not_configured'">Cost model not configured yet</p></div>
+          </div>
+          <div class="overflow-x-auto">
+            <p class="lbl mb-2">By ring size — every measured Hi3D model scaled to the size (exact arithmetic), averaged</p>
+            <table class="w-full !text-xs">
+              <thead><tr><th>Ring size</th><th class="text-right">Avg volume</th><th class="text-right">Silver</th><th class="text-right">Vermeil</th><th class="text-right">Stainless Steel</th></tr></thead>
+              <tbody>
+                <template x-for="r in dash.geometry.by_size" :key="r.size"><tr>
+                  <td x-text="'US ' + r.size"></td>
+                  <td class="text-right tabular-nums" x-text="r.volume_cc != null ? r.volume_cc.toFixed(3) + ' cc' : '—'"></td>
+                  <template x-for="m in ['silver','vermeil','stainless_steel']" :key="m">
+                    <td class="text-right tabular-nums whitespace-nowrap"><span x-text="r.materials[m]?.weight_g != null ? r.materials[m].weight_g.toFixed(2) + ' g' : '—'"></span><span class="text-zinc-400" x-text="r.materials[m]?.price_3d != null ? ' · $' + r.materials[m].price_3d.toFixed(0) : ''"></span></td>
+                  </template>
+                </tr></template>
+                <tr class="font-medium" style="border-top:2px solid #e4e4e7;">
+                  <td>Fixed price basis today</td>
+                  <td class="text-right tabular-nums" x-text="dash.geometry.fixed_basis.volume_cc.toFixed(3) + ' cc'"></td>
+                  <template x-for="m in ['silver','vermeil','stainless_steel']" :key="m">
+                    <td class="text-right tabular-nums whitespace-nowrap"><span x-text="dash.geometry.fixed_basis.materials[m]?.weight_g != null ? dash.geometry.fixed_basis.materials[m].weight_g.toFixed(2) + ' g' : '—'"></span><span class="text-zinc-400" x-text="dash.geometry.fixed_basis.materials[m]?.fixed_price != null ? ' · $' + dash.geometry.fixed_basis.materials[m].fixed_price : ' · NA'"></span></td>
+                  </template>
+                </tr>
+              </tbody>
+            </table>
+            <p class="text-[11px] text-zinc-400 mt-2">Weight = volume × sintered density · "$" = weight × price $/g (the 3D calculated price), both from AI Prompts & Params → Pricing · materials. The last row is what the website's fixed price assumes today: 1 cm³ of metal at each material's density.</p>
+          </div>
         </div>
       </section>
     </div>
@@ -458,6 +540,7 @@
               <td class="text-xs"><p x-text="dateTime(x.started_at)"></p><p class="text-zinc-400" x-text="ago(x.last_activity_at) + (x.state === 'active' ? ' · active' : '')"></p></td>
               <td class="whitespace-nowrap">
                 <span x-show="x.mock" class="badge !text-[9px] !px-1.5 mr-0.5 bg-amber-100 text-amber-800">Mock</span>
+                <span x-show="x.shared" class="badge !text-[9px] !px-1.5 mr-0.5 bg-amber-100 text-amber-800" title="A customer on a shared gallery design">Gallery</span>
                 <template x-for="h in [['has_image', 'Image'], ['has_movie', 'Movie'], ['has_3d', '3D']]">
                   <span class="badge !text-[9px] !px-1.5 mr-0.5" :class="x[h[0]] ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-300'" x-text="h[1]"></span>
                 </template></td>
@@ -494,7 +577,8 @@
               <h1 class="cinzel text-2xl" x-text="sd.session.title"></h1>
               <span class="font-mono text-sm px-2 py-0.5 border border-zinc-300 text-zinc-700" title="Ring ID — use it to refer to this design" x-text="sd.session.ring_id"></span>
               <span x-show="sd.session.origin === 'gallery'" class="badge bg-amber-100 text-amber-800" x-text="'Started from gallery · ' + (sd.session.source_ring_id || '')"></span>
-              <span x-show="sd.gallery" class="badge bg-amber-100 text-amber-800" x-text="'In gallery #' + (sd.gallery?.position || '') + ' · ' + (sd.gallery?.starts || 0) + ' started'"></span>
+              <span x-show="sd.design?.shared" class="badge bg-amber-100 text-amber-800" title="One shared XJet design; this customer's own selection, size and material">Shared XJet design</span>
+              <span x-show="sd.gallery" class="badge bg-amber-100 text-amber-800" x-text="'In gallery #' + (sd.gallery?.position || '') + ' · ' + (sd.gallery?.sessions || 0) + ' selected'"></span>
               <span x-show="sd.session.mock" class="badge bg-amber-100 text-amber-800">Mock session — not counted in statistics</span>
               <span class="badge" :class="sd.session.state === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'" x-text="sd.session.state === 'active' ? 'Session active' : ('Session ended · ' + (sd.session.end_reason === 'new_design' ? 'new design started' : 'inactive'))"></span>
             </div>
@@ -535,6 +619,27 @@
             <span x-show="viewer3d.note" class="absolute left-2 top-2 text-[10px] text-zinc-500 bg-white/80 px-1.5 py-0.5 pointer-events-none" x-text="viewer3d.note"></span>
             <span x-show="viewer3d.error" class="absolute inset-x-0 bottom-2 text-center text-[11px] text-red-600" x-text="viewer3d.error"></span>
           </div></div>
+      </section>
+
+      <!-- Shared gallery design: every customer journey on it -->
+      <section class="card p-5 space-y-3" x-show="sd.gallery || (sd.gallery_usage || []).length">
+        <div class="flex items-baseline justify-between gap-3"><p class="lbl">Customers on this gallery design (<span x-text="(sd.gallery_usage || []).length"></span>)</p>
+          <a class="text-[11px] underline text-zinc-500" href="#/gallery">Gallery statistics</a></div>
+        <p x-show="!(sd.gallery_usage || []).length" class="text-sm text-zinc-400">No customer has started from it yet.</p>
+        <div class="overflow-x-auto"><table class="w-full !text-[11px]" x-show="(sd.gallery_usage || []).length">
+                  <thead><tr><th>Customer</th><th>Started</th><th>Last activity</th><th>Path</th><th>Size</th><th>Material</th><th>Bag</th><th>Checkout</th><th></th></tr></thead>
+                  <tbody><template x-for="u in (sd.gallery_usage || [])" :key="u.session_id"><tr>
+                    <td><span x-text="u.customer_name || '—'"></span> <span class="badge !text-[9px] !px-1.5" :class="statusClass(u.user_status)" x-text="statusLabel(u.user_status)"></span><p class="text-zinc-500" x-text="u.customer_email"></p></td>
+                    <td class="whitespace-nowrap" x-text="dateTime(u.started_at)"></td>
+                    <td class="whitespace-nowrap" x-text="ago(u.last_activity_at)"></td>
+                    <td x-text="u.path"></td>
+                    <td x-text="u.ring_size != null ? 'US ' + u.ring_size : '—'"></td>
+                    <td x-text="u.material_label || '—'"></td>
+                    <td x-text="u.add_to_bag ? '✓' : '—'"></td>
+                    <td x-text="u.checkout_clicked ? '✓' : '—'"></td>
+                    <td><a class="underline" :href="'#/sessions/' + encodeURIComponent(u.session_id)">Session</a></td>
+                  </tr></template></tbody>
+                </table></div>
       </section>
 
       <!-- Pipeline flow: duration and cost per step -->

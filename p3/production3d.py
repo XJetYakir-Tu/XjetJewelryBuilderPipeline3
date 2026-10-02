@@ -52,9 +52,11 @@ class Production3D:
 
     # ── admin request ────────────────────────────────────────────────────
     def Request(self, DesignId: str, ProductionSize=None, MaterialId: str | None = None,
-                CandidateId: str | None = None, RequestedBy: str = "admin") -> dict:
+                CandidateId: str | None = None, RequestedBy: str = "admin", Customer: dict | None = None) -> dict:
+        """Customer = the journey whose size/material are the defaults (a gallery customer's session on a
+        shared master design); otherwise the design owner's session."""
         Db, Cat = self.Ctx.Db, self.Ctx.Catalog
-        Summary = (Sessions.Summaries(self.Ctx, [DesignId]) or [None])[0]
+        Summary = Customer or (Sessions.Summaries(self.Ctx, [DesignId]) or [None])[0]
         if Summary is None:
             raise HttpError(404, "session_not_found", "Session not found.")
         Design = Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))

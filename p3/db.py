@@ -140,6 +140,22 @@ CREATE TABLE IF NOT EXISTS gallery_items (
     created_by    TEXT NOT NULL
 );
 
+-- A customer on a shared XJet master design (from the gallery): one row per customer and design.
+-- The design itself is never copied; the customer's selection lives here, their Customize choices in
+-- customizations (per owner), their bag lines in bag_lines.
+CREATE TABLE IF NOT EXISTS gallery_uses (
+    id                     TEXT PRIMARY KEY,
+    design_id              TEXT NOT NULL REFERENCES designs(id),
+    owner_account_id       TEXT NOT NULL,
+    gallery_item_id        TEXT,
+    source_candidate_id    TEXT REFERENCES candidates(id),    -- the tile's image when they started
+    selected_candidate_id  TEXT REFERENCES candidates(id),    -- their own pick within the design
+    started_at             TEXT NOT NULL,
+    last_active_at         TEXT NOT NULL,
+    UNIQUE (design_id, owner_account_id)
+);
+CREATE INDEX IF NOT EXISTS gallery_uses_owner ON gallery_uses(owner_account_id, last_active_at);
+
 -- Real processing stages with start/end times (Hi3D, download, queue, geometry, ready).
 CREATE TABLE IF NOT EXISTS stage_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -190,6 +206,25 @@ CREATE TABLE IF NOT EXISTS price_calculations (
 """
 
 
+
+def CustomizationsDdl(Name: str) -> str:
+    """Customize choices (material / size / quantity) are per customer AND per design + option: on a
+    shared gallery design every customer keeps their own choices."""
+    return f"""
+CREATE TABLE IF NOT EXISTS {Name} (
+    id                TEXT PRIMARY KEY,
+    owner_account_id  TEXT NOT NULL,
+    design_id         TEXT NOT NULL REFERENCES designs(id),
+    candidate_id      TEXT NOT NULL REFERENCES candidates(id),
+    material_id       TEXT NOT NULL,
+    ring_size         REAL,
+    quantity          INTEGER NOT NULL DEFAULT 1,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL,
+    UNIQUE (owner_account_id, design_id, candidate_id)
+);
+"""
+
 Schema = DesignsTable + """
 CREATE TABLE IF NOT EXISTS batches (
     id                   TEXT PRIMARY KEY,
@@ -226,17 +261,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     UNIQUE (batch_id, slot)
 );
 
-CREATE TABLE IF NOT EXISTS customizations (
-    id            TEXT PRIMARY KEY,
-    design_id     TEXT NOT NULL REFERENCES designs(id),
-    candidate_id  TEXT NOT NULL REFERENCES candidates(id),
-    material_id   TEXT NOT NULL,
-    ring_size     REAL,
-    quantity      INTEGER NOT NULL DEFAULT 1,
-    created_at    TEXT NOT NULL,
-    updated_at    TEXT NOT NULL,
-    UNIQUE (design_id, candidate_id)
-);
+""" + CustomizationsDdl("customizations") + """
 
 CREATE TABLE IF NOT EXISTS movies (
     id                   TEXT PRIMARY KEY,
@@ -306,6 +331,34 @@ class Database:
                     # Designs started from the Inspiration Gallery: a copy of an XJet design's batch.
                     Conn.execute("ALTER TABLE designs ADD COLUMN source_design_id TEXT")
                     Conn.execute("ALTER TABLE designs ADD COLUMN source_candidate_id TEXT")
+                CCols = {R[1] for R in Conn.execute("PRAGMA table_info(customizations)")}
+                if CCols and "owner_account_id" not in CCols:
+                    # Customize choices became per customer (shared gallery designs): rebuild with the owner.
+                    # Older databases may hold duplicate rows per design + option (no UNIQUE then): the
+                    # latest one wins. Atomic, so a failure leaves the old table untouched.
+                    Conn.execute("DROP TABLE IF EXISTS customizations_new")
+                    # bag_lines reference customizations(id); the ids are kept, so the references stay valid —
+                    # but enforcement must be off while the old table is dropped (a PRAGMA outside the transaction).
+                    Fk = Conn.execute("PRAGMA foreign_keys").fetchone()[0]
+                    Conn.execute("PRAGMA foreign_keys=OFF")
+                    Conn.execute("BEGIN")
+                    try:
+                        Conn.execute(CustomizationsDdl("customizations_new"))
+                        Conn.execute("INSERT OR REPLACE INTO customizations_new (id, owner_account_id, design_id, candidate_id, "
+                                     "material_id, ring_size, quantity, created_at, updated_at) SELECT c.id, d.owner_account_id, "
+                                     "c.design_id, c.candidate_id, c.material_id, c.ring_size, c.quantity, c.created_at, c.updated_at "
+                                     "FROM customizations c JOIN designs d ON d.id = c.design_id ORDER BY c.updated_at, c.rowid")
+                        Conn.execute("DROP TABLE customizations")
+                        Conn.execute("ALTER TABLE customizations_new RENAME TO customizations")
+                        Conn.execute("COMMIT")
+                    except Exception:
+                        Conn.execute("ROLLBACK")
+                        raise
+                    finally:
+                        Conn.execute(f"PRAGMA foreign_keys={'ON' if Fk else 'OFF'}")
+                MCols = {R[1] for R in Conn.execute("PRAGMA table_info(movies)")}
+                if MCols and "requested_by" not in MCols:
+                    Conn.execute("ALTER TABLE movies ADD COLUMN requested_by TEXT")   # who pays for a movie on a shared design
                 if "owner_account_id" in Cols:
                     from p3 import ringids
                     ringids.Install(Conn)                 # shared ring IDs (R-1042, R-1042-B …)

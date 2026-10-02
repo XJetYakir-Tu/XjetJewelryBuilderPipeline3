@@ -117,44 +117,69 @@ def _Max(*Values):
 
 
 def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: str | None = None,
-              IncludeMock: bool = True) -> list[dict]:
-    """Session summaries (newest first) for all designs, or the given ones / one owner. Lists for the
-    Admin pass IncludeMock=False: mock-only sessions are kept out of statistics."""
+              IncludeMock: bool = True, SessionIds: list[str] | None = None) -> list[dict]:
+    """Session summaries (newest first). A session is one customer's journey: their own design, or
+    their use of a shared XJet master design from the gallery (session id = the gallery_uses id).
+    DesignIds → the owners' sessions of those designs · SessionIds → exactly those sessions (design
+    ids or use ids) · OwnerAccountId → one customer's journeys. Admin lists pass IncludeMock=False."""
     Db, Url = Ctx.Db, Ctx.AssetUrl
+    UseIds = None
+    if SessionIds is not None:
+        UseIds = [X for X in SessionIds if X.startswith("use_")]
+        DesignIds = [X for X in SessionIds if not X.startswith("use_")]
     Where, Params = [], []
     if DesignIds is not None:
-        if not DesignIds:
-            return []
-        Where.append(f"id IN ({','.join('?' * len(DesignIds))})")
+        Where.append(f"id IN ({','.join('?' * len(DesignIds))})" if DesignIds else "0")
         Params += DesignIds
     if OwnerAccountId:
         Where.append("owner_account_id = ?")
         Params.append(OwnerAccountId)
     Designs = Db.All("SELECT * FROM designs" + (" WHERE " + " AND ".join(Where) if Where else "")
                      + " ORDER BY created_at DESC", Params)
-    Mock = MockDesignIds(Ctx, OwnerAccountId)
+    # Gallery uses: a customer on a shared XJet master design is a journey of their own.
+    Uses = []
+    if DesignIds is None or UseIds:
+        UWhere, UParams = [], []
+        if UseIds is not None:
+            UWhere.append(f"u.id IN ({','.join('?' * len(UseIds))})" if UseIds else "0")
+            UParams += UseIds
+        if OwnerAccountId:
+            UWhere.append("u.owner_account_id = ?")
+            UParams.append(OwnerAccountId)
+        Uses = Db.All("SELECT u.* FROM gallery_uses u" + (" WHERE " + " AND ".join(UWhere) if UWhere else "")
+                      + " ORDER BY u.last_active_at DESC", UParams)
+    Masters = {}
+    if Uses:
+        MIds = list({U["design_id"] for U in Uses})
+        Masters = {D["id"]: D for D in Db.All(f"SELECT * FROM designs WHERE id IN ({','.join('?' * len(MIds))})", MIds)}
+        Uses = [U for U in Uses if U["design_id"] in Masters]
+    Mock = MockDesignIds(Ctx)
     if not IncludeMock:
         Designs = [D for D in Designs if D["id"] not in Mock]
-    if not Designs:
+        Uses = [U for U in Uses if U["design_id"] not in Mock]
+    Journeys = [(D, None) for D in Designs] + [(Masters[U["design_id"]], U) for U in Uses]
+    if not Journeys:
         return []
-    Ids = [D["id"] for D in Designs]
+    Ids = list({D["id"] for D, _ in Journeys})
     Q = ",".join("?" * len(Ids))
     Batches = Db.All(f"SELECT id, design_id, kind, user_text, created_at FROM batches WHERE design_id IN ({Q})", Ids)
     Cands = Db.All(f"SELECT c.id, c.batch_id, c.slot, c.status, c.asset_path, c.updated_at, b.design_id, b.kind "
                    f"FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE b.design_id IN ({Q})", Ids)
     Custs = Db.All(f"SELECT * FROM customizations WHERE design_id IN ({Q}) ORDER BY updated_at", Ids)
-    Movies = Db.All(f"SELECT m.id, m.status, m.created_at, m.updated_at, b.design_id FROM movies m "
+    Movies = Db.All(f"SELECT m.id, m.status, m.created_at, m.updated_at, m.requested_by, b.design_id FROM movies m "
                     f"JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
                     f"WHERE b.design_id IN ({Q})", Ids)
     Lines = Db.All(f"SELECT * FROM bag_lines WHERE design_id IN ({Q}) ORDER BY created_at", Ids)
     Events = Db.All(f"SELECT * FROM session_events WHERE design_id IN ({Q}) ORDER BY created_at", Ids)
     ThreeD = Db.All(f"SELECT * FROM session_3d WHERE design_id IN ({Q}) ORDER BY created_at", Ids)
-    Owners = list({D["owner_account_id"] for D in Designs})
-    # A newer design by the same customer ends the previous session ("new_design").
+    Owners = list({D["owner_account_id"] for D, _ in Journeys} | {U["owner_account_id"] for U in Uses})
+    QO = ",".join("?" * len(Owners))
+    # A newer journey by the same customer ends the previous session ("new_design").
     Starts = defaultdict(list)
-    for R in Db.All(f"SELECT owner_account_id, created_at FROM designs WHERE owner_account_id IN "
-                    f"({','.join('?' * len(Owners))})", Owners):
-        Starts[R["owner_account_id"]].append(R["created_at"])
+    for R in Db.All(f"SELECT owner_account_id, created_at AS at FROM designs WHERE owner_account_id IN ({QO}) "
+                    f"UNION ALL SELECT owner_account_id, started_at AS at FROM gallery_uses WHERE owner_account_id IN ({QO})",
+                    Owners + Owners):
+        Starts[R["owner_account_id"]].append(R["at"])
 
     def Group(Rows, Key="design_id"):
         G = defaultdict(list)
@@ -166,33 +191,41 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
     Names, Status = {}, {}
     for Oid in Owners:
         try:
-            U = Ctx.Accounts.AdminGet(Oid)
-            Names[Oid], Status[Oid] = (U["name"], U["email"]), U["status"]
+            U_ = Ctx.Accounts.AdminGet(Oid)
+            Names[Oid], Status[Oid] = (U_["name"], U_["email"]), U_["status"]
         except Exception:  # noqa: BLE001 — an unknown owner must not hide the session
             Names[Oid], Status[Oid] = ("", ""), "unknown"
+    # Journeys that started from a gallery image carry that image's ring ID.
+    SourceRefs = RingIds.CandidateRefs(Db, list({D["source_design_id"] for D, _ in Journeys if D.get("source_design_id")}
+                                                 | {U["design_id"] for U in Uses}))
     NowDt = datetime.now(timezone.utc)
-    # Designs started from the Inspiration Gallery carry the ring ID of the XJet image they came from.
-    SourceRefs = RingIds.CandidateRefs(Db, list({D["source_design_id"] for D in Designs if D.get("source_design_id")}))
     Out = []
-    for D in Designs:
+    for D, U in Journeys:
         Did = D["id"]
+        Owner = U["owner_account_id"] if U else D["owner_account_id"]
         Ready = [X for X in C[Did] if X["status"] == "ready"]
         InitialReady = [X for X in Ready if X["kind"] == "initial"]
-        RefineBatches = [X for X in B[Did] if X["kind"] == "refine"]
-        Ev = E[Did]
+        RefineBatches = [] if U else [X for X in B[Did] if X["kind"] == "refine"]
+        # Only this customer's steps count on a shared design (their choices, bag lines, events).
+        Ev = [X for X in E[Did] if X["owner_account_id"] == Owner]
+        Cus = [X for X in Cu[Did] if X["owner_account_id"] == Owner]
+        Ln = [X for X in L[Did] if X["owner_account_id"] == Owner]
         EvAt = lambda K: _Min(*[X["created_at"] for X in Ev if X["kind"] == K])
         Times = {
-            "started": D["created_at"],
-            "generated": _Min(*[X["updated_at"] for X in InitialReady]),
-            "customize": _Min(EvAt("customize_opened"), *[X["created_at"] for X in Cu[Did]]),
-            "bag": _Min(EvAt("bag_added"), *[X["created_at"] for X in L[Did]]),
+            "started": U["started_at"] if U else D["created_at"],
+            "generated": (U["started_at"] if InitialReady else None) if U else _Min(*[X["updated_at"] for X in InitialReady]),
+            "customize": _Min(EvAt("customize_opened"), *[X["created_at"] for X in Cus]),
+            "bag": _Min(EvAt("bag_added"), *[X["created_at"] for X in Ln]),
             "checkout_clicked": EvAt("checkout_clicked"),
         }
         Reached = [S for S in StageOrder if Times[S]]
         Stage = Reached[-1] if Reached else "started"
-        LastActivity = _Max(D["updated_at"], *[X["updated_at"] for X in C[Did]], *[X["updated_at"] for X in Cu[Did]],
-                            *[X["updated_at"] for X in M[Did]], *[X["created_at"] for X in Ev if not X["kind"].startswith("admin_")])
-        Later = [S for S in Starts[D["owner_account_id"]] if S > (LastActivity or D["created_at"])]
+        OwnMovies = [X for X in M[Did] if (X["requested_by"] or D["owner_account_id"]) == Owner]
+        LastActivity = _Max(U["last_active_at"] if U else D["updated_at"],
+                            *([] if U else [X["updated_at"] for X in C[Did]]), *[X["updated_at"] for X in Cus],
+                            *[X["updated_at"] for X in OwnMovies],
+                            *[X["created_at"] for X in Ev if not X["kind"].startswith("admin_")])
+        Later = [S for S in Starts[Owner] if S > (LastActivity or Times["started"])]
         Idle = (NowDt - _Parse(LastActivity)) > timedelta(minutes=IdleMinutes) if LastActivity else True
         if Later:
             State, EndReason = "ended", "new_design"
@@ -200,10 +233,10 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             State, EndReason = "ended", "idle"
         else:
             State, EndReason = "active", None
+        Selected = (U["selected_candidate_id"] or U["source_candidate_id"]) if U else D["selected_candidate_id"]
         # Customer choices: latest bag line, else the latest customization (selected option first).
-        Cust = next((X for X in reversed(Cu[Did]) if X["candidate_id"] == D["selected_candidate_id"]), None) \
-            or (Cu[Did][-1] if Cu[Did] else None)
-        Line = L[Did][-1] if L[Did] else None
+        Cust = next((X for X in reversed(Cus) if X["candidate_id"] == Selected), None) or (Cus[-1] if Cus else None)
+        Line = Ln[-1] if Ln else None
         Material = (Line or Cust or {}).get("material_id")
         # Customize opens on the default material and US 10; only a bag line or an explicit change is a
         # choice. Customizations from before event tracking had no default size, so a size there was chosen.
@@ -214,9 +247,9 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             Cust and Cust["ring_size"] is not None and Cust["candidate_id"] not in Tracked)
         Size = (Line or Cust or {}).get("ring_size")
         Fixed = FixedPrice(Ctx, Line, Ev, Material)
-        Thumb = next((X for X in Ready if X["id"] == D["selected_candidate_id"]), Ready[0] if Ready else None)
+        Thumb = next((X for X in Ready if X["id"] == Selected), Ready[0] if Ready else None)
         Last3D = T3[Did][-1] if T3[Did] else None
-        Failed = bool(C[Did]) and not InitialReady and all(X["status"] == "failed" for X in C[Did] if X["kind"] == "initial")
+        Failed = (not U) and bool(C[Did]) and not InitialReady and all(X["status"] == "failed" for X in C[Did] if X["kind"] == "initial")
         Path = [StageLabels["generated"]] if Times["generated"] else []
         if RefineBatches:
             Path.append(StageLabels["refined"] + (f" ×{len(RefineBatches)}" if len(RefineBatches) > 1 else ""))
@@ -225,17 +258,19 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             Path.append("Generation failed")
         if State == "ended" and not Times["bag"]:
             Path.append("stopped")
-        Name, Email = Names.get(D["owner_account_id"], ("", ""))
+        Name, Email = Names.get(Owner, ("", ""))
+        SourceCandidate = U["source_candidate_id"] if U else D.get("source_candidate_id")
         Out.append({
-            "session_id": Did, "design_id": Did, "ring_id": RingIds.DesignRef(D.get("ring_no")),
+            "session_id": U["id"] if U else Did, "design_id": Did, "ring_id": RingIds.DesignRef(D.get("ring_no")),
             "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
-            "origin": "gallery" if D.get("source_design_id") else "prompt",
-            "source_ring_id": SourceRefs.get(D.get("source_candidate_id")),
-            "account_id": D["owner_account_id"], "customer_name": Name, "customer_email": Email,
+            "origin": "gallery" if (U or D.get("source_design_id")) else "prompt",
+            "source_ring_id": SourceRefs.get(SourceCandidate) if SourceCandidate else None,
+            "shared": bool(U), "use_id": U["id"] if U else None,
+            "account_id": Owner, "customer_name": Name, "customer_email": Email,
             "thumbnail_url": Url(Thumb["asset_path"]) if Thumb else None,
-            "started_at": D["created_at"], "last_activity_at": LastActivity, "state": State, "end_reason": EndReason,
+            "started_at": Times["started"], "last_activity_at": LastActivity, "state": State, "end_reason": EndReason,
             "stage_reached": Stage, "stage_times": Times, "path": " → ".join(Path) if Path else "Started",
-            "generations": sum(1 for X in B[Did] if X["kind"] == "initial"), "refinements": len(RefineBatches),
+            "generations": 0 if U else sum(1 for X in B[Did] if X["kind"] == "initial"), "refinements": len(RefineBatches),
             "images_ready": len(Ready), "images_failed": sum(1 for X in C[Did] if X["status"] == "failed"),
             "movie_status": (sorted(M[Did], key=lambda X: X["created_at"])[-1]["status"] if M[Did] else None),
             "ring_size": Size, "ring_size_chosen": SizeChosen,
@@ -244,12 +279,12 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "add_to_bag": bool(Times["bag"]), "checkout_clicked": bool(Times["checkout_clicked"]),
             "fixed_price": Fixed,
             "three_d_status": Last3D["status"] if Last3D else None, "three_d_id": Last3D["id"] if Last3D else None,
-            "user_status": Status.get(D["owner_account_id"], "unknown"),
+            "user_status": Status.get(Owner, "unknown"),
             "has_image": bool(Ready), "has_movie": any(X["status"] == "ready" for X in M[Did]),
             "has_3d": any(X["status"] in ("measured", "needs_review") for X in T3[Did]),
         })
+    Out.sort(key=lambda X: X["started_at"] or "", reverse=True)
     return Out
-
 
 def FixedPrice(Ctx: Context, Line: dict | None, Events: list[dict], MaterialId: str | None) -> dict | None:
     """The customer-facing fixed price: the bag snapshot if added to bag, else the price shown with
@@ -277,12 +312,14 @@ def QuoteSnapshot(Ctx: Context, MaterialId: str) -> dict:
             "pricing_status": Q.pricing_status}
 
 
-def Timeline(Ctx: Context, DesignId: str) -> list[dict]:
-    """Every recorded step of one session, oldest first."""
+def Timeline(Ctx: Context, DesignId: str, Owner: str | None = None, Use: dict | None = None) -> list[dict]:
+    """Every recorded step of one journey, oldest first: a design's own steps for its owner, or one
+    customer's steps on a shared master design (their events, choices and movies; the 3D the admin ran)."""
     Db = Ctx.Db
     D = Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
-    Items = [{"at": D["created_at"], "kind": "started", "text": D["prompt"]}]
-    for Bt in Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,)):
+    Owner = Owner or D["owner_account_id"]
+    Items = [] if Use else [{"at": D["created_at"], "kind": "started", "text": D["prompt"]}]
+    for Bt in ([] if Use else Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))):
         Cs = Db.All("SELECT status, updated_at FROM candidates WHERE batch_id = ?", (Bt["id"],))
         Ready = [X for X in Cs if X["status"] == "ready"]
         Items.append({"at": Bt["created_at"], "kind": "refine_requested" if Bt["kind"] == "refine" else "generate_requested",
@@ -293,12 +330,15 @@ def Timeline(Ctx: Context, DesignId: str) -> list[dict]:
                           "text": f"{len(Ready)} of {len(Cs)} images ready"})
     for Mv in Db.All("SELECT m.* FROM movies m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
                      "WHERE b.design_id = ? ORDER BY m.created_at", (DesignId,)):
-        Items.append({"at": Mv["updated_at"], "kind": "movie", "status": Mv["status"], "text": ""})
-    for Ev in Db.All("SELECT * FROM session_events WHERE design_id = ? ORDER BY created_at", (DesignId,)):
+        if (Mv["requested_by"] or D["owner_account_id"]) == Owner:
+            Items.append({"at": Mv["updated_at"], "kind": "movie", "status": Mv["status"], "text": ""})
+    for Ev in Db.All("SELECT * FROM session_events WHERE design_id = ? AND (owner_account_id = ? OR kind LIKE 'admin_3d%') "
+                     "ORDER BY created_at", (DesignId, Owner)):
         Items.append({"at": Ev["created_at"], "kind": Ev["kind"], "data": json.loads(Ev["data_json"] or "{}")})
     # Before event tracking: each customization row is one option opened in Customize (its first time).
     Tracked = {(X.get("data") or {}).get("candidate_id") for X in Items if X["kind"] == "customize_opened"}
-    for Cu in Db.All("SELECT * FROM customizations WHERE design_id = ? ORDER BY created_at", (DesignId,)):
+    for Cu in Db.All("SELECT * FROM customizations WHERE design_id = ? AND owner_account_id = ? ORDER BY created_at",
+                     (DesignId, Owner)):
         if Cu["candidate_id"] not in Tracked:
             Items.append({"at": Cu["created_at"], "kind": "customize_opened",
                           "data": {"backfilled": True, "candidate_id": Cu["candidate_id"]}})
@@ -312,11 +352,15 @@ def _Seconds(A: str | None, B: str | None) -> float | None:
     return max(0.0, (_Parse(B) - _Parse(A)).total_seconds())
 
 
-def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices) -> dict:
+def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices, Owner: str | None = None) -> dict:
     """Per-step duration and estimated AI cost for one session: each design / refinement batch, each
     movie and each 3D job. Cost = every provider submission recorded for the job (retries included)
-    × the list price for that request's parameters (Prices.Estimate)."""
+    × the list price for that request's parameters (Prices.Estimate). Owner = whose journey: on a
+    shared master design a customer's pipeline holds only the movies they asked for (and the 3D)."""
     Db = Ctx.Db
+    DesignOwner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (DesignId,))["owner_account_id"]
+    Owner = Owner or DesignOwner
+    Shared = Owner != DesignOwner
     ByRef = defaultdict(list)
     for U in Usage:
         if U["kind"] != "generation":
@@ -339,7 +383,7 @@ def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices) -> dict:
         return {"cost": None if Unknown and not Total else round(Total, 4), "cost_partial": Unknown and bool(Total),
                 "requests": Requests, "providers": sorted(Providers), "basis": sorted(Basis)}
 
-    for B in Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,)):
+    for B in ([] if Shared else Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))):
         Cs = Db.All("SELECT id, status, updated_at FROM candidates WHERE batch_id = ?", (B["id"],))
         Done = all(C["status"] in ("ready", "failed") for C in Cs)
         Params = Ctx.Models.Resolve(B["config_version"], B["endpoint"]).Params
@@ -354,6 +398,8 @@ def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices) -> dict:
         })
     for M in Db.All("SELECT m.* FROM movies m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
                     "WHERE b.design_id = ? ORDER BY m.created_at", (DesignId,)):
+        if (M["requested_by"] or DesignOwner) != Owner:      # another customer's movie on a shared design
+            continue
         Done = M["status"] in ("ready", "failed", "interrupted")
         Params = Ctx.Models.Resolve(M["config_version"], M["endpoint"]).Params
         Steps.append({

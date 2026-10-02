@@ -106,7 +106,7 @@ function p3App() {
 
     // ── preview overlay (P2 fullscreen zoom) ─────────────────────────
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
-    gallery: [], galleryItem: null, galleryBusy: false, galleryError: '',      // Inspiration Gallery (real XJet designs)
+    gallery: [], galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
     previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null,
 
     // ── customize ────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ function p3App() {
       }
       try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch { this.health = null; }
       this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
-      this.api('GET', '/api/gallery', null, { noAuth: true }).then(r => { this.gallery = r.items || []; }).catch(() => {});
+      this.api('GET', '/api/gallery', null, { noAuth: true }).then(r => { this.gallery = r.items || []; this._openSharedGallery(); }).catch(() => {});
       const lux = this.materialsOf('luxury');
       this.lastMaterialByGroup.luxury = lux.length ? lux[0].id : null;
       try {
@@ -285,14 +285,25 @@ function p3App() {
       }
       await this.startFromGallery(g.id);
     },
-    // The customer gets their own copy of the design's four options (nothing is generated or charged),
-    // with the gallery image selected, and continues exactly as with any design of their own.
+    // Share link (#gallery=<id>): open that design's preview straight away.
+    _openSharedGallery() {
+      let id = '';
+      try {
+        const P = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+        id = P.get('gallery') || '';
+        if (id) { P.delete('gallery'); const F = P.toString(); history.replaceState(history.state, '', location.pathname + location.search + (F ? '#' + F : '')); }
+      } catch (_) {}
+      const g = id && this.gallery.find(x => x.id === id);
+      if (g) this.openGallery(g);
+    },
+    // The customer is linked to the shared XJet design (nothing is copied, generated or charged), with
+    // the gallery image selected, and continues exactly as with a design of their own.
     async startFromGallery(id) {
       this.galleryBusy = true; this.galleryError = '';
       try {
         const d = await this.api('POST', `/api/gallery/${encodeURIComponent(id)}/start`, { client_request_id: newRequestId() });
         this._setPendingGallery('');
-        this.closeGallery(); this.showRegModal = false; this.closePreview(); this.signInNotice = null;
+        this.closeGallery(); this.galleryGridOpen = false; this.showRegModal = false; this.closePreview(); this.signInNotice = null;
         await this.openDesign(d.id);
         this.loadDesigns(); this._refreshQuota();
       } catch (e) {
@@ -676,6 +687,12 @@ function p3App() {
           parent_candidate_id: this.selectedId, instruction: text, client_request_id: newRequestId(),
         });
         if (this.design?.id !== designId) return;
+        if (b.design_id !== designId) {           // a shared gallery design: the refinement is a design of your own
+          this.userInput = '';
+          await this.openDesign(b.design_id);
+          this.loadDesigns();
+          return;
+        }
         this.design.batches.push(b);
         this.pendingRefineBatchId = b.id;      // keep the current grid until the new batch is ready
         this.userInput = '';

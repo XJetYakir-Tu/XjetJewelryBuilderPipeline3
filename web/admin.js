@@ -109,6 +109,8 @@ const STAGE_SHORT = { waiting_hi3d: 'Waiting for Hi3D', generating_3d: 'Generati
 const EVENTS = {
   design_created: ['Design', 'bg-blue-100 text-blue-700'],
   gallery_started: ['Started from gallery', 'bg-amber-100 text-amber-800'],
+  gallery_reopened: ['Reopened from gallery', 'bg-amber-100 text-amber-800'],
+  gallery_refined: ['Refined from gallery', 'bg-violet-100 text-violet-700'],
   refinement: ['Refinement', 'bg-violet-100 text-violet-700'],
   movie: ['360° movie', 'bg-purple-100 text-purple-700'],
   mesh: ['3D', 'bg-green-100 text-green-700'],
@@ -140,7 +142,7 @@ function adminApp() {
     mProblems: [], mMessage: '', mBusy: false, preview: null,
     prices: null, pricesEdit: null, pricesBusy: false, pricesMsg: '', pricesErr: false,
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
-    galleryItems: [], galleryMsg: '',
+    galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout Clicked']],
     chartKinds: [
       { key: 'images', label: 'Images', color: '#3b82f6' },
@@ -620,6 +622,24 @@ function adminApp() {
       this.galleryMsg = '';
       try { this.galleryItems = (await this.api('GET', '/api/admin/gallery')).items; } catch (e) { this.galleryMsg = e.message; }
     },
+    gallerySorted() {
+      const k = this.gallerySort, items = [...this.galleryItems];
+      if (k === 'position') return items.sort((a, b) => (a.in_gallery ? a.position : 1e9) - (b.in_gallery ? b.position : 1e9));
+      if (k === 'last_used_at') return items.sort((a, b) => (b.last_used_at || '').localeCompare(a.last_used_at || ''));
+      return items.sort((a, b) => (b[k] || 0) - (a[k] || 0) || (a.in_gallery ? a.position : 1e9) - (b.in_gallery ? b.position : 1e9));
+    },
+    galleryTop(k) { const best = [...this.galleryItems].sort((a, b) => (b[k] || 0) - (a[k] || 0))[0]; return best && best[k] ? best : null; },
+    async galleryToggle(g) {
+      if (this.galleryOpen === g.design_id) { this.galleryOpen = null; return; }
+      this.galleryOpen = g.design_id;
+      try { const r = await this.api('GET', `/api/admin/gallery/usage/${encodeURIComponent(g.design_id)}`); this.galleryUsage = { ...this.galleryUsage, [g.design_id]: r.uses }; }
+      catch (e) { this.galleryMsg = e.message; }
+    },
+    async galleryLink(g) {
+      const url = location.origin + BASE + '/#gallery=' + encodeURIComponent(g.id);
+      try { await navigator.clipboard.writeText(url); this.galleryLinkCopied = g.id; setTimeout(() => { this.galleryLinkCopied = ''; }, 2000); }
+      catch (e) { prompt('Share link for this design:', url); }
+    },
     async galleryAdd(candidateId) {
       try {
         await this.api('POST', '/api/admin/gallery', { design_id: this.sessionId, candidate_id: candidateId });
@@ -801,7 +821,9 @@ function adminApp() {
         return [d.material_id && this.materialLabel(d.material_id), d.ring_size != null && 'US ' + d.ring_size,
                 d.quantity && d.quantity > 1 && '×' + d.quantity, d.unit_price != null && '$' + Number(d.unit_price).toFixed(2)].filter(Boolean).join(' · ');
       if (e.kind === 'bag_added') return [this.materialLabel(d.material_id), d.ring_size != null && 'US ' + d.ring_size, d.unit_price != null && '$' + Number(d.unit_price).toFixed(2)].filter(Boolean).join(' · ');
-      if (e.kind === 'gallery_started') return 'Copy of ' + (d.source_ring_id || 'a gallery design') + ' — all its options, nothing generated or charged';
+      if (e.kind === 'gallery_started') return 'Linked to the shared design ' + (d.source_ring_id || '') + ' — nothing generated or charged';
+      if (e.kind === 'gallery_reopened') return 'Opened the shared design again';
+      if (e.kind === 'gallery_refined') return 'Refinement of ' + (d.source_ring_id || 'the gallery image') + ' into a design of their own';
       if (e.kind.startsWith('admin_3d')) return [d.production_size && 'US ' + d.production_size, d.material_id && this.materialLabel(d.material_id),
                 d.reused_raw_mesh && 'reused Hi3D model', d.status, d.weight_g != null && d.weight_g + ' g'].filter(Boolean).join(' · ');
       return '';

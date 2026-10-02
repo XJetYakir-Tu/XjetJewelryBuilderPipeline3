@@ -43,6 +43,12 @@ class MovieService:
                                "AND status IN ('queued','running','ready') ORDER BY created_at DESC LIMIT 1",
                                (CandidateId, *Same))
 
+    def _Payer(self, Movie: dict, Cand: dict) -> str:
+        """Who is charged: the customer who requested the movie (shared gallery designs), else the owner."""
+        if Movie.get("requested_by"):
+            return Movie["requested_by"]
+        return self.Ctx.Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Cand["design_id"],))["owner_account_id"]
+
     def Ensure(self, Who: Principal, CandidateId: str) -> dict:
         """Start the movie for a ready candidate, or return the live/ready one."""
         Db = self.Ctx.Db
@@ -54,8 +60,9 @@ class MovieService:
         MovieId = NewId("mov")
         T = Now()
         try:
-            Db.Execute("INSERT INTO movies (id, candidate_id, config_version, endpoint, status, created_at, updated_at) "
-                       "VALUES (?,?,?,?,?,?,?)", (MovieId, CandidateId, Version, endpoints.Movie, "queued", T, T))
+            Db.Execute("INSERT INTO movies (id, candidate_id, config_version, endpoint, status, created_at, updated_at, "
+                       "requested_by) VALUES (?,?,?,?,?,?,?,?)",
+                       (MovieId, CandidateId, Version, endpoints.Movie, "queued", T, T, Who.AccountId))
         except sqlite3.IntegrityError:
             # Lost a race with a concurrent Proceed: reuse the winner.
             return self.ToJson(self._Live(CandidateId))
@@ -83,8 +90,7 @@ class MovieService:
                 Arguments = BuildRequest("minimax-camera", Version.Params, {"image_url": ImageUrl})
                 RequestId = await Ctx.Provider.Submit(Movie["endpoint"], Arguments)
                 Db.Update("movies", MovieId, status="running", provider_request_id=RequestId)
-                Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Cand["design_id"],))
-                Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageMovie, 1, MovieId,
+                Ctx.Accounts.RecordUsage(self._Payer(Movie, Cand), UsageMovie, 1, MovieId,
                                          Provider=Ctx.Provider.Name, Endpoint=Movie["endpoint"])
             Result = await PollUntilDone(Ctx.Provider, Movie["endpoint"], RequestId,
                                          Ctx.Gen.Movie.RequestTimeoutS, S.PollIntervalS, S.MaxTransientPollErrors)
@@ -97,8 +103,7 @@ class MovieService:
             assets.WriteAtomic(S.AssetsDir, RelPath, Data)
             Db.Update("movies", MovieId, status="ready", asset_path=RelPath, error=None, error_code=None)
             # P2 rule: a finished 360° movie uses one generation (charged once, on success only).
-            Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Cand["design_id"],))
-            Ctx.Accounts.CommitCharge(Owner["owner_account_id"], UsageMovie, MovieId)
+            Ctx.Accounts.CommitCharge(self._Payer(Movie, Cand), UsageMovie, MovieId)
         except Exception as E:
             Message, Code = FailureFor(E)
             Logger.warning("Movie %s failed (%s): %s", MovieId, Code, E)

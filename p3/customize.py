@@ -33,31 +33,40 @@ class CustomizeService:
         self.Movies = Movies
 
     # ── selection ────────────────────────────────────────────────────────
+    def _SetSelection(self, Who: Principal, D: dict, CandidateId: str | None) -> None:
+        """The owner's selection lives on the design; a gallery customer's selection on their use row."""
+        if D["owner_account_id"] == Who.AccountId:
+            self.Ctx.Db.Update("designs", D["id"], selected_candidate_id=CandidateId)
+        else:
+            self.Ctx.Db.Execute("UPDATE gallery_uses SET selected_candidate_id = ?, last_active_at = ? "
+                                "WHERE design_id = ? AND owner_account_id = ?", (CandidateId, Now(), D["id"], Who.AccountId))
+
     def Select(self, Who: Principal, DesignId: str, CandidateId: str | None) -> dict:
-        self.Images.RequireDesign(Who, DesignId)
+        D = self.Images.RequireDesign(Who, DesignId)
         if CandidateId is not None:
             self.Images.RequireReadyCandidate(DesignId, CandidateId)
-        self.Ctx.Db.Update("designs", DesignId, selected_candidate_id=CandidateId)
+        self._SetSelection(Who, D, CandidateId)
         Sessions.Record(self.Ctx, Who.AccountId, "option_selected", DesignId, candidate_id=CandidateId)
         return {"design_id": DesignId, "selected_candidate_id": CandidateId}
 
     # ── proceed ──────────────────────────────────────────────────────────
     def Proceed(self, Who: Principal, DesignId: str, CandidateId: str) -> dict:
         """Lock in the selected candidate for Customize and start (or reuse) its movie."""
-        self.Images.RequireDesign(Who, DesignId)
+        D = self.Images.RequireDesign(Who, DesignId)
         self.Images.RequireReadyCandidate(DesignId, CandidateId)
         Db = self.Ctx.Db
-        Db.Update("designs", DesignId, selected_candidate_id=CandidateId)
-        Existing = Db.One("SELECT * FROM customizations WHERE design_id = ? AND candidate_id = ?",
-                          (DesignId, CandidateId))
+        self._SetSelection(Who, D, CandidateId)
+        Existing = Db.One("SELECT * FROM customizations WHERE owner_account_id = ? AND design_id = ? AND candidate_id = ?",
+                          (Who.AccountId, DesignId, CandidateId))
         if Existing is None:
             T = Now()
-            Db.Execute("INSERT OR IGNORE INTO customizations (id, design_id, candidate_id, material_id, ring_size, "
-                       "quantity, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-                       (NewId("cus"), DesignId, CandidateId, self.Ctx.Catalog.DefaultMaterialId, DefaultRingSize, 1, T, T))
+            Db.Execute("INSERT OR IGNORE INTO customizations (id, owner_account_id, design_id, candidate_id, material_id, "
+                       "ring_size, quantity, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                       (NewId("cus"), Who.AccountId, DesignId, CandidateId, self.Ctx.Catalog.DefaultMaterialId,
+                        DefaultRingSize, 1, T, T))
         self.Movies.Ensure(Who, CandidateId)
-        Row = Db.One("SELECT * FROM customizations WHERE design_id = ? AND candidate_id = ?",
-                     (DesignId, CandidateId))
+        Row = Db.One("SELECT * FROM customizations WHERE owner_account_id = ? AND design_id = ? AND candidate_id = ?",
+                     (Who.AccountId, DesignId, CandidateId))
         Sessions.Record(self.Ctx, Who.AccountId, "customize_opened", DesignId, candidate_id=CandidateId,
                         material_id=Row["material_id"], ring_size=Row["ring_size"], defaults=Existing is None,
                         **Sessions.QuoteSnapshot(self.Ctx, Row["material_id"]))
@@ -91,8 +100,8 @@ class CustomizeService:
         return self.ToJson(self._Owned(Who, CustomizationId))
 
     def _Owned(self, Who: Principal, CustomizationId: str) -> dict:
-        Row = self.Ctx.Db.One("SELECT c.* FROM customizations c JOIN designs d ON d.id = c.design_id "
-                              "WHERE c.id = ? AND d.owner_account_id = ?", (CustomizationId, Who.AccountId))
+        Row = self.Ctx.Db.One("SELECT * FROM customizations WHERE id = ? AND owner_account_id = ?",
+                              (CustomizationId, Who.AccountId))
         if Row is None:
             raise HttpError(404, "customization_not_found", "Customization not found.")
         return Row

@@ -88,8 +88,15 @@ class ImageService:
                          ClientRequestId: str | None) -> dict:
         Db = self.Ctx.Db
         Instruction = ValidateText(Instruction, "refinement")
-        self.RequireDesign(Who, DesignId)
+        D = self.RequireDesign(Who, DesignId)
+        # A customer refining a shared gallery design gets their own design (a fork): the XJet master
+        # design is never changed, and the four new images are theirs alone.
+        Fork = D["owner_account_id"] != Who.AccountId
         if ClientRequestId:
+            Existing = Db.One("SELECT id FROM designs WHERE owner_account_id = ? AND client_request_id = ?",
+                              (Who.AccountId, ClientRequestId)) if Fork else None
+            if Existing:
+                return self._FirstBatch(Existing["id"])
             Existing = Db.One("SELECT id FROM batches WHERE design_id = ? AND client_request_id = ?",
                               (DesignId, ClientRequestId))
             if Existing:
@@ -106,10 +113,25 @@ class ImageService:
                             "Please pick another image or try again.")
         self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, self.Ctx.Gen.Images.CandidatesPerBatch)
         BatchId = NewId("bat")
+        Target = NewId("dsg") if Fork else DesignId
         with Db.Transaction() as Conn:
-            self._InsertBatch(Conn, BatchId, DesignId, "refine", ParentCandidateId, Instruction,
-                              Parent["asset_path"], ClientRequestId)
-            Conn.execute("UPDATE designs SET updated_at = ? WHERE id = ?", (Now(), DesignId))
+            T = Now()
+            if Fork:
+                Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, "
+                             "updated_at, ai_mode, source_design_id, source_candidate_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                             (Target, Who.AccountId, D["title"], D["prompt"], ClientRequestId, T, T,
+                              self.Ctx.Provider.Name, DesignId, ParentCandidateId))
+            self._InsertBatch(Conn, BatchId, Target, "refine", ParentCandidateId, Instruction,
+                              Parent["asset_path"], None if Fork else ClientRequestId)
+            Conn.execute("UPDATE designs SET updated_at = ? WHERE id = ?", (T, Target))
+            if Fork:
+                Conn.execute("UPDATE gallery_uses SET last_active_at = ? WHERE design_id = ? AND owner_account_id = ?",
+                             (T, DesignId, Who.AccountId))
+        if Fork:
+            from p3 import ringids as RingIds
+            from p3 import sessions as Sessions
+            Sessions.Record(self.Ctx, Who.AccountId, "gallery_refined", Target, source_design_id=DesignId,
+                            source_ring_id=RingIds.CandidateRef(Db, ParentCandidateId), parent_candidate_id=ParentCandidateId)
         self._StartBatch(BatchId)
         return self.GetBatch(BatchId)
 
@@ -282,8 +304,10 @@ class ImageService:
 
     # ── reads / ownership ────────────────────────────────────────────────
     def RequireDesign(self, Who: Principal, DesignId: str) -> dict:
+        """The customer's own design, or a shared XJet master design they started from the gallery."""
         D = self.Ctx.Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
-        if D is None or D["owner_account_id"] != Who.AccountId:
+        if D is None or (D["owner_account_id"] != Who.AccountId and not self.Ctx.Db.One(
+                "SELECT 1 AS x FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?", (DesignId, Who.AccountId))):
             raise HttpError(404, "design_not_found", "Design not found.")
         return D
 
