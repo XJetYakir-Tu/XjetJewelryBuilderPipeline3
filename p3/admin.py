@@ -188,6 +188,13 @@ def Dashboard(Ctx: Context) -> dict:
         },
         "cost_model": "configured" if any(G["production_cost"] is not None for G in Geo) else "not_configured",
         "mock_excluded": True,
+        # Admin activity log: every admin action recorded on a journey (3D requests, new-model overrides …).
+        "admin_activity": [
+            {"at": E["created_at"], "kind": E["kind"], "design_id": E["design_id"], "ring_id": RingIds.DesignRef(E["ring_no"]),
+             "title": E["title"], "by": json.loads(E["data_json"] or "{}").get("by"),
+             "data": {K: V for K, V in json.loads(E["data_json"] or "{}").items() if K not in ("ai_mode", "by")}}
+            for E in Ctx.Db.All("SELECT e.*, d.title, d.ring_no FROM session_events e JOIN designs d ON d.id = e.design_id "
+                                "WHERE e.kind LIKE 'admin_%' ORDER BY e.created_at DESC LIMIT 25")],
     }
 
 def UserCost(Ctx: Context, AccountId: str, Prices, AllUsage: list | None = None) -> dict:
@@ -249,6 +256,13 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     for C in Choices:
         Last = {**(Last or {}), **{K: V for K, V in C.items() if V is not None}}
     SelCand = next((C for B in Batches for C in B["candidates"] if C["selected"]), None)
+    Mesh = Ctx.Db.One("SELECT m.id, m.candidate_id, m.updated_at FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
+                      "JOIN batches b ON b.id = c.batch_id WHERE b.design_id = ? AND m.status = 'ready' "
+                      "ORDER BY m.created_at DESC LIMIT 1", (DesignId,))
+    RawGeo = Ctx.Db.One("SELECT faces, status FROM raw_geometry WHERE mesh_id = ?", (Mesh["id"],)) if Mesh else None
+    ExistingModel = {"mesh_id": Mesh["id"], "candidate_id": Mesh["candidate_id"], "ring_id": Refs.get(Mesh["candidate_id"]),
+                     "ready_at": Mesh["updated_at"], "faces": RawGeo["faces"] if RawGeo else None,
+                     "measured": bool(RawGeo and RawGeo["status"] == "measured")} if Mesh else None
     return {
         "session": Summary,
         "user": User,
@@ -274,6 +288,10 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
             "material_id": (Summary["material_id"] if Summary["material_chosen"] else None) or Ctx.Catalog.DefaultMaterialId,
             "customer_material": Summary["material_id"] if Summary["material_chosen"] else None,
             "has_raw_mesh": any(T["hi3d"] and T["hi3d"]["status"] == "ready" for T in ThreeD),
+            # The valid Hi3D model this design already has (reused for every size, material and journey).
+            "existing_model": ExistingModel,
+            "options": [{"id": C["id"], "ring_id": C["ring_id"], "selected": C["selected"]}
+                        for B in Batches for C in B["candidates"] if C["status"] == "ready"],
         },
         "catalog": {"ring_sizes": list(Ctx.Catalog.RingSizes),
                     "materials": [{"id": M.Id, "label": M.Label, "density_g_cm3": M.DensityGCm3}
@@ -367,7 +385,8 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
                 raise HttpError(404, "session_not_found", "Session not found.")
             DesignId = Customer["design_id"]
         return Production.Request(DesignId, Body_.get("production_size"), Body_.get("material_id") or None,
-                                  Body_.get("candidate_id") or None, RequestedBy=Who.Id, Customer=Customer)
+                                  Body_.get("candidate_id") or None, RequestedBy=Who.Id, Customer=Customer,
+                                  Override=Body_.get("override"))
 
     # Large files (a 5M-face STL is ~250 MB) are downloaded natively by the browser — streamed to disk
     # with its progress bar — through a short-lived signed link, instead of being loaded into the page.

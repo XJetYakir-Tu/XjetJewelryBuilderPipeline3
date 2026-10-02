@@ -145,8 +145,18 @@ async def test_make_it_yours_links_the_customer_to_the_shared_master_design(HG):
     # Generate 3D from the customer's journey: their size and material, the shared design's model
     T = (await H.Client.post(f"/api/admin/sessions/{Uses[0]['session_id']}/3d", json={}, headers=Admin)).json()
     assert (T["design_id"], T["production_size"], T["size_source"], T["material_id"]) == (Did, 7, "customer", "vermeil")
+    assert T["candidate_id"] == Sib["id"]                                   # the customer's own selected option
     await H.Idle()
     assert (await H.Client.get("/api/admin/gallery", headers=Admin)).json()["items"][0]["three_d"] == 1
+    # The master now has a valid model: every later request on any journey reuses it — never a second Hi3D call
+    MeshSubs = len(H.Provider.SubmissionsFor(endpoints.Mesh))
+    T2 = (await H.Client.post(f"/api/admin/sessions/{Uses[0]['session_id']}/3d", json={"production_size": 9}, headers=Admin)).json()
+    await H.Idle()
+    assert T2["mesh_id"] == T["mesh_id"] and T2["production_size"] == 9 and len(H.Provider.SubmissionsFor(endpoints.Mesh)) == MeshSubs
+    assert (await H.Client.post(f"/api/admin/sessions/{Uses[0]['session_id']}/3d", json={"candidate_id": Cand["id"]},
+                                headers=Admin)).status_code == 409          # another option needs the typed confirmation
+    S2 = (await H.Client.get(f"/api/admin/sessions/{Uses[0]['session_id']}", headers=Admin)).json()
+    assert S2["three_d_defaults"]["existing_model"]["candidate_id"] == Sib["id"]
     Dash = (await H.Client.get("/api/admin/dashboard", headers=Admin)).json()
     assert set(Dash["funnel_by_origin"]) == {"prompt", "gallery"} and [R["size"] for R in Dash["geometry"]["by_size"]] == [7, 8, 10, 11]
     # Removing the tile keeps the customer's link; starting from the tile is no longer possible

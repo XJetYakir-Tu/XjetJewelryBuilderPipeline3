@@ -262,6 +262,7 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         SourceCandidate = U["source_candidate_id"] if U else D.get("source_candidate_id")
         Out.append({
             "session_id": U["id"] if U else Did, "design_id": Did, "ring_id": RingIds.DesignRef(D.get("ring_no")),
+            "selected_candidate_id": Selected,
             "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
             "origin": "gallery" if (U or D.get("source_design_id")) else "prompt",
             "source_ring_id": SourceRefs.get(SourceCandidate) if SourceCandidate else None,

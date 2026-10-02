@@ -428,6 +428,40 @@ async def test_signed_download_link_streams_the_file_without_the_admin_header(HS
     assert Other.status_code == 403
 
 
+async def test_second_hi3d_model_for_a_design_needs_the_typed_confirmation_and_is_logged(HS):
+    H = HS
+    Batch = await H.NewDesign("Plain band")
+    Did, A, B = Batch["design_id"], Batch["candidates"][0], Batch["candidates"][1]
+    T1 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"candidate_id": A["id"]}, headers=Admin)).json()
+    await H.Idle()
+    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == 1
+    # The owner selects another option: 3D still reuses the existing model — no Hi3D call, no question
+    await H.Client.put(f"/api/designs/{Did}/selection", json={"candidate_id": B["id"]})
+    T2 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 8}, headers=Admin)).json()
+    await H.Idle()
+    assert T2["candidate_id"] == A["id"] and T2["mesh_id"] == T1["mesh_id"]
+    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == 1
+    # An explicitly different option is refused by the server without the exact typed phrase
+    R = await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"candidate_id": B["id"]}, headers=Admin)
+    assert R.status_code == 409 and R.json()["error"]["code"] == "hi3d_model_exists"
+    assert "GENERATE NEW 3D" in R.json()["error"]["message"] and "R-1001-A" in R.json()["error"]["message"]
+    R = await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"candidate_id": B["id"], "override": "generate new 3d"}, headers=Admin)
+    assert R.status_code == 409 and len(H.Provider.SubmissionsFor(endpoints.Mesh)) == 1
+    T3 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"candidate_id": B["id"], "override": "GENERATE NEW 3D"},
+                              headers=Admin)).json()
+    await H.Idle()
+    assert T3["candidate_id"] == B["id"] and T3["mesh_id"] != T1["mesh_id"] and len(H.Provider.SubmissionsFor(endpoints.Mesh)) == 2
+    # The override is recorded on the journey and in the Admin activity log, with who did it
+    D = await _Session(H, Did)
+    Ov = [E for E in D["timeline"] if E["kind"] == "admin_3d_new_model_override"]
+    assert len(Ov) == 1 and Ov[0]["data"]["existing_ring_id"] == "R-1001-A" and Ov[0]["data"]["candidate_ring_id"] == "R-1001-B"
+    assert Ov[0]["data"]["by"]
+    assert D["three_d_defaults"]["existing_model"]["ring_id"] == "R-1001-B" and D["three_d_defaults"]["existing_model"]["measured"]
+    assert [O["ring_id"] for O in D["three_d_defaults"]["options"]] == ["R-1001-A", "R-1001-B", "R-1001-C", "R-1001-D"]
+    Dash = (await H.Client.get("/api/admin/dashboard", headers=Admin)).json()
+    assert any(E["kind"] == "admin_3d_new_model_override" and E["by"] and E["ring_id"] == "R-1001" for E in Dash["admin_activity"])
+
+
 async def test_shared_ring_ids_for_designs_options_refinements_and_3d_files(HS):
     H = HS
     B1 = await H.NewDesign("Plain band")

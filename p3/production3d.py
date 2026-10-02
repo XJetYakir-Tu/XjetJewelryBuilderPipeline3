@@ -32,6 +32,7 @@ from p3.geometry import FastMethodVersion, Scaled, UsSizeToInnerDiameterMm
 Logger = logging.getLogger("p3.production3d")
 DefaultSize = 10.0
 Terminal = ("measured", "needs_review", "failed", "cancelled")
+NewModelConfirmation = "GENERATE NEW 3D"      # typed by the admin to allow a second paid Hi3D model for a design
 Waiting = ("requested", "generating", "queued", "measuring")
 MaxRoundness = 0.04            # bore deviation from a circle above this → needs review
 
@@ -52,15 +53,27 @@ class Production3D:
 
     # ── admin request ────────────────────────────────────────────────────
     def Request(self, DesignId: str, ProductionSize=None, MaterialId: str | None = None,
-                CandidateId: str | None = None, RequestedBy: str = "admin", Customer: dict | None = None) -> dict:
+                CandidateId: str | None = None, RequestedBy: str = "admin", Customer: dict | None = None,
+                Override: str | None = None) -> dict:
         """Customer = the journey whose size/material are the defaults (a gallery customer's session on a
-        shared master design); otherwise the design owner's session."""
+        shared master design); otherwise the design owner's session.
+
+        Safeguard: a design that already has a valid Hi3D model never gets a second paid model by
+        default — the existing raw model is reused for any size and material, whichever option is
+        selected. A new model for another option requires Override == NewModelConfirmation (typed by
+        the admin) and is recorded as an admin override. A refined design (new images, its own design)
+        is a different design and gets its own first model normally."""
         Db, Cat = self.Ctx.Db, self.Ctx.Catalog
         Summary = Customer or (Sessions.Summaries(self.Ctx, [DesignId]) or [None])[0]
         if Summary is None:
             raise HttpError(404, "session_not_found", "Session not found.")
         Design = Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
-        CandidateId = CandidateId or Design["selected_candidate_id"]
+        Existing = Db.One("SELECT m.* FROM meshes m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
+                          "WHERE b.design_id = ? AND m.status = 'ready' ORDER BY m.created_at DESC LIMIT 1", (DesignId,))
+        if not CandidateId and Existing:
+            CandidateId = Existing["candidate_id"]              # the modelled option: reuse, never a new Hi3D call
+        # No model yet: the journey's own selected option (a gallery customer's pick), else the design's.
+        CandidateId = CandidateId or Summary.get("selected_candidate_id") or Design["selected_candidate_id"]
         if not CandidateId:
             First = Db.One("SELECT c.id FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE b.design_id = ? "
                            "AND c.status = 'ready' ORDER BY b.created_at DESC, c.slot LIMIT 1", (DesignId,))
@@ -89,6 +102,15 @@ class Production3D:
             Mat, MatSource = (Summary["material_id"] or Cat.DefaultMaterialId), "default"
         Raw = Db.One("SELECT * FROM meshes WHERE candidate_id = ? AND status = 'ready' ORDER BY created_at DESC LIMIT 1",
                      (CandidateId,))
+        if Raw is None and Existing is not None:
+            ExistingRef = RingIds.CandidateRef(Db, Existing["candidate_id"])
+            if (Override or "").strip() != NewModelConfirmation:
+                raise HttpError(409, "hi3d_model_exists",
+                                f"A 3D model already exists for this design ({ExistingRef}). Generating a new model would "
+                                f"create another paid Hi3D request. Type {NewModelConfirmation} to confirm.")
+            Sessions.Record(self.Ctx, Design["owner_account_id"], "admin_3d_new_model_override", DesignId,
+                            candidate_id=CandidateId, candidate_ring_id=RingIds.CandidateRef(Db, CandidateId),
+                            existing_mesh_id=Existing["id"], existing_ring_id=ExistingRef, by=RequestedBy)
         Mesh = Raw or self.Meshes.Create(CandidateId, None)      # the paid Hi3D call, only when needed
         Sid, T = NewId("s3d"), Now()
         Db.Execute("INSERT INTO session_3d (id, design_id, candidate_id, mesh_id, customer_size, production_size, "

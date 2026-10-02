@@ -28,6 +28,7 @@ const STEPS = {
   design_opened: ['Reopened', 'bg-zinc-100 text-zinc-600'],
   admin_3d_requested: ['Admin: 3D requested', 'bg-green-100 text-green-700'],
   admin_3d_measured: ['Admin: 3D measured', 'bg-green-100 text-green-700'],
+  admin_3d_new_model_override: ['Admin: NEW Hi3D model (override)', 'bg-red-100 text-red-700'],
 };
 const THREE_D = {
   requested: ['Requested', 'bg-zinc-100 text-zinc-600'], generating: ['Hi3D running', 'bg-sky-100 text-sky-800'],
@@ -104,6 +105,7 @@ function SoftViewer(el, geo, colorHex) {
   return { dispose() { alive = false; cancelAnimationFrame(raf); io.disconnect(); canvas.remove(); geo.dispose(); }, draw };
 }
 
+const NEW_MODEL_PHRASE = 'GENERATE NEW 3D';   // the phrase the admin must type for a second paid Hi3D model
 const STAGE_SHORT = { waiting_hi3d: 'Waiting for Hi3D', generating_3d: 'Generating 3D', downloading_stl: 'Download',
   queued: 'Queued', calculating_geometry: 'Geometry', exporting: 'Scaled STL' };
 const EVENTS = {
@@ -138,6 +140,8 @@ function adminApp() {
     live3d: {}, exports3d: {}, clock: Date.now(), skew: 0, storage: null,
     dash: null, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
+    newModel: { open: false, text: '', candidate: '', error: '', busy: false },
+    get EVENTS() { return EVENTS; },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
     mProblems: [], mMessage: '', mBusy: false, preview: null,
     prices: null, pricesEdit: null, pricesBusy: false, pricesMsg: '', pricesErr: false,
@@ -299,16 +303,36 @@ function adminApp() {
     },
     async generate3d() {
       const custom = this.sd.three_d_defaults.customer_size ?? 10;
-      const paid = !this.sd.three_d_defaults.has_raw_mesh;
-      const msg = (paid ? `Generate 3D with Hi3D v3.0 for this session?\n\nThis is a ${this.mode === 'mock' ? 'MOCK (free, simulated)' : 'PAID live'} Hi3D call.` : 'Recalculate the existing Hi3D model?')
-        + `\n\nSize: US ${this.g3.size}${this.g3.size !== custom ? ' (manual override)' : ''}\nMaterial: ${this.materialLabel(this.g3.material)}`;
-      if (!confirm(msg)) return;
+      const existing = this.sd.three_d_defaults.existing_model;
+      // With an existing model this only recalculates geometry for the size/material (no Hi3D call).
+      if (!existing) {
+        const msg = `Generate 3D with Hi3D v3.0 for this session?\n\nThis is a ${this.mode === 'mock' ? 'MOCK (free, simulated)' : 'PAID live'} Hi3D call.`
+          + `\n\nSize: US ${this.g3.size}${this.g3.size !== custom ? ' (manual override)' : ''}\nMaterial: ${this.materialLabel(this.g3.material)}`;
+        if (!confirm(msg)) return;
+      }
       this.g3.busy = true; this.g3.error = '';
       try {
         await this.api('POST', '/api/admin/sessions/' + encodeURIComponent(this.sessionId) + '/3d',
           { production_size: this.g3.size, material_id: this.g3.material });
         await this.loadSession();
       } catch (e) { this.g3.error = e.message; } finally { this.g3.busy = false; }
+    },
+    // A second Hi3D model for a design that already has one: explicit warning + typed confirmation,
+    // enforced again on the server (the request is refused without the exact phrase).
+    openNewModel() {
+      const opts = this.sd.three_d_defaults.options || [];
+      const sel = opts.find(o => o.selected) || opts[0];
+      this.newModel = { open: true, text: '', candidate: sel ? sel.id : '', error: '', busy: false };
+    },
+    async confirmNewModel() {
+      if (this.newModel.text !== NEW_MODEL_PHRASE) return;
+      this.newModel.busy = true; this.newModel.error = '';
+      try {
+        await this.api('POST', '/api/admin/sessions/' + encodeURIComponent(this.sessionId) + '/3d',
+          { production_size: this.g3.size, material_id: this.g3.material, candidate_id: this.newModel.candidate, override: this.newModel.text });
+        this.newModel = { open: false, text: '', candidate: '', error: '', busy: false };
+        await this.loadSession();
+      } catch (e) { this.newModel.error = e.message; this.newModel.busy = false; }
     },
     // Large hover preview next to the thumbnail, kept inside the window.
     showZoom(ev, src, label) {
@@ -824,6 +848,7 @@ function adminApp() {
       if (e.kind === 'gallery_started') return 'Linked to the shared design ' + (d.source_ring_id || '') + ' — nothing generated or charged';
       if (e.kind === 'gallery_reopened') return 'Opened the shared design again';
       if (e.kind === 'gallery_refined') return 'Refinement of ' + (d.source_ring_id || 'the gallery image') + ' into a design of their own';
+      if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
       if (e.kind.startsWith('admin_3d')) return [d.production_size && 'US ' + d.production_size, d.material_id && this.materialLabel(d.material_id),
                 d.reused_raw_mesh && 'reused Hi3D model', d.status, d.weight_g != null && d.weight_g + ' g'].filter(Boolean).join(' · ');
       return '';

@@ -449,6 +449,21 @@
         </div>
       </section>
 
+      <!-- Admin activity log: 3D requests, new-model overrides … -->
+      <section class="card p-6" x-show="dash.admin_activity && dash.admin_activity.length">
+        <p class="lbl mb-4">Admin activity (last <span x-text="(dash.admin_activity || []).length"></span>)</p>
+        <table class="w-full !text-xs">
+          <thead><tr><th>When</th><th>Action</th><th>Design</th><th>By</th><th>Details</th></tr></thead>
+          <tbody><template x-for="(e, i) in dash.admin_activity" :key="i"><tr>
+            <td class="whitespace-nowrap text-zinc-500" x-text="dateTime(e.at)"></td>
+            <td><span class="badge" :class="(EVENTS[e.kind] || ['', 'bg-zinc-100'])[1]" x-text="(EVENTS[e.kind] || [e.kind])[0]"></span></td>
+            <td><a class="hover:underline" :href="'#/sessions/' + encodeURIComponent(e.design_id)"><span x-text="e.title"></span> <span class="font-mono text-zinc-500" x-text="e.ring_id || ''"></span></a></td>
+            <td class="text-zinc-500" x-text="e.by || '—'"></td>
+            <td class="text-zinc-600" x-text="stepText({ kind: e.kind, data: e.data })"></td>
+          </tr></template></tbody>
+        </table>
+      </section>
+
       <section class="card p-6" x-show="storage">
         <p class="lbl mb-4">3D storage · this server</p>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -684,14 +699,50 @@
               <template x-for="m in sd.catalog.materials"><option :value="m.id" :selected="m.id === g3.material" x-text="m.label + ' · ' + m.density_g_cm3 + ' g/cm³'"></option></template>
             </select>
           </div>
-          <button class="btn h-[38px]" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.has_raw_mesh ? 'Recalculate 3D' : 'Generate 3D'"></button>
+          <button class="btn h-[38px]" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.existing_model ? 'Recalculate geometry' : 'Generate 3D'"></button>
           <p class="text-[11px] text-zinc-400" x-text="sd.three_d_defaults.customer_size != null ? 'Customer choice' : 'Default US 10 is used'"></p>
           <p class="text-[11px]" :class="g3.size !== (sd.three_d_defaults.customer_size ?? 10) ? 'text-amber-700' : 'text-zinc-400'" x-text="g3.size !== (sd.three_d_defaults.customer_size ?? 10) ? 'Manual override' : 'Same as customer / default'"></p>
           <p class="text-[11px]" :class="sd.three_d_defaults.customer_material && g3.material !== sd.three_d_defaults.customer_material ? 'text-amber-700' : 'text-zinc-400'"
              x-text="sd.three_d_defaults.customer_material ? (g3.material === sd.three_d_defaults.customer_material ? 'Customer selection' : 'Differs from customer selection') : 'Customer did not choose a material'"></p>
           <span></span>
         </div>
-        <p x-show="sd.three_d_defaults.has_raw_mesh" class="text-[11px] text-zinc-500">A Hi3D model already exists for this design — a new size or material is calculated from its stored measurement instantly (no new Hi3D call).</p>
+        <!-- Safeguard: a design with a valid Hi3D model never gets a second paid model by default -->
+        <template x-if="sd.three_d_defaults.existing_model">
+          <div class="border border-amber-200 bg-amber-50 p-4 space-y-2">
+            <p class="text-sm font-semibold text-amber-900" x-text="sd.session.shared ? 'Existing 3D model available from Gallery Master' : 'Existing 3D model available'"></p>
+            <p class="text-[12px] text-amber-900/80">
+              Modelled option <span class="font-mono" x-text="sd.three_d_defaults.existing_model.ring_id"></span>
+              · ready <span x-text="dateTime(sd.three_d_defaults.existing_model.ready_at)"></span>
+              <span x-show="sd.three_d_defaults.existing_model.faces" x-text="' · ' + Number(sd.three_d_defaults.existing_model.faces).toLocaleString() + ' faces'"></span>
+              <span x-text="sd.three_d_defaults.existing_model.measured ? ' · measured once, every size and material is arithmetic' : ' · measurement pending'"></span>.
+              <strong>Recalculate geometry</strong> and <strong>Download scaled STL</strong> (on each result below) reuse this model — no Hi3D call, nothing charged.
+            </p>
+            <p x-show="sd.artifacts.ring_id && sd.artifacts.ring_id !== sd.three_d_defaults.existing_model.ring_id" class="text-[12px] text-amber-900/80">
+              The selected option here is <span class="font-mono" x-text="sd.artifacts.ring_id"></span>; geometry is calculated from the existing model of <span class="font-mono" x-text="sd.three_d_defaults.existing_model.ring_id"></span> unless you generate a new one.</p>
+            <button class="text-[11px] uppercase tracking-widest underline text-amber-900/70 hover:text-amber-900" @click="openNewModel()">Generate a completely new Hi3D model instead…</button>
+          </div>
+        </template>
+        <!-- Typed confirmation for a second paid Hi3D model -->
+        <template x-if="newModel.open">
+          <div class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" @click.self="newModel.open = false" @keydown.escape.window="newModel.open = false">
+            <div class="card p-6 w-full max-w-lg space-y-4">
+              <p class="text-base font-semibold text-red-700">A 3D model already exists for this design.</p>
+              <p class="text-sm text-zinc-700">Generating a new model will create <strong>another paid Hi3D request</strong>. The existing model (<span class="font-mono" x-text="sd.three_d_defaults.existing_model?.ring_id"></span>) stays available for every size and material. Only do this for a genuinely different image.</p>
+              <label class="lbl">Option to model</label>
+              <select class="inp" x-model="newModel.candidate">
+                <template x-for="o in sd.three_d_defaults.options" :key="o.id"><option :value="o.id" x-text="o.ring_id + (o.selected ? ' · selected' : '') + (o.id === sd.three_d_defaults.existing_model?.candidate_id ? ' · already modelled' : '')"></option></template>
+              </select>
+              <p class="text-[11px] text-zinc-500" x-text="'Size US ' + g3.size + ' · ' + materialLabel(g3.material) + ' · AI mode: ' + mode"></p>
+              <label class="lbl">Type <span class="font-mono text-zinc-900">GENERATE NEW 3D</span> to confirm</label>
+              <input class="inp font-mono" x-model="newModel.text" placeholder="GENERATE NEW 3D" autocomplete="off" spellcheck="false">
+              <p x-show="newModel.error" class="text-sm text-red-600" x-text="newModel.error"></p>
+              <div class="flex gap-3 justify-end">
+                <button class="btn-outline px-4 py-2" @click="newModel.open = false">Cancel</button>
+                <button class="btn px-4 py-2 disabled:opacity-40" :disabled="newModel.text !== 'GENERATE NEW 3D' || newModel.busy || !newModel.candidate" @click="confirmNewModel()">Generate new Hi3D model</button>
+              </div>
+            </div>
+          </div>
+        </template>
         <p x-show="g3.error" class="text-sm text-red-600" x-text="g3.error"></p>
 
         <template x-for="t in sd.three_d" :key="t.id">
