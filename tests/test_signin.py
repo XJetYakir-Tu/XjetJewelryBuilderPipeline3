@@ -49,7 +49,7 @@ async def test_email_registration_verify_and_sign_in(HS):
     assert f"#token={Token}" in Page.text                                   # one-click sign-in link
     assert re.search(r'location\.replace\("[^"]*/#token=' + Token + r'"\)', Page.text)   # one click: straight to Design
     Mail = _Outbox(H)
-    assert Mail[0]["subject"] == "Your XJet Atelier access token" and Token in Mail[0]["html"]
+    assert Mail[0]["subject"] == "Your XJet Atelier sign-in code" and Token in Mail[0]["html"]
 
     # Sign in with the token, case-insensitively, exactly as P2's "Enter it here" form.
     R = await H.Client.post("/api/register-token", json={"Token": Token.lower(), "Name": "", "Email": ""}, headers=Anon)
@@ -90,7 +90,7 @@ async def test_register_rules_match_pipeline2(HS):
     assert OldToken == Pending
     R = await H.Client.post("/api/register", json={"Name": "", "Email": "lee@example.com"}, headers=Anon)   # verified
     assert R.json() == {"status": "already_registered",
-                        "message": "You're already registered — we've re-sent your access token to your email."}
+                        "message": "You're already registered — we've re-sent your sign-in code to your email."}
     Resent = _Link(_Outbox(H)[0]["html"], r">([A-Z]{6})</span>")
     assert Resent == OldToken                                                # register-once: the SAME token (P2)
     assert (await H.Client.post("/api/register-token", json={"Token": Resent})).json()["ok"]
@@ -136,7 +136,7 @@ async def test_only_a_finished_movie_uses_a_generation_and_quota_blocks_at_zero(
         R = await H.Client.post("/api/designs", data={"prompt": "Another band"})
         assert R.status_code == 402 and R.json()["error"] == {
             "code": "quota_exhausted",
-            "message": "You have reached the maximum number of generations allowed for this access token."}
+            "message": "You have used all the movie generations on this account. Contact us to extend your allowance."}
         assert len(H.Provider.Submissions) == Subs                                    # nothing paid was started
     finally:
         await H.Close()
@@ -205,6 +205,6 @@ def test_smtp_mailer_matches_pipeline2_and_records_delivery(tmp_path, monkeypatc
     assert (Sent[0]["host"], Sent[0]["port"]) == ("52.0.0.1", 25)                 # IPv4-preferred relay, port 25
     assert Msg["From"] == "XJet Atelier <no-reply@xjet3d.com>" and Msg["To"] == "dana@example.com"
     assert Msg["Reply-To"] == "no-reply@xjet3d.com" and Msg["Auto-Submitted"] == "auto-generated"
-    assert Msg["Subject"] == "Your XJet Atelier access token"
+    assert Msg["Subject"] == "Your XJet Atelier sign-in code"
     Rec = M.List()[0]
     assert Rec["delivery"].startswith("smtp accepted") and "GMXDYR" in Rec["html"]

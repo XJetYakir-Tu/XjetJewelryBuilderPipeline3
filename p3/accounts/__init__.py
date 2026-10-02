@@ -26,7 +26,7 @@ class AuthError(Exception):
 class InsufficientCredits(Exception):
     """The account may not spend the requested units (quota / balance policy)."""
 
-    def __init__(self, Message: str = "You have reached the maximum number of generations allowed for this access token."):
+    def __init__(self, Message: str = "You have used all the movie generations on this account. Contact us to extend your allowance."):
         super().__init__(Message)
         self.Message = Message
 

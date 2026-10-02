@@ -76,17 +76,17 @@ def VerificationEmail(Name: str, VerifyUrl: str) -> tuple[str, str]:
 def TokenEmail(Name: str, Token: str, LoginUrl: str) -> tuple[str, str]:
     U = html.escape(LoginUrl, quote=True)
     T = html.escape(Token)
-    return ("Your XJet Atelier access token", _Layout("You're all set", f"""\
+    return ("Your XJet Atelier sign-in code", _Layout("You're all set", f"""\
         <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
         <p style="margin:0 0 28px;">Your email is verified and your account is ready. Click the button below to
            start designing your ring &mdash; you'll be signed in automatically.</p>
         {_Button(U, "Start designing")}
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:36px;">
           <tr><td style="border-top:1px solid #E5DED0;padding-top:20px;{_Font}font-size:12px;color:#8F8F8F;line-height:1.6;">
-            Signing in on another device? Enter this access token there:
+            Signing in on another device? Enter this 6-letter sign-in code there:
             <span style="display:inline-block;margin-left:6px;padding:2px 10px;border:1px solid #C9A96E;background:#FFFFFF;
                          font-family:'Courier New',monospace;font-size:15px;font-weight:700;letter-spacing:3px;color:#1A1A1A;">{T}</span>
-            <br>Keep it private &mdash; it's linked to your account and its generation allowance.
+            <br>Keep it private &mdash; it's linked to your account and its movie allowance.
           </td></tr>
         </table>"""))
 

@@ -108,8 +108,11 @@ function p3App() {
 
     // ── preview overlay (P2 fullscreen zoom) ─────────────────────────
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
-    gallery: [], galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
-    previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null,
+    gallery: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
+    previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null, _swipeX: null,
+    menuOpen: false,                   // mobile navigation
+    sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
+    _returnFocus: null,                // element to focus again when a modal closes
 
     // ── customize ────────────────────────────────────────────────────
     cust: null, custError: '', mediaTab: 'movie', quotePending: false, bagMessage: '',
@@ -145,7 +148,8 @@ function p3App() {
       }
       try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch { this.health = null; }
       this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
-      this.api('GET', '/api/gallery', null, { noAuth: true }).then(r => { this.gallery = r.items || []; this._openSharedGallery(); }).catch(() => {});
+      this.loadGallery().then(() => this._openSharedGallery());
+      if ((location.hash || '') === '#developer') { this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }   // internal, not linked
       const lux = this.materialsOf('luxury');
       this.lastMaterialByGroup.luxury = lux.length ? lux[0].id : null;
       try {
@@ -259,6 +263,7 @@ function p3App() {
     // ── navigation ────────────────────────────────────────────────────
     navigateTo(v) {
       if (this.previewOpen) this.closePreview();
+      this.menuOpen = false;
       this.view = v;
       if (PAGE_VIEWS.includes(v)) history.replaceState(null, '', v === 'home' ? location.pathname : '#' + v);
       else history.replaceState(null, '', location.pathname);
@@ -289,6 +294,14 @@ function p3App() {
     },
 
     // ── Inspiration Gallery: a real XJet design as the starting point ─────
+    // Three distinct states: loading (skeleton tiles) · loaded (tiles, or a real empty message) · failed (retry).
+    async loadGallery() {
+      this.galleryState = 'loading';
+      try { this.gallery = (await this.api('GET', '/api/gallery', null, { noAuth: true })).items || []; this.galleryState = 'loaded'; }
+      catch (_) { this.galleryState = 'failed'; }
+    },
+    get heroRing() { return this.gallery[0] || null; },
+    get heroSiblings() { return this.gallery.slice(1, 3); },
     openGallery(g) { this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; },
     closeGallery() { this.galleryItem = null; this.galleryBusy = false; },
     _pendingGallery() { try { return localStorage.getItem(GALLERY_KEY) || ''; } catch { return ''; } },
@@ -340,11 +353,32 @@ function p3App() {
     },
 
     // ── Sign-in / registration (P2 JewelryB2C2) ───────────────────────
+    // A proper dialog: focus moves inside when it opens, stays inside (Tab cycles), and returns to the
+    // element that opened it when it closes; Escape and the Close button close it.
     openRegModal(mode = 'email') {
       this.regMode = mode;
       this.regError = ''; this.regInfo = '';
       this.regForm = { token: '', name: '', email: '' };
+      this._returnFocus = document.activeElement;
       this.showRegModal = true;
+      // The dialog is teleported to <body>, so it is found by id rather than through $refs.
+      this.$nextTick(() => setTimeout(() => document.getElementById('reg-dialog')?.querySelector('input:not([disabled]), button:not([disabled])')?.focus(), 30));
+    },
+    closeRegModal() {
+      this.showRegModal = false;
+      this._setPendingGallery('');
+      const el = this._returnFocus; this._returnFocus = null;
+      if (el && el.isConnected) setTimeout(() => el.focus(), 0);
+    },
+    trapFocus(ev, id) {
+      if (ev.key !== 'Tab') return;
+      const root = document.getElementById(id); if (!root) return;
+      const items = [...root.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+        .filter(el => el.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
     },
     async submitEmailRegistration() {
       this.regLoading = true; this.regError = ''; this.regInfo = '';
@@ -368,7 +402,7 @@ function p3App() {
         const Result = await this.api('POST', '/api/register-token', { Token, Name: '', Email: '' }, { noAuth: true });
         this._setSession({ token: Token, quotaUsed: Result.used, quotaMax: Result.max, name: Result.name || '' });
         if (Result.name) this._saveUserProfile(Result.name, null);
-        this.showRegModal = false;
+        this.showRegModal = false; this._returnFocus = null;
         this.regForm = { token: '', name: '', email: '' };
         await this._afterSignIn(false);        // the chosen gallery design, else the Design screen (as P2)
         this.refreshBag();
@@ -593,8 +627,10 @@ function p3App() {
     batchLabel(b) {
       if (b.kind === 'initial') return 'Original';
       const n = this.design.batches.filter(x => x.kind === 'refine').indexOf(b) + 1;
-      return `Refinement ${n}`;
+      return `Variation ${n}`;
     },
+    // Movie generations: one per finished 360° movie (designs and refinements are not counted).
+    get quotaText() { return `${this.quotaRemaining} of ${this.quotaMax} movie generations remaining`; },
     anyActive(b) { return !!b && (b.status === 'queued' || b.status === 'generating'); },
     // Muted autoplay can still be limited by the browser (e.g. Edge "Limit media autoplay", power
     // saving): set the muted property, call play(), and if it is refused retry on the first interaction.
@@ -758,19 +794,43 @@ function p3App() {
     },
     toggleSidebar() { this.sidebarOpen = !this.sidebarOpen; if (this.sidebarOpen) this.loadDesigns(); },
 
-    // ── preview overlay ───────────────────────────────────────────────
+    // ── preview overlay: one option at a time, large; arrows / keys / swipe step through the four ──
     openPreview(media, src, candidate = null) {
       this.previewMedia = media; this.previewSrc = src; this.previewCandidate = candidate;
       this.previewResetZoom(); this.previewOpen = true;
     },
     closePreview() { this.previewOpen = false; this.previewCandidate = null; },
+    get previewSiblings() {
+      if (!this.previewCandidate) return [];
+      const b = this.batch(this.previewCandidate.batch_id);
+      return b ? b.candidates.filter(c => c.status === 'ready') : [];
+    },
+    get previewIndex() { return this.previewSiblings.findIndex(c => c.id === this.previewCandidate?.id); },
+    previewStep(delta) {
+      const s = this.previewSiblings; if (s.length < 2) return;
+      const c = s[(this.previewIndex + delta + s.length) % s.length];
+      this.previewCandidate = c; this.previewSrc = c.image_url; this.previewResetZoom();
+    },
+    previewShow(c) { if (c?.status === 'ready') { this.previewCandidate = c; this.previewSrc = c.image_url; this.previewResetZoom(); } },
+    previewKey(ev) {
+      if (!this.previewOpen || this.previewMedia !== 'image') return;
+      if (ev.key === 'ArrowRight') this.previewStep(1);
+      if (ev.key === 'ArrowLeft') this.previewStep(-1);
+    },
+    // Swipe (phone): a horizontal move of 50 px at 1× zoom steps to the next / previous option.
+    previewSwipeStart(ev) { this._swipeX = this.previewZoom <= 1 ? ev.clientX : null; },
+    previewSwipeEnd(ev) {
+      if (this._swipeX === null || this.previewZoom > 1) { this._swipeX = null; return; }
+      const dx = ev.clientX - this._swipeX; this._swipeX = null;
+      if (Math.abs(dx) > 50) this.previewStep(dx < 0 ? 1 : -1);
+    },
     previewZoomBy(f) {
       this.previewZoom = Math.min(6, Math.max(1, this.previewZoom * f));
       if (this.previewZoom === 1) { this.previewPanX = 0; this.previewPanY = 0; }
     },
     previewResetZoom() { this.previewZoom = 1; this.previewPanX = 0; this.previewPanY = 0; },
     previewPanDown(ev) {
-      if (this.previewZoom <= 1) { this.previewZoomBy(2); return; }
+      if (this.previewZoom <= 1) { this.previewSwipeStart(ev); return; }   // 1×: a swipe steps, a tap on the image zooms (see previewTap)
       this._panning = true; this._panStart = { x: ev.clientX - this.previewPanX, y: ev.clientY - this.previewPanY };
       ev.target.setPointerCapture?.(ev.pointerId);
     },
@@ -778,7 +838,14 @@ function p3App() {
       if (!this._panning) return;
       this.previewPanX = ev.clientX - this._panStart.x; this.previewPanY = ev.clientY - this._panStart.y;
     },
-    previewPanEnd() { this._panning = false; },
+    previewPanEnd(ev) {
+      if (this._panning) { this._panning = false; return; }
+      if (this._swipeX !== null && ev) {
+        const dx = ev.clientX - this._swipeX; this._swipeX = null;
+        if (Math.abs(dx) > 50) { this.previewStep(dx < 0 ? 1 : -1); return; }
+        this.previewZoomBy(2);                                            // a tap: zoom in
+      }
+    },
     async selectFromPreview() { if (this.previewCandidate) await this.select(this.previewCandidate); },
 
     // ── customize ─────────────────────────────────────────────────────
@@ -802,7 +869,9 @@ function p3App() {
     },
 
     showCustomization(c) {
+      const same = this.cust?.id && this.cust.id === c.id;
       this.cust = c;
+      if (!same) this.sizeConfirmed = false;   // the opening size is a suggestion until the customer confirms or changes it
       this.mediaTab = 'movie';          // the movie is the default Customize view
       const g = this.groupOfMaterial(c.material_id) || 'fashion';
       this.lastMaterialByGroup[g] = c.material_id;
@@ -920,15 +989,19 @@ function p3App() {
 
     async setSize(v) {
       if (!this.cust?.id) return;
-      await this.patchCustomization(this.cust.id, { ring_size: v === '' || v === null ? null : Number(v) });
+      const size = v === '' || v === null ? null : Number(v);
+      this.sizeConfirmed = size !== null;
+      // Confirming the suggested size is still a choice: the server records it (customization_changed).
+      await this.patchCustomization(this.cust.id, { ring_size: size }, { force: true });
     },
+    get canAddToBag() { return !!this.cust?.can_add_to_bag && this.sizeConfirmed && !this.quotePending; },
     async setQuantity(delta) {
       if (!this.cust?.id) return;
       const q = Math.min(10, Math.max(1, (this.cust.quantity || 1) + delta));
       if (q !== this.cust.quantity) await this.patchCustomization(this.cust.id, { quantity: q });
     },
 
-    async patchCustomization(custId, patch) {
+    async patchCustomization(custId, patch, opts = {}) {
       this.custError = '';
       try {
         const fresh = await this.api('PATCH', `/api/customizations/${custId}`, patch);
@@ -959,20 +1032,25 @@ function p3App() {
     get bagButtonText() {
       if (!this.cust || this.quotePending) return 'Updating price…';
       switch (this.cust.add_to_bag_blocked_reason) {
-        case 'luxury_preview_only': return 'Preview Only';
+        case 'luxury_preview_only': return 'Request a quote';
         case 'price_unavailable': return 'Price Unavailable';
-        case 'ring_size_required': return 'Select a Ring Size';
-        default: return 'Add to Bag';
+        case 'ring_size_required': return 'Choose your ring size';
+        default: return this.sizeConfirmed ? 'Add to Bag' : 'Confirm your ring size';
       }
     },
     get bagBlockedText() {
       if (!this.cust) return '';
       switch (this.cust.add_to_bag_blocked_reason) {
-        case 'luxury_preview_only': return 'Luxury pieces can be previewed but are not yet available to order.';
+        case 'luxury_preview_only': return 'Gold rings are quoted individually.';
         case 'price_unavailable': return 'Price unavailable — this piece cannot be added to the bag yet.';
         case 'ring_size_required': return 'Choose your ring size to continue.';
-        default: return '';
+        default: return this.sizeConfirmed ? '' : 'Tap your ring size above — the suggested size is only a suggestion.';
       }
+    },
+    sizeIsSuggested(size) { return !this.sizeConfirmed && this.cust?.ring_size == size; },
+    // Sticky purchase summary (Customize): "$200 · US 10 · Silver"
+    get purchaseSummary() {
+      return [this.priceText, this.cust?.ring_size != null ? 'US ' + this.cust.ring_size : 'Size?', this.currentMaterial?.label || ''].filter(Boolean).join(' · ');
     },
     sizeGuideRows(kind) {
       const mm = { 4: '14.9', 4.5: '15.3', 5: '15.7', 5.5: '16.1', 6: '16.5', 6.5: '16.9', 7: '17.3', 7.5: '17.7', 8: '18.1',
@@ -989,6 +1067,11 @@ function p3App() {
 
     async addToBag() {
       if (!this.cust?.can_add_to_bag) return;
+      if (!this.sizeConfirmed) {                       // the suggested size must be confirmed on purpose
+        this.bagMessage = ''; this.custError = 'Please confirm your ring size first — tap the size you want.';
+        document.getElementById('ring-size-heading')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        return;
+      }
       this.bagMessage = ''; this.custError = '';
       try {
         this.bag = await this.api('POST', '/api/bag', { customization_id: this.cust.id });

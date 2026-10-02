@@ -56,7 +56,7 @@ class RegistrationService:
         if R["status"] == "already_registered":
             self._Queue(Defer, Email, TokenEmail(R["name"], R["token"], f"{self._StudioUrl(Request_)}#token={R['token']}"))
             return {"status": "already_registered",
-                    "message": "You're already registered — we've re-sent your access token to your email."}
+                    "message": "You're already registered — we've re-sent your sign-in code to your email."}
         Link = f"{PublicOrigin(Request_)}{self.Ctx.Settings.BasePath}/verify?token={R['verify_secret']}"
         self._Queue(Defer, Email, VerificationEmail(R["name"], Link))
         if R["status"] == "verification_resent":
@@ -105,7 +105,7 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
         continue creating your jewelry.
       </p>
       <a class="btn" href="{E(StudioUrl)}#token={E(Token)}">Start designing →</a>
-      <p style="margin-top:1.75rem;">Your personal access token (you only need it to sign in on
+      <p style="margin-top:1.75rem;">Your personal 6-letter sign-in code (you only need it to sign in on
          another device{' — a copy is on its way to your inbox' if Status == 'verified' else ''}):</p>
       <div class="token">{E(Token)}</div>
       <p>Keep it safe — it's tied to your account and its generation quota.</p>
@@ -128,7 +128,7 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
         Body = f"""
       <h1>Already verified</h1>
       <p>{E(Name) + ', your' if Name else 'Your'} email has already been verified. Register again with the
-        same email to receive your access token.</p>
+        same email to receive your sign-in code.</p>
       <a class="btn" href="{E(StudioUrl)}">Start designing →</a>"""
     elif Status == "expired":
         Body = f"""

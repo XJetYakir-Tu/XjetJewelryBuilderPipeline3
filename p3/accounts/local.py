@@ -32,7 +32,7 @@ from p3.db import Database, Now
 Issuer = "p3local"
 DefaultMaxGenerations = 10
 VerifyTtlHours = 24
-QuotaMessage = "You have reached the maximum number of generations allowed for this access token."
+QuotaMessage = "You have used all the movie generations on this account. Contact us to extend your allowance."
 
 Schema = """
 CREATE TABLE IF NOT EXISTS accounts (
