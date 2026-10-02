@@ -23,6 +23,7 @@ from fastapi import Body, FastAPI, Header, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 from p3 import adminauth as AdminAuth
+from p3 import naming as Naming
 from p3 import orders as OrdersModule
 from p3 import payments as PaymentsModule
 from p3 import ringids as RingIds
@@ -112,6 +113,12 @@ def _Detail(Ctx: Context, AccountId: str) -> dict:
 
 
 DownloadLinkSeconds = 600
+
+
+def _ForkInstruction(Ctx: Context, DesignId: str) -> str:
+    """The refinement instruction a variation was born from (its first batch) — it names the variation."""
+    B = Ctx.Db.One("SELECT user_text FROM batches WHERE design_id = ? ORDER BY created_at, id LIMIT 1", (DesignId,))
+    return B["user_text"] if B else ""
 
 
 def _Pct(Part: int, Whole: int) -> float | None:
@@ -491,7 +498,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.patch("/api/admin/designs/{DesignId}")
     async def AdminRenameDesign(DesignId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
-        D = Ctx.Db.One("SELECT id, title, owner_account_id FROM designs WHERE id = ?", (DesignId,))
+        D = Ctx.Db.One("SELECT id, title, prompt, owner_account_id FROM designs WHERE id = ?", (DesignId,))
         if D is None:
             raise HttpError(404, "design_not_found", "Design not found.")
         Title = " ".join(str(Body_.get("title") or "").split())
@@ -504,18 +511,37 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
                                                     "Give each master design a distinctive name, or confirm to use it anyway.")
         Ctx.Db.Execute("UPDATE designs SET title = ?, updated_at = ? WHERE id = ?", (Title, Now(), DesignId))
         Sessions.Record(Ctx, D["owner_account_id"], "admin_design_renamed", DesignId, from_title=D["title"], to_title=Title, by=Who.Id)
-        # Variations that still carry the old name follow the master: "<New> Variation", "<New> Variation II" …
+        # Variations that share the old family word follow the master: "Fil Lattice" under a master renamed
+        # "Aurora Twist" becomes "Aurora Lattice" (a variation renamed by hand keeps its own name).
         Followed = []
-        if Body_.get("cascade", True):
-            from p3.naming import VariationTitle
-            for V in Ctx.Db.All("SELECT id, title, owner_account_id FROM designs WHERE source_design_id = ? AND "
-                                "(lower(title) = lower(?) OR lower(title) LIKE lower(?) || ' variation%')", (DesignId, D["title"], D["title"])):
-                New = VariationTitle(Ctx.Db, Title)
+        OldFamily, NewFamily = Naming.FamilyOf(D["title"]).lower(), Naming.FamilyOf(Title).lower()
+        if Body_.get("cascade", True) and OldFamily and NewFamily and OldFamily != NewFamily:
+            for V in Ctx.Db.All("SELECT id, title, owner_account_id FROM designs WHERE source_design_id = ?", (DesignId,)):
+                if Naming.FamilyOf(V["title"]).lower() != OldFamily:
+                    continue
+                New = Naming.FollowRename(Ctx.Db, V["id"], V["title"], Title, _ForkInstruction(Ctx, V["id"]), D["prompt"])
+                if New == V["title"]:
+                    continue
                 Ctx.Db.Execute("UPDATE designs SET title = ?, updated_at = ? WHERE id = ?", (New, Now(), V["id"]))
                 Sessions.Record(Ctx, V["owner_account_id"], "admin_design_renamed", V["id"], from_title=V["title"], to_title=New,
                                 follows=DesignId, by=Who.Id)
                 Followed.append({"id": V["id"], "title": New, "was": V["title"]})
         return {"id": DesignId, "title": Title, "was": D["title"], "variations": Followed}
+
+    @App_.get("/api/admin/designs/{DesignId}/names")
+    async def AdminNameSuggestions(DesignId: str, authorization: str | None = Header(None)):
+        """Free names for the Rename form: local rules on the design's own prompt, no AI call of any kind."""
+        Admin(authorization)
+        D = Ctx.Db.One("SELECT id, title, prompt, source_design_id FROM designs WHERE id = ?", (DesignId,))
+        if D is None:
+            raise HttpError(404, "design_not_found", "Design not found.")
+        Taken = Naming.TakenTitles(Ctx.Db)                 # the current name is not a suggestion
+        Master = Ctx.Db.One("SELECT title FROM designs WHERE id = ?", (D["source_design_id"],)) if D["source_design_id"] else None
+        if Master:
+            Names = Naming.Suggestions(D["prompt"], Taken, Lineage=Master["title"], Instruction=_ForkInstruction(Ctx, DesignId), N=8)
+        else:
+            Names = Naming.Suggestions(D["prompt"], Taken, N=8)
+        return {"id": DesignId, "title": D["title"], "suggestions": Names, "lineage": Master["title"] if Master else None}
 
     # ── orders (operational), promo codes, quote requests ─────────────────
     @App_.get("/api/admin/orders")

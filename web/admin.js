@@ -151,7 +151,7 @@ function adminApp() {
     sAttention: false, sSort: 'started', attention: null, _listScroll: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
     sect: { gallery: true, pipeline: false, choice: true, designs: false, journey: false },   // session sections (collapsed by default: secondary)
-    rename: { open: false, title: '', busy: false, error: '', force: false },
+    rename: { open: false, title: '', busy: false, error: '', force: false, suggestions: [], lineage: null },
     // In-app dialogs and toasts instead of the browser's alert() / confirm() / prompt()
     dialog: null, toasts: [],
     newModel: { open: false, text: '', candidate: '', error: '', busy: false },
@@ -517,7 +517,14 @@ function adminApp() {
     sectionToggle(k) { this.sect[k] = !this.sect[k]; },
     scrollToId(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     // Rename a design (gallery masters should have distinctive names; a shared name needs confirmation)
-    openRename() { this.rename = { open: true, title: this.sd?.session.title || '', busy: false, error: '', force: false }; },
+    async openRename() {
+      this.rename = { open: true, title: this.sd?.session.title || '', busy: false, error: '', force: false, suggestions: [], lineage: null };
+      try {                                                                   // local word rules on the prompt — no AI call
+        const r = await this.api('GET', '/api/admin/designs/' + encodeURIComponent(this.sd.design_id || this.sd.session.design_id) + '/names');
+        if (this.rename.open) { this.rename.suggestions = r.suggestions || []; this.rename.lineage = r.lineage; }
+      } catch (e) { /* suggestions are a convenience only */ }
+    },
+    pickName(n) { this.rename.title = n; this.rename.force = false; this.rename.error = ''; },
     async saveRename() {
       this.rename.busy = true; this.rename.error = '';
       try {

@@ -210,7 +210,7 @@ At the product owner's request, the customer UI was rebuilt to look like P2. The
   - the Add to Bag label explains why it is blocked;
   - there is no measurement progress, `open_ring`, or per-piece size list (separate bag lines are used instead).
 - **Bag:** P2's "My Bag" step layout, showing server bag lines. It has no shipping, payment, coupon, or reservation steps; "Checkout Unavailable" is shown disabled.
-- **Product names:** P2's deterministic naming (`generateProductName`) is ported to `p3/naming.py`, so saved titles read like "The Laurel Ring".
+- **Product names:** deterministic local naming in `p3/naming.py` (the idea of P2's `generateProductName`, with a new two-word vocabulary): "Aurora Twist", "Fil Wave", "Serpent Scale" — family word + descriptor from the prompt's keywords, unique across designs, no AI call. See docs/ADMIN.md → Names.
 - **Mode indicator:** amber Mock banner + chip, or a green Live AI chip, driven by `/api/health` `mode`. The developer page shows the same.
 
 **Copy changed from P2** (P2 statements that are not true of P3, or were unverifiable):

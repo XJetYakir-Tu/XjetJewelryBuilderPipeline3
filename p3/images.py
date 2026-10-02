@@ -18,7 +18,7 @@ from p3 import assets
 from p3.accounts import Principal, UsageImage
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
-from p3.naming import ProductName, UniqueTitle, VariationTitle
+from p3.naming import NameForPrompt, NameForVariation
 from p3.providers import endpoints
 from p3.modelconfig import BuildRequest, ByEndpoint, Render
 from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
@@ -75,7 +75,7 @@ class ImageService:
         if ReferencePng is not None:
             RefPath = f"designs/{DesignId}/references/{BatchId}.png"
             assets.WriteAtomic(self.Ctx.Settings.AssetsDir, RefPath, ReferencePng)
-        Title = UniqueTitle(Db, ProductName(Prompt))             # never the same name as another ring
+        Title = NameForPrompt(Db, Prompt)                       # "Fil Twist": local rules, never another ring's name
         with Db.Transaction() as Conn:
             T = Now()
             Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, updated_at, "
@@ -115,7 +115,8 @@ class ImageService:
         self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, self.Ctx.Gen.Images.CandidatesPerBatch)
         BatchId = NewId("bat")
         Target = NewId("dsg") if Fork else DesignId
-        ForkTitle = VariationTitle(Db, D["title"]) if Fork else None     # "Fil Twist Variation", never the master's own name
+        # The fork keeps its lineage in its name ("Fil Twist" -> "Fil Lattice"), never the master's own name
+        ForkTitle = NameForVariation(Db, D["title"], Instruction, D["prompt"]) if Fork else None
         with Db.Transaction() as Conn:
             T = Now()
             if Fork:

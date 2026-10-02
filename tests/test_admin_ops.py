@@ -113,31 +113,40 @@ async def test_gallery_master_names_are_distinctive(HX):
 async def test_design_names_are_never_shared_and_variations_follow_their_master(HX):
     from p3.providers import endpoints
     H = HX
-    # The same prompt twice: the keyword name is made unique (never two rings called the same)
-    A = await H.NewDesign("simple delicate band")
-    B = await H.NewDesign("simple delicate band")
+    # The same prompt twice: another word combination, never two rings called the same and no number
+    A = await H.NewDesign("simple delicate twisted band")
+    B = await H.NewDesign("simple delicate twisted band")
     Ta, Tb = (await H.Design(A["design_id"]))["title"], (await H.Design(B["design_id"]))["title"]
-    assert Ta == "The Fil Ring" and Tb == "The Fil Ring II"
-    assert (await H.Design((await H.NewDesign("another delicate band"))["design_id"]))["title"] == "The Fil Ring III"
-    # A customer's refinement of a gallery master is "<Master> Variation", not the master's own name
+    assert Ta == "Fil Twist" and Tb == "Fil Spiral"
+    assert (await H.Design((await H.NewDesign("another delicate twisted band"))["design_id"]))["title"] == "Fil Helix"
+    # A customer's refinement of a gallery master keeps the lineage ("Fil …"), never the master's own name
     await H.Client.put(f"/api/designs/{A['design_id']}/selection", json={"candidate_id": A["candidates"][0]["id"]})
     await H.Client.post("/api/admin/gallery", json={"design_id": A["design_id"]}, headers=Admin)
-    await H.Client.patch(f"/api/admin/designs/{A['design_id']}", json={"title": "Fil Twist"}, headers=Admin)
     Cust = {"X-Access-Token": H.Ctx.Accounts.IssueToken("customer")[0]}
     Item = (await H.Client.get("/api/gallery")).json()["items"][0]
     await H.Client.post(f"/api/gallery/{Item['id']}/start", json={}, headers=Cust)
     Fork = (await H.Client.post(f"/api/designs/{A['design_id']}/batches", json={"parent_candidate_id": A["candidates"][0]["id"],
-                                                                                "instruction": "thinner"}, headers=Cust)).json()
+                                                                                "instruction": "make it a lattice"}, headers=Cust)).json()
     await H.Idle()
-    assert (await H.Client.get(f"/api/designs/{Fork['design_id']}", headers=Cust)).json()["title"] == "Fil Twist Variation"
+    assert (await H.Client.get(f"/api/designs/{Fork['design_id']}", headers=Cust)).json()["title"] == "Fil Lattice"
     Fork2 = (await H.Client.post(f"/api/designs/{A['design_id']}/batches", json={"parent_candidate_id": A["candidates"][1]["id"],
                                                                                  "instruction": "wider"}, headers=Cust)).json()
     await H.Idle()
-    assert (await H.Client.get(f"/api/designs/{Fork2['design_id']}", headers=Cust)).json()["title"] == "Fil Twist Variation II"
-    # Renaming the master renames the variations that follow it
-    R = (await H.Client.patch(f"/api/admin/designs/{A['design_id']}", json={"title": "Fil Spiral"}, headers=Admin)).json()
-    assert {V["title"] for V in R["variations"]} == {"Fil Spiral Variation", "Fil Spiral Variation II"}
-    assert (await H.Client.get(f"/api/designs/{Fork['design_id']}", headers=Cust)).json()["title"].startswith("Fil Spiral Variation")
+    assert (await H.Client.get(f"/api/designs/{Fork2['design_id']}", headers=Cust)).json()["title"] == "Fil Wide"
+    # The Rename form offers local suggestions (free names, lineage kept for a variation) — no AI call
+    N = (await H.Client.get(f"/api/admin/designs/{Fork['design_id']}/names", headers=Admin)).json()
+    assert N["lineage"] == "Fil Twist" and N["suggestions"][:2] == ["Fil Mesh", "Fil Filigree"]
+    N = (await H.Client.get(f"/api/admin/designs/{A['design_id']}/names", headers=Admin)).json()
+    assert N["lineage"] is None and "Fil Rope" in N["suggestions"] and "Fil Twist" not in N["suggestions"]
+    # Renaming the master renames the variations that share its family word: "Fil Lattice" → "Aurora Lattice"
+    R = (await H.Client.patch(f"/api/admin/designs/{A['design_id']}", json={"title": "Aurora Twist"}, headers=Admin)).json()
+    assert {V["title"] for V in R["variations"]} == {"Aurora Lattice", "Aurora Wide"}
+    assert (await H.Client.get(f"/api/designs/{Fork['design_id']}", headers=Cust)).json()["title"] == "Aurora Lattice"
+    # A variation renamed by hand keeps its own name when the master is renamed again
+    await H.Client.patch(f"/api/admin/designs/{Fork2['design_id']}", json={"title": "Petite"}, headers=Admin)
+    R = (await H.Client.patch(f"/api/admin/designs/{A['design_id']}", json={"title": "Vesper Twist"}, headers=Admin)).json()
+    assert [V["title"] for V in R["variations"]] == ["Vesper Lattice"]
+    assert (await H.Client.get(f"/api/designs/{Fork2['design_id']}", headers=Cust)).json()["title"] == "Petite"
     # The master has a 3D model → the variation's Generate 3D is not open: the typed confirmation is required
     T = (await H.Client.post(f"/api/admin/sessions/{A['design_id']}/3d", json={}, headers=Admin)).json()
     await H.Idle()

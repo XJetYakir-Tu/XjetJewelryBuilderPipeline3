@@ -213,7 +213,7 @@ async def test_bag_rules_at_checkout(HO):
 
 async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     H = HO
-    Did, Cand, _ = await _InBag(H, "Aurora twist band", Size=10, Qty=1)
+    Did, Cand, _ = await _InBag(H, "a twisted band inspired by Aurora", Size=10, Qty=1)        # named "Aurora Twist"
     O = (await H.Client.post("/api/orders", json=_Order())).json()
     assert (await H.Client.get("/api/admin/orders")).status_code == 403
     L = (await H.Client.get("/api/admin/orders", headers=Admin)).json()

@@ -758,6 +758,13 @@
                 <button class="btn !py-2" :disabled="rename.busy || rename.title.trim().length < 2" x-text="rename.force ? 'Use this name anyway' : 'Save name'"></button>
                 <button type="button" class="btn2 !py-2" @click="rename.open = false">Cancel</button>
                 <p x-show="rename.error" class="w-full text-[12px] text-amber-700" x-text="rename.error"></p>
+                <div x-show="rename.suggestions.length" class="w-full flex flex-wrap items-center gap-1.5 text-[12px]">
+                  <span class="text-zinc-500" x-text="rename.lineage ? 'Suggestions (variation of ' + rename.lineage + '):' : 'Suggestions:'"></span>
+                  <template x-for="n in rename.suggestions" :key="n">
+                    <button type="button" class="px-2 py-0.5 border border-zinc-300 bg-white hover:border-black" :class="rename.title === n ? 'border-black bg-zinc-100' : ''" @click="pickName(n)" x-text="n"></button>
+                  </template>
+                  <span class="text-zinc-400">— or type any name</span>
+                </div>
               </form>
               <span class="font-mono text-sm px-2 py-0.5 border border-zinc-300 text-zinc-700" title="Ring ID — use it to refer to this design" x-text="sd.session.ring_id"></span>
               <span x-show="sd.session.origin === 'gallery'" class="badge bg-amber-100 text-amber-800" x-text="'Started from gallery · ' + (sd.session.source_ring_id || '')"></span>
