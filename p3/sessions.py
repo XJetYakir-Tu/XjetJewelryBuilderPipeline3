@@ -55,7 +55,10 @@ def RecordClientEvent(Ctx: Context, OwnerAccountId: str, Kind: str, DesignId: st
             Record(Ctx, OwnerAccountId, Kind, Did)
         return {"ok": True, "sessions": len(Designs)}
     if DesignId is not None:
-        if not Ctx.Db.One("SELECT 1 AS x FROM designs WHERE id = ? AND owner_account_id = ?", (DesignId, OwnerAccountId)):
+        Own = Ctx.Db.One("SELECT 1 AS x FROM designs WHERE id = ? AND owner_account_id = ?", (DesignId, OwnerAccountId))
+        Linked = Own or Ctx.Db.One("SELECT 1 AS x FROM gallery_uses WHERE design_id = ? AND owner_account_id = ? AND removed_at IS NULL",
+                                   (DesignId, OwnerAccountId))
+        if not Linked:
             raise HttpError(404, "design_not_found", "Design not found.")
     elif Kind != "new_design_clicked":
         raise HttpError(400, "design_required", "A design is required for this event.")

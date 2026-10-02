@@ -65,7 +65,18 @@ async def test_make_it_yours_links_the_customer_to_the_shared_master_design(HG):
     Token, _ = H.Ctx.Accounts.IssueToken("customer")
     Cust = {"X-Access-Token": Token}
     assert (await H.Client.post(f"/api/gallery/{Item['id']}/start", json={}, headers={"X-Access-Token": "NOPE00"})).status_code == 401
+    # The owner removed their own gallery design from My Designs: Make it yours brings it back instead of "Design not found"
+    assert (await H.Client.delete(f"/api/designs/{Did}")).status_code == 200
+    assert Did not in {X["id"] for X in (await H.Client.get("/api/designs")).json()["designs"]}
+    Back = await H.Client.post(f"/api/gallery/{Item['id']}/start", json={})
+    assert Back.status_code == 200 and Back.json()["id"] == Did, Back.text
+    assert Did in {X["id"] for X in (await H.Client.get("/api/designs")).json()["designs"]}
+    assert H.Ctx.Db.One("SELECT removed_at FROM designs WHERE id = ?", (Did,))["removed_at"] is None
+    assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM session_events WHERE design_id = ? AND kind = 'design_restored'", (Did,))["n"] == 1
     R = await H.Client.post(f"/api/gallery/{Item['id']}/start", json={"client_request_id": "tap-1"}, headers=Cust)
+    # The customer's steps on the shared design are recorded as theirs (design_opened used to be refused with a 404)
+    assert (await H.Client.post("/api/events", json={"kind": "design_opened", "design_id": Did}, headers=Cust)).json()["ok"]
+    assert (await H.Client.post("/api/events", json={"kind": "design_opened", "design_id": Did}, headers={"X-Access-Token": H.Ctx.Accounts.IssueToken("stranger")[0]})).status_code == 404
     assert R.status_code == 200, R.text
     D = R.json()
     # The same shared design — not a copy — with the gallery image selected for this customer

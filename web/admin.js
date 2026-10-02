@@ -122,6 +122,7 @@ const EVENTS = {
   gallery_reopened: ['Reopened from gallery', 'bg-amber-100 text-amber-800'],
   gallery_refined: ['Refined from gallery', 'bg-violet-100 text-violet-700'],
   design_forked: ['Refined into a new design', 'bg-violet-100 text-violet-700'],
+  design_restored: ['Back in My Designs', 'bg-amber-100 text-amber-800'],
   admin_refinement_split: ['Refinement moved to its own design', 'bg-amber-100 text-amber-800'],
   legacy_copy_merged: ['Legacy copy merged', 'bg-amber-100 text-amber-800'],
   design_removed: ['Removed from My Designs', 'bg-zinc-200 text-zinc-600'],

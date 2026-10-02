@@ -180,7 +180,10 @@ class GalleryService:
             raise HttpError(404, "gallery_item_not_found", "This gallery design is no longer available.")
         T = Now()
         if R["owner_account_id"] == Who.AccountId:                   # XJet opening its own design
-            Db.Execute("UPDATE designs SET updated_at = ? WHERE id = ?", (T, R["design_id"]))
+            Removed = Db.One("SELECT removed_at FROM designs WHERE id = ?", (R["design_id"],))["removed_at"]
+            Db.Execute("UPDATE designs SET updated_at = ?, removed_at = NULL WHERE id = ?", (T, R["design_id"]))
+            if Removed:                                             # it was taken off My Designs: back it comes
+                Sessions.Record(self.Ctx, Who.AccountId, "design_restored", R["design_id"], gallery_item_id=ItemId)
             return R["design_id"]
         Use = self.UseFor(Who, R["design_id"])
         if Use:                                                     # also restores a removed link
