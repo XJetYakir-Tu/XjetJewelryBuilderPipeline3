@@ -147,8 +147,13 @@ function adminApp() {
     tab: 'sessions', materials: {}, swatches: {}, showChoices: false,
     viewer3d: { id: null, label: '', loading: false, error: '' }, downloadNote: '', zoom: null,
     live3d: {}, exports3d: {}, clock: Date.now(), skew: 0, storage: null,
-    dash: null, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
+    dash: null, dashDays: 0, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
+    sAttention: false, sSort: 'started', attention: null, _listScroll: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
+    sect: { gallery: true, pipeline: false, choice: true, designs: false, journey: false },   // session sections (collapsed by default: secondary)
+    rename: { open: false, title: '', busy: false, error: '', force: false },
+    // In-app dialogs and toasts instead of the browser's alert() / confirm() / prompt()
+    dialog: null, toasts: [],
     newModel: { open: false, text: '', candidate: '', error: '', busy: false },
     get EVENTS() { return EVENTS; },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
@@ -172,9 +177,29 @@ function adminApp() {
 
     async init() {
       window.addEventListener('hashchange', () => this.route());
+      try {   // the Sessions filters survive a reload
+        const f = JSON.parse(sessionStorage.getItem('p3_admin_filters') || 'null');
+        if (f) Object.assign(this, { sq: f.sq || '', sStage: f.sStage || '', sBag: f.sBag || '', s3d: f.s3d || '', sMock: !!f.sMock, sAttention: !!f.sAttention, sSort: f.sSort || 'started' });
+      } catch (_) {}
       // A remembered browser: the session cookie signs in without asking for the key again.
       try { await this._enter(await this.api('GET', '/api/admin/session')); } catch (_) { this.ok = false; this.error = ''; }
     },
+
+    // ── dialogs & toasts (no native alert/confirm/prompt) ───────────────
+    ask(opts) {
+      return new Promise(resolve => {
+        this.dialog = { title: opts.title || 'Are you sure?', text: opts.text || '', confirmLabel: opts.confirmLabel || 'Confirm',
+                        cancelLabel: opts.cancelLabel || 'Cancel', danger: !!opts.danger, copy: opts.copy || '', resolve };
+        setTimeout(() => document.getElementById('admin-dialog')?.querySelector('button, input')?.focus(), 30);
+      });
+    },
+    answer(ok) { const d = this.dialog; this.dialog = null; d?.resolve?.(ok); },
+    notify(text, kind = 'ok') {
+      const id = Date.now() + Math.random();
+      this.toasts.push({ id, text, kind });
+      setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, kind === 'error' ? 8000 : 4500);
+    },
+    fail(e) { this.notify(e?.message || String(e), 'error'); },
 
     authHeaders() { return this.key ? { Authorization: 'Bearer ' + this.key } : {}; },   // cookie otherwise
     async api(method, path, body) {
@@ -219,8 +244,11 @@ function adminApp() {
     async route() {
       let hash = location.hash;
       if (hash.startsWith('#/models')) { hash = '#/settings' + hash.slice(1); history.replaceState(null, '', hash); }   // old links
-      if (this.dirty && this.tab === 'settings' && this.sub === 'models' && !hash.startsWith('#/settings/models/' + this.mid) &&
-          !confirm('Discard unsaved changes to ' + this.mc?.model.label + '?')) { history.replaceState(null, '', '#/settings/models/' + this.mid); return; }
+      if (this.dirty && this.tab === 'settings' && this.sub === 'models' && !hash.startsWith('#/settings/models/' + this.mid)) {
+        history.replaceState(null, '', '#/settings/models/' + this.mid);
+        if (!await this.ask({ title: 'Discard unsaved changes?', text: 'The changes to ' + (this.mc?.model.label || 'this model') + ' are not saved.', confirmLabel: 'Discard', danger: true })) return;
+        this.dirty = false; location.hash = hash; return;
+      }
       const m = hash.match(/^#\/(dashboard|sessions|gallery|users|orders|settings)(?:\/(.+))?$/);
       this.tab = m ? m[1] : 'sessions';
       let id = m && m[2] ? decodeURIComponent(m[2]) : '';
@@ -229,17 +257,19 @@ function adminApp() {
         this.sub = ['pricing', 'promos', 'models', 'system'].includes(parts[0]) ? parts[0] : 'pricing';
         id = parts.slice(1).join('/');
       }
+      const wasList = this.tab === 'sessions' && !this.sessionId;
       this.userId = this.tab === 'users' ? id : '';
       this.sessionId = this.tab === 'sessions' ? id : '';
       this.orderId = this.tab === 'orders' ? id : '';
-      this.openDesign = null; this.zoom = null;
-      window.scrollTo({ top: 0 });
+      this.openDesign = null; this.zoom = null; this.rename.open = false;
+      const backToList = this.tab === 'sessions' && !id && !wasList;
+      if (!backToList) window.scrollTo({ top: 0 });
       if (!this.ok) return;
-      if (this.tab === 'dashboard') {
-        this.dash = await this.api('GET', '/api/admin/dashboard').catch(() => null);
-        this.storage = await this.api('GET', '/api/admin/storage').catch(() => null);
+      if (this.tab === 'dashboard') await this.loadDashboard();
+      if (this.tab === 'sessions' && !id) {
+        await this.loadSessions();
+        if (backToList) this.$nextTick(() => window.scrollTo({ top: this._listScroll }));   // back where you were
       }
-      if (this.tab === 'sessions' && !id) await this.loadSessions();
       if (this.tab === 'sessions' && id) await this.loadSession();
       if (this.tab === 'users' && !id) await this.load();
       if (this.tab === 'users' && id) await this.loadDetail(); else this.d = null;
@@ -395,10 +425,10 @@ function adminApp() {
         await this.api('POST', '/api/admin/users/' + encodeURIComponent(u.account_id) + '/' + action);
         await this.load();
         if (this.userId) await this.loadDetail();
-      } catch (e) { alert(e.message); }
+      } catch (e) { this.fail(e); }
     },
     async remove(u) {
-      if (!confirm(`Remove ${u.name || u.email || u.token}?\n\nTheir token stops working immediately. Designs and usage history are kept, and the user can be restored from "Show removed".`)) return;
+      if (!await this.ask({ title: `Remove ${u.name || u.email || u.token}?`, text: 'Their sign-in code stops working immediately. Designs and usage history are kept, and the user can be restored from "Show removed".', confirmLabel: 'Remove', danger: true })) return;
       await this.act(u, 'remove');
     },
     async copy(text) {
@@ -407,21 +437,76 @@ function adminApp() {
       this.copied = text; setTimeout(() => { if (this.copied === text) this.copied = null; }, 2000);
     },
 
+    // ── dashboard ──────────────────────────────────────────────────────
+    async loadDashboard() {
+      this.dash = await this.api('GET', '/api/admin/dashboard' + (this.dashDays ? '?days=' + this.dashDays : '')).catch(() => null);
+      this.attention = this.dash?.needs_attention || null;
+      if (!this.galleryItems.length) this.loadGallery().catch(() => {});       // top designs
+    },
+    galleryTopList(k, n) { return [...this.galleryItems].filter(g => g[k]).sort((a, b) => (b[k] || 0) - (a[k] || 0)).slice(0, n); },
+    latestResult() { return (this.sd?.three_d || []).find(t => t.geometry?.production) || null; },
+    async setDashDays(d) { this.dashDays = d; await this.loadDashboard(); },
+
     // ── sessions ───────────────────────────────────────────────────────
     async loadSessions() {
       const r = await this.api('GET', '/api/admin/sessions' + (this.sMock ? '?include_mock=true' : ''));
       this.sessions = r.sessions; this.idleMinutes = r.idle_minutes; this.mockSessions = r.mock_sessions;
+      if (this.sAttention || !this.attention) this.attention = await this.api('GET', '/api/admin/attention').catch(() => null);
+      this.saveFilters();
+    },
+    saveFilters() {
+      try { sessionStorage.setItem('p3_admin_filters', JSON.stringify({ sq: this.sq, sStage: this.sStage, sBag: this.sBag, s3d: this.s3d, sMock: this.sMock, sAttention: this.sAttention, sSort: this.sSort })); } catch (_) {}
+    },
+    resetFilters() { this.sq = ''; this.sStage = ''; this.sBag = ''; this.s3d = ''; this.sAttention = false; this.saveFilters(); },
+    get filtersActive() { return !!(this.sq.trim() || this.sStage || this.sBag || this.s3d || this.sAttention); },
+    // Search by what staff actually use: Ring ID (R-1013), option ID (R-1013-B), design name, Order ID, customer, email
+    sessionMatches(x, q) {
+      if (!q) return true;
+      const hay = [x.ring_id, x.selected_ring_id, ...(x.option_ring_ids || []), ...(x.order_refs || []), x.source_ring_id,
+                   x.title, x.prompt, x.customer_name, x.customer_email].map(v => (v || '').toLowerCase());
+      return hay.some(v => v.includes(q));
     },
     get sessionsFiltered() {
       const q = this.sq.trim().toLowerCase();
-      return this.sessions.filter(x =>
-        (!q || [x.customer_name, x.customer_email, x.title, x.prompt].some(v => (v || '').toLowerCase().includes(q))) &&
+      const attention = new Set(this.attention?.sessions || []);
+      const rows = this.sessions.filter(x =>
+        this.sessionMatches(x, q) &&
         (!this.sStage || x.stage_reached === this.sStage) &&
         (!this.sBag || (this.sBag === 'yes') === x.add_to_bag) &&
-        (!this.s3d || (this.s3d === 'any') === !!x.three_d_status));
+        (!this.s3d || (this.s3d === 'any') === !!x.three_d_status) &&
+        (!this.sAttention || attention.has(x.session_id)));
+      const k = this.sSort;
+      return rows.sort((a, b) => k === 'activity' ? (b.last_activity_at || '').localeCompare(a.last_activity_at || '')
+        : k === 'customer' ? (a.customer_name || a.customer_email || '').localeCompare(b.customer_name || b.customer_email || '')
+        : k === 'price' ? ((b.fixed_price?.unit_price || 0) - (a.fixed_price?.unit_price || 0))
+        : (b.started_at || '').localeCompare(a.started_at || ''));
+    },
+    get attentionCount() { return this.attention?.count || 0; },
+    attentionFor(sessionId) { return (this.attention?.items || []).filter(i => i.href === '#/sessions/' + sessionId); },
+    openSession(id) { this._listScroll = window.scrollY; this.go('#/sessions/' + encodeURIComponent(id)); },
+    // Previous / next session in the current list order
+    sessionNeighbours() {
+      const ids = this.sessionsFiltered.map(x => x.session_id); const i = ids.indexOf(this.sessionId);
+      return { prev: i > 0 ? ids[i - 1] : null, next: i >= 0 && i < ids.length - 1 ? ids[i + 1] : null, index: i, total: ids.length };
+    },
+    sectionToggle(k) { this.sect[k] = !this.sect[k]; },
+    scrollToId(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+    // Rename a design (gallery masters should have distinctive names; a shared name needs confirmation)
+    openRename() { this.rename = { open: true, title: this.sd?.session.title || '', busy: false, error: '', force: false }; },
+    async saveRename() {
+      this.rename.busy = true; this.rename.error = '';
+      try {
+        const r = await this.api('PATCH', '/api/admin/designs/' + encodeURIComponent(this.sd.design_id || this.sd.session.design_id), { title: this.rename.title, force: this.rename.force });
+        this.rename.open = false; this.notify('Renamed to “' + r.title + '”');
+        await this.loadSession();
+      } catch (e) {
+        this.rename.error = e.message;
+        if (e.code === 'duplicate_title') this.rename.force = true;      // a second Save confirms
+      } finally { this.rename.busy = false; }
     },
     async loadSession() {
       this.sdError = ''; this.g3.error = '';
+      if (!this.sessions.length) this.loadSessions().catch(() => {});       // for Previous / Next when opened from a link
       try {
         const sd = await this.api('GET', '/api/admin/sessions/' + encodeURIComponent(this.sessionId));
         const keep = this.sd?.session.session_id === sd.session.session_id;    // keep the admin's choice on refresh
@@ -445,9 +530,10 @@ function adminApp() {
       const existing = this.sd.three_d_defaults.existing_model;
       // With an existing model this only recalculates geometry for the size/material (no Hi3D call).
       if (!existing) {
-        const msg = `Generate 3D with Hi3D v3.0 for this session?\n\nThis is a ${this.mode === 'mock' ? 'MOCK (free, simulated)' : 'PAID live'} Hi3D call.`
-          + `\n\nSize: US ${this.g3.size}${this.g3.size !== custom ? ' (manual override)' : ''}\nMaterial: ${this.materialLabel(this.g3.material)}`;
-        if (!confirm(msg)) return;
+        const ok = await this.ask({ title: 'Generate 3D with Hi3D v3.0?',
+          text: `This is a ${this.mode === 'mock' ? 'mock (free, simulated)' : 'PAID live'} Hi3D call. Size US ${this.g3.size}${this.g3.size !== custom ? ' (manual override)' : ''} · ${this.materialLabel(this.g3.material)}.`,
+          confirmLabel: this.mode === 'mock' ? 'Generate (mock)' : 'Generate — paid call', danger: this.mode !== 'mock' });
+        if (!ok) return;
       }
       this.g3.busy = true; this.g3.error = '';
       try {
@@ -564,13 +650,13 @@ function adminApp() {
     },
     async cancel3d(t) {
       try { this.setLive(t.id, (await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/cancel`)).live); await this.loadSession(); }
-      catch (e) { alert(e.message); }
+      catch (e) { this.fail(e); }
     },
     async retry3d(t) {
       const local = this.live3d[t.id]?.retry_is_local;
-      if (!local && !confirm(`Hi3D itself failed, so a retry is a new ${this.mode === 'mock' ? 'MOCK' : 'PAID live'} Hi3D request. Continue?`)) return;
+      if (!local && !await this.ask({ title: 'Retry Hi3D?', text: `Hi3D itself failed, so a retry is a new ${this.mode === 'mock' ? 'mock' : 'PAID live'} Hi3D request.`, confirmLabel: 'Retry — new request', danger: this.mode !== 'mock' })) return;
       try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/retry`); await this.loadSession(); }
-      catch (e) { alert(e.message); }
+      catch (e) { this.fail(e); }
     },
     // Scaled STL: export on demand to a temporary file (queued like any heavy job), then a native download.
     async exportStl(t, orderRef = null) {
@@ -591,8 +677,8 @@ function adminApp() {
           document.body.appendChild(a); a.click(); a.remove();
           this.downloadNote = `Downloading the scaled STL (${this.gb(e.bytes)}) — see your browser's downloads. The temporary file is deleted after an hour.`;
           setTimeout(() => { this.downloadNote = ''; }, 8000);
-        } else alert('Scaled STL failed: ' + (e.error || e.status));
-      } catch (err) { alert('Scaled STL failed: ' + err.message); }
+        } else this.notify('Scaled STL failed: ' + (e.error || e.status), 'error');
+      } catch (err) { this.notify('Scaled STL failed: ' + err.message, 'error'); }
       finally { const x = { ...this.exports3d }; delete x[t.id]; this.exports3d = x; }
     },
     exportLine(t) {
@@ -611,7 +697,7 @@ function adminApp() {
         document.body.appendChild(a); a.click(); a.remove();
         this.downloadNote = `Downloading ${(r.bytes / 1e6).toFixed(0)} MB — see your browser's downloads.`;
         setTimeout(() => { this.downloadNote = ''; }, 6000);
-      } catch (e) { alert('Download failed: ' + e.message); }
+      } catch (e) { this.notify('Download failed: ' + e.message, 'error'); }
     },
 
     // ── detail ─────────────────────────────────────────────────────────
@@ -748,7 +834,7 @@ function adminApp() {
     },
     async activateModel() {
       const live = this.mc.model.connected ? 'Every new pipeline request will use it immediately.' : 'This model is not used by the P3 pipeline yet.';
-      if (!confirm(`Save & activate a new version of ${this.mc.model.label}?\n\n${live}\nRequests already created keep their settings.`)) return;
+      if (!await this.ask({ title: `Save & activate a new version of ${this.mc.model.label}?`, text: live + ' Requests already created keep their settings.', confirmLabel: 'Save & activate' })) return;
       this.mBusy = true; this.mProblems = []; this.mMessage = '';
       try {
         const r = await fetch(BASE + `/api/admin/models/${this.mid}/activate`, { method: 'POST',
@@ -762,7 +848,7 @@ function adminApp() {
       } finally { this.mBusy = false; }
     },
     async restoreVersion(v) {
-      if (!confirm(`Restore v${v.number} as a new active version?`)) return;
+      if (!await this.ask({ title: `Restore v${v.number}?`, text: 'It becomes a new active version; the current one stays in the history.', confirmLabel: 'Restore & activate' })) return;
       const r = await fetch(BASE + `/api/admin/models/${this.mid}/restore`, { method: 'POST',
         headers: { ...this.authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: v.id }) });
       const data = await r.json();
@@ -819,21 +905,22 @@ function adminApp() {
     },
     async galleryLink(g) {
       const url = location.origin + BASE + '/#gallery=' + encodeURIComponent(g.id);
-      try { await navigator.clipboard.writeText(url); this.galleryLinkCopied = g.id; setTimeout(() => { this.galleryLinkCopied = ''; }, 2000); }
-      catch (e) { prompt('Share link for this design:', url); }
+      try { await navigator.clipboard.writeText(url); this.galleryLinkCopied = g.id; setTimeout(() => { this.galleryLinkCopied = ''; }, 2000); this.notify('Share link copied'); }
+      catch (e) { await this.ask({ title: 'Share link', text: 'Copy this link:', copy: url, confirmLabel: 'Done', cancelLabel: '' }); }
     },
     async galleryAdd(candidateId) {
       try {
         await this.api('POST', '/api/admin/gallery', { design_id: this.sessionId, candidate_id: candidateId });
         await this.loadSession();
-      } catch (e) { alert('Could not add this design to the gallery: ' + e.message); }
+      } catch (e) { this.notify('Could not add this design to the gallery: ' + e.message, 'error'); }
     },
     async galleryRemove(g) {
-      if (!confirm(`Remove "${g.title}" (${g.ring_id}) from the gallery?\n\nCustomers who already started from it keep their designs.`)) return;
+      if (!await this.ask({ title: `Remove “${g.title}” (${g.ring_id}) from the gallery?`, text: 'Customers who already started from it keep their designs.', confirmLabel: 'Remove from gallery', danger: true })) return;
       try {
         this.galleryItems = (await this.api('DELETE', `/api/admin/gallery/${encodeURIComponent(g.id)}`)).items;
         if (this.tab === 'sessions' && this.sessionId) await this.loadSession();
-      } catch (e) { alert(e.message); }
+        this.notify('Removed from the gallery');
+      } catch (e) { this.fail(e); }
     },
     async galleryMove(id, direction) {
       try { this.galleryItems = (await this.api('POST', `/api/admin/gallery/${encodeURIComponent(id)}/move`, { direction })).items; }
@@ -858,7 +945,7 @@ function adminApp() {
     num(v, d = 2) { return v == null ? '—' : Number(v).toFixed(d).replace(/\.?0+$/, ''); },
     async exportModels(model, fmt) {
       const r = await fetch(BASE + `/api/admin/models/export?model=${encodeURIComponent(model)}&format=${fmt}`, { headers: this.authHeaders() });
-      if (!r.ok) { alert('Export failed (' + r.status + ')'); return; }
+      if (!r.ok) { this.notify('Export failed (' + r.status + ')', 'error'); return; }
       const url = URL.createObjectURL(await r.blob());
       const a = Object.assign(document.createElement('a'), { href: url, download: `p3-ai-config-${model}.${fmt}` });
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);

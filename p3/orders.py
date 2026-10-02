@@ -471,11 +471,13 @@ class OrderService:
             raise HttpError(404, "request_not_found", "Quote request not found.")
         return self.QuoteRequestJson(self.Ctx.Db.One("SELECT * FROM quote_requests WHERE id = ?", (RequestId,)))
 
-    def Summary(self, ExcludeMock: bool = True) -> dict:
-        """Dashboard numbers: counts by status and payment, revenue of live orders, open quote requests."""
+    def Summary(self, ExcludeMock: bool = True, Since: str | None = None) -> dict:
+        """Dashboard numbers: counts by status and payment, revenue of live orders, open quote requests.
+        Since (ISO) limits the orders to a time range; None = all time."""
         Mock = Sessions.MockDesignIds(self.Ctx) if ExcludeMock else set()
         Orders = []
-        for O in self.Ctx.Db.All("SELECT * FROM orders ORDER BY created_at DESC"):
+        for O in self.Ctx.Db.All("SELECT * FROM orders" + (" WHERE created_at >= ?" if Since else "") + " ORDER BY created_at DESC",
+                                 (Since,) if Since else ()):
             Lines = self._Lines(O["id"])
             if ExcludeMock and Lines and all(L["design_id"] in Mock for L in Lines):
                 continue

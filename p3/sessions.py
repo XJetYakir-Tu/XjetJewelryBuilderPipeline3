@@ -201,9 +201,15 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             Names[Oid], Status[Oid] = (U_["name"], U_["email"]), U_["status"]
         except Exception:  # noqa: BLE001 — an unknown owner must not hide the session
             Names[Oid], Status[Oid] = ("", ""), "unknown"
-    # Journeys that started from a gallery image carry that image's ring ID.
+    # Journeys that started from a gallery image carry that image's ring ID; every option's ring ID is
+    # listed too, so the Admin can search a session by R-1013-B.
     SourceRefs = RingIds.CandidateRefs(Db, list({D["source_design_id"] for D, _ in Journeys if D.get("source_design_id")}
                                                  | {U["design_id"] for U in Uses}))
+    OptionRefs = RingIds.CandidateRefs(Db, Ids)
+    OrderRefsByOwner = defaultdict(set)              # (design, owner) → order references
+    for R in Db.All(f"SELECT l.design_id, o.owner_account_id, o.order_no FROM order_lines l JOIN orders o ON o.id = l.order_id "
+                    f"WHERE l.design_id IN ({Q})", Ids):
+        OrderRefsByOwner[(R["design_id"], R["owner_account_id"])].add(f"ORD-{R['order_no']}")
     NowDt = datetime.now(timezone.utc)
     Out = []
     for D, U in Journeys:
@@ -275,9 +281,13 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         SourceCandidate = U["source_candidate_id"] if U else D.get("source_candidate_id")
         Out.append({
             "session_id": U["id"] if U else Did, "design_id": Did, "ring_id": RingIds.DesignRef(D.get("ring_no")),
-            "selected_candidate_id": Selected,
+            "selected_candidate_id": Selected, "selected_ring_id": OptionRefs.get(Selected) if Selected else None,
+            "option_ring_ids": sorted(OptionRefs[X["id"]] for X in C[Did] if X["id"] in OptionRefs),
             "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
             "origin": "gallery" if (U or D.get("source_design_id")) else "prompt",
+            # A design copied from the gallery before shared master designs existed (kept as history, labelled)
+            "legacy_copy": bool(not U and D.get("source_design_id") and not Db.One(
+                "SELECT 1 AS x FROM batches WHERE design_id = ? AND kind = 'refine'", (Did,))),
             "source_ring_id": SourceRefs.get(SourceCandidate) if SourceCandidate else None,
             "shared": bool(U), "use_id": U["id"] if U else None,
             "removed": bool(U.get("removed_at")) if U else bool(D.get("removed_at")),
@@ -292,7 +302,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "material_id": Material, "material_chosen": MaterialChosen,
             "material_label": (Ctx.Catalog.Get(Material).Label if Material and Ctx.Catalog.Get(Material) else None),
             "add_to_bag": bool(Times["bag"]), "checkout_clicked": bool(Times["checkout_clicked"]),
-            "ordered": bool(Times["order"]), "order_refs": [R for R in OrderRefs if R],
+            "ordered": bool(Times["order"]) or bool(OrderRefsByOwner.get((Did, Owner))),
+            "order_refs": sorted({R for R in OrderRefs if R} | OrderRefsByOwner.get((Did, Owner), set())),
             "fixed_price": Fixed,
             "three_d_status": Last3D["status"] if Last3D else None, "three_d_id": Last3D["id"] if Last3D else None,
             # Production readiness of the latest result (processing · complete · review_required · failed · cancelled)

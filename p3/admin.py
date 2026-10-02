@@ -9,11 +9,13 @@ its body with a proper admin role / company sign-in (e.g. SSO) — the routes do
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 import asyncio
 import json
 import hashlib
 import hmac
+import re
 import time
 from statistics import mean
 
@@ -30,6 +32,7 @@ from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
 from p3.aipricing import PriceError
 from p3.materialprices import MaterialPriceError
+from p3.db import Now
 from p3.usage import AccountActivity
 from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
 from p3.geometry import Scaled, UsSizeToInnerDiameterMm
@@ -115,11 +118,72 @@ def _Pct(Part: int, Whole: int) -> float | None:
     return round(100.0 * Part / Whole, 1) if Whole else None
 
 
-def Dashboard(Ctx: Context, Orders=None) -> dict:
-    """Small, factual overview. Geometry/price statistics appear once 3D data exists."""
+Severity = {"error": 0, "warn": 1, "info": 2}
+
+
+def Attention(Ctx: Context, Orders=None) -> dict:
+    """What needs a human now: 3D to review or failed, failed generations, new orders, payment and
+    address problems, open quote requests. Live sessions and real orders only (no mock)."""
+    Items = []
+    for X in Sessions.Summaries(Ctx, IncludeMock=False):
+        Href = f"#/sessions/{X['session_id']}"
+        Base = {"ref": X["ring_id"], "title": X["title"], "href": Href, "at": X["last_activity_at"] or X["started_at"],
+                "customer": X["customer_name"] or X["customer_email"]}
+        if X["three_d_state"] == "review_required":
+            Items.append({**Base, "kind": "3d_review", "severity": "warn", "label": "3D needs production review"})
+        elif X["three_d_state"] == "failed":
+            Items.append({**Base, "kind": "3d_failed", "severity": "error", "label": "3D processing failed"})
+        if "Generation failed" in X["path"]:
+            Items.append({**Base, "kind": "generation_failed", "severity": "error", "label": "Design generation failed"})
+    if Orders is not None:
+        NowIso = Now()
+        for O in Orders.AdminList():
+            if O["mock"] or O["status"] in ("cancelled", "completed"):
+                continue
+            Base = {"ref": O["ref"], "title": O["lines"][0]["title"] if O["lines"] else "", "href": f"#/orders/{O['id']}",
+                    "at": O["updated_at"], "customer": (O["customer"]["first_name"] + " " + O["customer"]["last_name"]).strip()}
+            if O["status"] == "new":
+                Items.append({**Base, "kind": "order_new", "severity": "info", "label": "New order — review the design for production"})
+            if O["payment_status"] == "failed":
+                Items.append({**Base, "kind": "payment_failed", "severity": "error", "label": "Payment failed"})
+            elif O["payment_status"] == "pending" and O["created_at"] < _DaysAgo(3, NowIso):
+                Items.append({**Base, "kind": "payment_pending", "severity": "warn", "label": "Payment still pending after 3 days"})
+            if O["address_validation"] == "failed":
+                Items.append({**Base, "kind": "address_failed", "severity": "warn", "label": "Shipping address failed validation"})
+            if O["status"] == "payment_confirmed" and O["three_d_state"] in (None, "failed"):
+                Items.append({**Base, "kind": "order_needs_3d", "severity": "info", "label": "Paid order without a 3D model yet"})
+        for Q in Orders.AdminQuoteRequests("new"):
+            Items.append({"kind": "quote_request", "severity": "info", "label": "Quote request awaiting a reply", "ref": Q["ref"],
+                          "title": Q["title"], "href": "#/orders", "at": Q["created_at"],
+                          "customer": (Q["customer"]["first_name"] + " " + Q["customer"]["last_name"]).strip()})
+    Items.sort(key=lambda I: (Severity.get(I["severity"], 9), -(_Ts(I["at"]))))
+    ByKind: dict[str, int] = {}
+    for I in Items:
+        ByKind[I["kind"]] = ByKind.get(I["kind"], 0) + 1
+    return {"count": len(Items), "items": Items, "by_kind": ByKind,
+            "sessions": sorted({I["href"].split("/")[-1] for I in Items if I["href"].startswith("#/sessions/")})}
+
+
+def _Ts(Iso: str | None) -> float:
+    try:
+        return datetime.fromisoformat(Iso).timestamp() if Iso else 0.0
+    except ValueError:
+        return 0.0
+
+
+def _DaysAgo(Days: int, NowIso: str) -> str:
+    return (datetime.fromisoformat(NowIso) - timedelta(days=Days)).isoformat(timespec="milliseconds")
+
+
+def Dashboard(Ctx: Context, Orders=None, Days: int | None = None) -> dict:
+    """Small, factual overview. Sessions, clicks and orders respect the time range (Days back from
+    now; None = all time); 3D geometry statistics are about the models and stay all-time."""
+    Since = _DaysAgo(Days, Now()) if Days else None
     S = Sessions.Summaries(Ctx, IncludeMock=False)                          # mock activity stays out of statistics
+    if Since:
+        S = [X for X in S if (X["started_at"] or "") >= Since]
     N = len(S)
-    LiveDesigns = {X["design_id"] for X in S}
+    LiveDesigns = {X["design_id"] for X in Sessions.Summaries(Ctx, IncludeMock=False)}
 
     def Funnel(Rows):
         Total = len(Rows)
@@ -127,7 +191,8 @@ def Dashboard(Ctx: Context, Orders=None) -> dict:
                  "pct": _Pct(sum(1 for X in Rows if X["stage_times"].get(K)), Total)} for K in Sessions.StageOrder]
 
     Clicks = Ctx.Db.One("SELECT COUNT(*) AS n FROM session_events WHERE kind = 'new_design_clicked' "
-                        "AND json_extract(data_json, '$.ai_mode') = 'live'")["n"]
+                        "AND json_extract(data_json, '$.ai_mode') = 'live'" + (" AND created_at >= ?" if Since else ""),
+                        (Since,) if Since else ())["n"]
     Geo = [G for G in Ctx.Db.All(
         "SELECT g.volume_mm3, p.material_id, p.weight_g, p.fixed_price, p.calculated_price, p.production_cost, s.design_id "
         "FROM geometry_results g JOIN price_calculations p ON p.geometry_id = g.id JOIN session_3d s ON s.id = g.session_3d_id "
@@ -195,7 +260,9 @@ def Dashboard(Ctx: Context, Orders=None) -> dict:
             "price_pairs": len(Pairs),
         },
         "cost_model": "configured" if any(G["production_cost"] is not None for G in Geo) else "not_configured",
-        "orders": Orders.Summary() if Orders else None,
+        "orders": Orders.Summary(Since=Since) if Orders else None,
+        "needs_attention": Attention(Ctx, Orders),
+        "range": {"days": Days, "since": Since},
         "mock_excluded": True,
         # Admin activity log: every admin action recorded on a journey (3D requests, new-model overrides …).
         "admin_activity": [
@@ -409,9 +476,33 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     # ── sessions / dashboard / 3D ─────────────────────────────────────────
     @App_.get("/api/admin/dashboard")
-    async def AdminDashboard(authorization: str | None = Header(None)):
+    async def AdminDashboard(days: int | None = None, authorization: str | None = Header(None)):
         Admin(authorization)
-        return Dashboard(Ctx, Orders)
+        return Dashboard(Ctx, Orders, days if days and days > 0 else None)
+
+    @App_.get("/api/admin/attention")
+    async def AdminAttention(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Attention(Ctx, Orders)
+
+    # ── a design's unique name (gallery masters should never share one) ──
+    @App_.patch("/api/admin/designs/{DesignId}")
+    async def AdminRenameDesign(DesignId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        D = Ctx.Db.One("SELECT id, title, owner_account_id FROM designs WHERE id = ?", (DesignId,))
+        if D is None:
+            raise HttpError(404, "design_not_found", "Design not found.")
+        Title = " ".join(str(Body_.get("title") or "").split())
+        if not 2 <= len(Title) <= 60:
+            raise HttpError(400, "invalid_title", "The name must be 2–60 characters.")
+        Dup = Ctx.Db.One("SELECT d.id, d.ring_no FROM gallery_items g JOIN designs d ON d.id = g.design_id "
+                         "WHERE lower(d.title) = lower(?) AND d.id != ?", (Title, DesignId))
+        if Dup and not Body_.get("force"):
+            raise HttpError(409, "duplicate_title", f"Another gallery design is already called “{Title}” ({RingIds.DesignRef(Dup['ring_no'])}). "
+                                                    "Give each master design a distinctive name, or confirm to use it anyway.")
+        Ctx.Db.Execute("UPDATE designs SET title = ?, updated_at = ? WHERE id = ?", (Title, Now(), DesignId))
+        Sessions.Record(Ctx, D["owner_account_id"], "admin_design_renamed", DesignId, from_title=D["title"], to_title=Title, by=Who.Id)
+        return {"id": DesignId, "title": Title, "was": D["title"]}
 
     # ── orders (operational), promo codes, quote requests ─────────────────
     @App_.get("/api/admin/orders")

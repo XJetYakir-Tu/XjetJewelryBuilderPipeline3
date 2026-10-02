@@ -526,32 +526,75 @@
 
     <!-- ── Materials ───────────────────────────────────────────────────── -->
     <template x-if="view === 'materials'">
-        <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-white">
-            <div class="max-w-4xl mx-auto text-center mb-16">
-                <h2 class="text-4xl brand-font mb-4">The Atelier Palette</h2>
-                <p class="text-zinc-500">Fashion jewelry is available to order today. Luxury gold can be previewed now and will be available to order soon.</p>
-            </div>
-            <template x-for="g in (catalog?.groups || [])" :key="g.id">
-                <section class="max-w-5xl mx-auto mb-14">
-                    <div class="flex items-baseline gap-3 mb-6">
-                        <h3 class="brand-font text-2xl text-zinc-900" x-text="g.label"></h3>
-                        <span class="text-[10px] uppercase tracking-widest" :class="g.purchasable ? 'text-zinc-500' : 'text-[#8A561B]'" x-text="g.purchasable ? 'Available to order' : 'Preview only'"></span>
+        <main class="flex-1 overflow-y-auto fade-in bg-white">
+            <section class="px-6 md:px-20 pt-14 md:pt-20 pb-10 text-center">
+                <span class="text-[11px] uppercase tracking-[0.4em] mb-3 block" style="color:#C9A96E">Materials &amp; Pricing</span>
+                <h2 class="text-4xl brand-font mb-4">Real metal, one fixed price per ring</h2>
+                <p class="text-zinc-600 text-[15px] max-w-2xl mx-auto leading-relaxed">Every ring is printed to order in the metal you choose. Fashion metals have a fixed price per ring — any size, any design. Gold is quoted individually.</p>
+            </section>
+
+            <!-- Fashion metals: available to order at a fixed price -->
+            <section class="px-6 md:px-20 pb-16 max-w-6xl mx-auto">
+                <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
+                    <h3 class="brand-font text-2xl text-zinc-900">Available to order</h3>
+                    <p class="text-[13px] text-zinc-500">Production 7–10 business days · standard delivery free</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <template x-for="m in materialsOf('fashion')" :key="m.id">
+                        <article class="rounded-2xl border border-zinc-100 bg-white overflow-hidden flex flex-col hover:border-zinc-300 transition">
+                            <div class="relative aspect-[4/3] flex items-center justify-center" style="background:#F7F5F0;">
+                                <template x-if="heroRing"><img :src="heroRing.image_url" :alt="heroRing.title + ' in ' + m.label" class="h-[80%] w-auto object-contain" :style="{ filter: metalFilter(m.id) }"></template>
+                                <div class="absolute bottom-3 left-3 w-10 h-10 rounded-full shadow-md border border-white/70" :style="'background-color:' + m.swatch"><div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.10) 55%, rgba(0,0,0,0.15) 100%)"></div></div>
+                            </div>
+                            <div class="p-6 flex flex-col gap-3 flex-1">
+                                <div>
+                                    <h4 class="brand-font text-xl text-zinc-900" x-text="m.label"></h4>
+                                    <p class="text-[13px] text-zinc-500" x-text="copy(m.id).sub"></p>
+                                </div>
+                                <p class="text-[20px] brand-font text-zinc-900" x-text="materialPriceText(m.id)"></p>
+                                <dl class="text-[13px] text-zinc-700 space-y-2 leading-snug">
+                                    <div><dt class="text-[11px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Appearance</dt><dd x-text="info(m.id).appearance"></dd></div>
+                                    <div><dt class="text-[11px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Finish</dt><dd x-text="info(m.id).finish"></dd></div>
+                                    <div><dt class="text-[11px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Wear &amp; durability</dt><dd x-text="info(m.id).durability"></dd></div>
+                                    <div><dt class="text-[11px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Care</dt><dd x-text="info(m.id).care"></dd></div>
+                                </dl>
+                                <div class="mt-auto pt-3 flex items-center justify-between gap-3">
+                                    <span class="inline-flex items-center gap-1.5 text-[12px] font-semibold" style="color:#146C43;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Available to order</span>
+                                    <button @click="resetAIFlow()" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#9A7230;">Design in <span x-text="m.label"></span></button>
+                                </div>
+                            </div>
+                        </article>
+                    </template>
+                </div>
+                <p class="text-[12px] text-zinc-500 mt-6 leading-relaxed">Prices in US dollars, per ring, fixed for the material — the ring size does not change the price. Each ring is made to order; the final weight is measured at production. Vermeil is sterling silver with a thick 14K gold plating.</p>
+            </section>
+
+            <!-- Gold: by request until gold pricing is enabled -->
+            <section class="px-6 md:px-20 py-16 border-t border-zinc-100" style="background:#FBF9F4;">
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex flex-wrap items-baseline justify-between gap-3 mb-2">
+                        <h3 class="brand-font text-2xl text-zinc-900">Gold — available by request</h3>
+                        <span class="text-[12px] uppercase tracking-widest font-semibold" style="color:#8A561B;">Quoted individually</span>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
-                        <template x-for="m in g.materials" :key="m.id">
-                            <div class="flex gap-6 items-start p-6 rounded-xl border border-zinc-100 hover:border-zinc-300 transition bg-white">
-                                <div class="shrink-0 w-20 h-20 rounded-full shadow-md border border-zinc-200/60 relative overflow-hidden" :style="'background-color:' + m.swatch">
-                                    <div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.10) 55%, rgba(0,0,0,0.15) 100%)"></div>
-                                </div>
-                                <div class="min-w-0">
-                                    <h3 class="brand-font text-xl mb-1 text-zinc-900" x-text="m.label"></h3>
-                                    <p class="text-zinc-500 text-sm leading-relaxed" x-text="copy(m.id).desc"></p>
-                                </div>
+                    <p class="text-[14px] text-zinc-600 max-w-2xl mb-8 leading-relaxed">Solid gold rings are priced per piece. Design your ring, choose a gold option in Customize and send a quote request — a specialist replies within one business day with a price and the next steps. Nothing is ordered or charged until you confirm.</p>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                        <template x-for="m in materialsOf('luxury')" :key="m.id">
+                            <div class="rounded-xl border border-zinc-100 bg-white p-4 flex flex-col gap-2">
+                                <div class="w-10 h-10 rounded-full shadow border border-zinc-200/60 relative" :style="'background-color:' + m.swatch"><div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.10) 55%, rgba(0,0,0,0.15) 100%)"></div></div>
+                                <h4 class="text-[14px] font-semibold text-zinc-900" x-text="m.label"></h4>
+                                <p class="text-[12px] text-zinc-600 leading-snug" x-text="info(m.id).appearance"></p>
+                                <p class="text-[12px] text-zinc-500 leading-snug" x-text="info(m.id).durability"></p>
+                                <p class="text-[11px] uppercase tracking-widest mt-auto pt-1" style="color:#8A561B;">By request</p>
                             </div>
                         </template>
                     </div>
-                </section>
-            </template>
+                </div>
+            </section>
+
+            <section class="px-6 md:px-20 py-14 text-center">
+                <p class="text-[13px] text-zinc-500 mb-5">Unsure which metal suits you? <a :href="mailto('Which metal should I choose?')" class="underline underline-offset-2 hover:text-black">Ask our design team</a> — we reply within one business day.</p>
+                <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Designing</button>
+            </section>
         </main>
     </template>
 
@@ -625,8 +668,21 @@
                         <p>Our design team answers within one business day.</p>
                         <div class="rounded-xl p-6" style="background:#FBF7EF; border:1px solid #E8DCC4;">
                             <p class="text-[11px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A561B;">Email</p>
-                            <p class="text-lg font-semibold text-zinc-900 select-all" x-text="SUPPORT_EMAIL"></p>
+                            <a :href="mailto('XJet Atelier — ' + (supportContext || 'a question'))" class="text-lg font-semibold text-zinc-900 underline underline-offset-4 hover:text-black" x-text="SUPPORT_EMAIL"></a>
                             <p class="text-[13px] text-zinc-500 mt-2">Include the name of your design or your Order ID so we can find it quickly. Never send your sign-in code by email.</p>
+                            <a :href="mailto('XJet Atelier — ' + (supportContext || 'a question'), supportContext ? 'About: ' + supportContext + '\n\n' : '')" class="btn-gold inline-flex px-6 py-3 mt-4">Contact us</a>
+                        </div>
+                        <h3 class="text-lg font-semibold text-zinc-900">How can we help?</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-[14px]">
+                            <a :href="mailto('Sizing help')" class="block rounded-xl border border-zinc-100 p-5 hover:border-zinc-300 transition">
+                                <p class="font-semibold text-zinc-900 mb-1">Sizing</p>
+                                <p class="text-[13px] text-zinc-600 leading-snug">Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or send us your finger circumference in mm.</p></a>
+                            <a :href="mailto('My order ' + (order?.ref || ''))" class="block rounded-xl border border-zinc-100 p-5 hover:border-zinc-300 transition">
+                                <p class="font-semibold text-zinc-900 mb-1">My order</p>
+                                <p class="text-[13px] text-zinc-600 leading-snug">Questions about an order, its payment or delivery? Quote your Order ID (ORD-…) and we take it from there.</p></a>
+                            <a :href="mailto('Something is not working')" class="block rounded-xl border border-zinc-100 p-5 hover:border-zinc-300 transition">
+                                <p class="font-semibold text-zinc-900 mb-1">Something's not working</p>
+                                <p class="text-[13px] text-zinc-600 leading-snug">A design or movie that won't load, a sign-in problem? Tell us what you were doing and the name of the design.</p></a>
                         </div>
                         <h3 class="text-lg font-semibold text-zinc-900">Company</h3>
                         <p>XJet Atelier is a service of XJet Ltd., the developer of NanoParticle Jetting™ metal and ceramic 3D printing. <a href="https://www.xjet3d.com/" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">xjet3d.com</a></p>
@@ -1064,7 +1120,7 @@
                         </div>
                         <p class="text-[12px] text-zinc-500 mt-2">
                             <span x-show="sizeConfirmed && cust?.ring_size != null">Your size: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> · the size does not change the price</span>
-                            <span x-show="!sizeConfirmed && cust?.ring_size != null">Not sure? Open the size guide — tap any row to pick that size.</span>
+                            <span x-show="!sizeConfirmed && cust?.ring_size != null">Not sure? Open the size guide — tap any row to pick that size — or <a :href="mailto('Sizing help' + (design?.title ? ' — ' + design.title : ''))" class="underline underline-offset-2 hover:text-black">ask us</a>.</span>
                             <span x-show="cust?.ring_size == null">Choose your size to add this ring to your bag.</span>
                         </p>
                     </div>
@@ -1115,6 +1171,9 @@
                         <p x-show="!isLuxury && !cust?.can_add_to_bag && bagBlockedText" class="text-[12px] text-zinc-500 text-center" x-text="bagBlockedText"></p>
                         <p x-show="bagMessage" class="text-[12px] text-center" style="color:#146C43;" x-text="bagMessage"></p>
                         <p x-show="custError" class="text-[12px] text-center" style="color:#A1261D;" x-text="custError"></p>
+                    </div>
+                    <!-- Below the sticky summary: the bag so far and the other ways on -->
+                    <div class="space-y-3">
 
                         <div x-show="bagLines.length > 0" class="border border-zinc-200 rounded-sm divide-y divide-zinc-100">
                             <div class="px-3 py-2 flex items-center justify-between">
@@ -1380,6 +1439,7 @@
                             <span>I accept the <a href="#terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and understand that each ring is made to order (design and size) and is not returnable for change of mind, and that my design is not exclusive.</span>
                         </label>
                         <p class="ferr" x-show="coProblem('terms_accepted')" x-text="coProblem('terms_accepted')"></p>
+                        <p class="text-[12px] text-zinc-500">Questions before you order? <a :href="mailto('Question before ordering' + (coQuote?.lines?.[0]?.ring_id ? ' — ' + coQuote.lines[0].ring_id : ''))" class="underline underline-offset-2 hover:text-black">Email our design team</a> — we reply within one business day.</p>
                     </section>
                     <p x-show="co.error" class="mt-4 text-[13px]" style="color:#A1261D;" role="alert" x-text="co.error"></p>
                 </div>

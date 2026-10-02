@@ -40,7 +40,8 @@ async def test_admin_sign_in_is_remembered_by_a_server_side_session_cookie(HA):
     """The key is entered once per browser; a server-side session (HttpOnly cookie) signs the admin in
     afterwards, survives restarts, and can be revoked on the server. The key is never stored client-side."""
     H = HA
-    assert "sessionStorage" not in (await H.Client.get("/static/admin.js")).text
+    Js = (await H.Client.get("/static/admin.js")).text
+    assert "p3_admin_key" not in Js and "KEY_STORE" not in Js                    # the key is never stored client-side
     assert (await H.Client.post("/api/admin/login", json={"key": "wrong"})).status_code == 403
     assert (await H.Client.get("/api/admin/session")).status_code == 403                    # nothing remembered yet
     R = await H.Client.post("/api/admin/login", json={"key": AdminKey})

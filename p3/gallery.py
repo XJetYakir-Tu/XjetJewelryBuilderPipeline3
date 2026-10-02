@@ -76,9 +76,14 @@ class GalleryService:
         Ids = [R["design_id"] for R in Rows] + [F["design_id"] for F in Former]
         Refs = RingIds.CandidateRefs(self.Ctx.Db, Ids)
         Stats = self.Stats(Ids)
+        Names: dict[str, int] = {}
+        for R in Rows:
+            Names[R["title"].strip().lower()] = Names.get(R["title"].strip().lower(), 0) + 1
         Out = [{"id": R["id"], "design_id": R["design_id"], "candidate_id": R["candidate_id"],
                 "ring_id": Refs.get(R["candidate_id"]), "design_ring_id": RingIds.DesignRef(R["ring_no"]),
                 "title": R["title"], "prompt": R["prompt"], "image_url": self.Ctx.AssetUrl(R["asset_path"]),
+                # Every master design should have a distinctive name; a shared one is flagged for renaming
+                "duplicate_name": Names.get(R["title"].strip().lower(), 0) > 1,
                 "ready": R["candidate_status"] == "ready" and bool(R["asset_path"]), "in_gallery": True,
                 "position": R["position"], "created_at": R["created_at"], "created_by": R["created_by"],
                 **Stats[R["design_id"]]} for R in Rows]

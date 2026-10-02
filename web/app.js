@@ -36,6 +36,25 @@ const MATERIAL_COPY = {
   gold_18k_rose:   { desc: 'A romantic blush alloy at 75% gold content — warm, refined, and timeless.' },
 };
 
+// Materials page: what each metal looks like, how it wears, how to care for it (wording may be refined later).
+const MATERIAL_INFO = {
+  stainless_steel: { appearance: 'Cool, light grey metal with a soft sheen.', finish: 'Brushed matte as standard; a polished finish on request.',
+                     durability: 'Very hard and scratch-resistant, hypoallergenic, does not tarnish — the most carefree metal for everyday wear.',
+                     care: 'Wipe with a soft cloth. Fine for water, sport and daily wear.' },
+  silver:          { appearance: 'Bright white precious metal with a classic, cool shine.', finish: 'Mirror polish.',
+                     durability: 'A soft precious metal: it picks up fine marks over time and can tarnish slowly, but polishes back to new easily.',
+                     care: 'Store dry, polish with a silver cloth; take it off for swimming and chlorinated water.' },
+  vermeil:         { appearance: 'The warm colour of 14K gold over a sterling silver core.', finish: 'Polished, with a thick 14K gold plating.',
+                     durability: 'The look of gold at a fraction of the price; the plating wears gradually with heavy daily use and can be renewed.',
+                     care: 'Take it off for swimming, sport and showering; keep away from perfume and lotion.' },
+  gold_10k_yellow: { appearance: 'Soft, pale yellow — 41.7% gold.', durability: 'The hardest and most wear-resistant gold alloy.' },
+  gold_14k_yellow: { appearance: 'Warm classic yellow — 58.3% gold.', durability: 'The everyday fine-jewellery standard: rich colour, good hardness.' },
+  gold_18k_yellow: { appearance: 'Deep, rich yellow — 75% gold.', durability: 'The most precious colour; a little softer, for pieces worn with care.' },
+  gold_10k_rose:   { appearance: 'Warm blush with a copper note — 41.7% gold.', durability: 'The most durable rose alloy.' },
+  gold_14k_rose:   { appearance: 'Romantic pink-gold — 58.3% gold.', durability: 'Rich colour with everyday hardness.' },
+  gold_18k_rose:   { appearance: 'Soft, luxurious rose — 75% gold.', durability: 'Precious and warm; worn with care.' },
+};
+
 // Waiting-screen copy from Pipeline 2 (app-p2.js showLoading presets 'design' / 'refine').
 const WAIT_PRESETS = {
   design: {
@@ -174,7 +193,7 @@ function p3App() {
       try { this.devKey = sessionStorage.getItem('p3_dev_key') || ''; } catch { this.devKey = ''; }
       if (this.devKey) this.loadDevMode();
       const hashView = (location.hash || '').replace('#', '');
-      if (PAGE_VIEWS.includes(hashView)) this.view = hashView;
+      if (PAGE_VIEWS.includes(hashView)) { this.view = hashView; if (hashView === 'materials') this.loadMaterialQuotes(); }
       if (!this.token) return;
       this.refreshBag();
       if (fromLink) {
@@ -183,7 +202,8 @@ function p3App() {
         await this._afterSignIn(true);
         return;
       }
-      if (st.designId && STUDIO_VIEWS.includes(st.view)) {
+      // A link to a page (#materials, #terms from the checkout …) wins over restoring the studio.
+      if (st.designId && STUDIO_VIEWS.includes(st.view) && !PAGE_VIEWS.includes(hashView)) {
         try { await this.openDesign(st.designId, { restoreView: st.view }); }
         catch { this.persist({ designId: null }); }
       }
@@ -271,6 +291,7 @@ function p3App() {
       window.scrollTo({ top: 0 });
       document.querySelector('main')?.scrollTo?.({ top: 0 });
       if (v === 'checkout') { this.refreshBag(); this.track('bag_viewed'); }
+      if (v === 'materials') this.loadMaterialQuotes();
     },
     // Session analytics for the Admin (best effort; never blocks the customer).
     track(kind, designId = null) {
@@ -521,7 +542,35 @@ function p3App() {
     },
     groupOfMaterial(id) { return this.material(id)?.group; },
     copy(id) { return MATERIAL_COPY[id] || {}; },
+    info(id) { return MATERIAL_INFO[id] || {}; },
     get allMaterials() { return (this.catalog?.groups || []).flatMap(g => g.materials.map(m => ({ ...m, groupLabel: g.label }))); },
+    // Materials & Pricing: the fixed price per metal is public (no sign-in needed to see what a ring costs)
+    materialQuotes: {}, materialQuotesState: 'idle',
+    async loadMaterialQuotes() {
+      if (this.materialQuotesState === 'loading' || this.materialQuotesState === 'loaded') return;
+      this.materialQuotesState = 'loading';
+      try {
+        const out = {};
+        await Promise.all(this.materialsOf('fashion').map(async m => { out[m.id] = await this.api('GET', `/api/quote?material_id=${encodeURIComponent(m.id)}`, null, { noAuth: true }); }));
+        this.materialQuotes = out; this.materialQuotesState = 'loaded';
+      } catch (_) { this.materialQuotesState = 'failed'; }
+    },
+    materialPriceText(id) {
+      const q = this.materialQuotes[id];
+      if (this.materialQuotesState !== 'loaded' || !q) return this.materialQuotesState === 'failed' ? 'Price unavailable' : '…';
+      return q.pricing_status === 'available' ? this.money(q.unit_price, q.currency) + ' per ring, any size' : 'Price on request';
+    },
+    // Support: one address everywhere, with the right context in the subject line
+    mailto(subject, body = '') {
+      const q = new URLSearchParams(); q.set('subject', subject); if (body) q.set('body', body);
+      return 'mailto:' + this.SUPPORT_EMAIL + '?' + q.toString().replace(/\+/g, '%20');
+    },
+    get supportContext() {
+      const bits = [];
+      if (this.order?.ref) bits.push('Order ' + this.order.ref);
+      if (this.design?.title) bits.push(this.design.title);
+      return bits.join(' · ');
+    },
     get metalsFaqAnswer() {
       const fashion = this.materialsOf('fashion').map(m => m.label).join(', ');
       const gold = this.materialsOf('luxury').map(m => m.label.replace(' Gold', '')).join(', ');
