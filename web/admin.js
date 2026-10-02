@@ -615,7 +615,8 @@ function adminApp() {
         if (!img || img.closest('#zoom-preview') || !img.src || img.getBoundingClientRect().width > 260) return;
         if (this.zoom && this.zoom.src === img.src) return;
         const row = img.closest('tr, li, article, .card, button');
-        const label = img.dataset.label || img.alt || row?.querySelector('.font-medium, .font-semibold, .font-mono')?.textContent?.trim() || '';
+        const first = row?.querySelector('.font-medium, .font-semibold, .font-mono');
+        const label = (img.dataset.label || img.alt || first?.childNodes?.[0]?.textContent || first?.textContent || '').replace(/\s+/g, ' ').trim();
         this.showZoom(null, img.src, label, img);
       });
       document.addEventListener('mouseout', (e) => { if (e.target.closest?.('img') && !e.relatedTarget?.closest?.('img')) this.zoom = null; });
