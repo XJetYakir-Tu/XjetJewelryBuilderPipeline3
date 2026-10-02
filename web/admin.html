@@ -1060,7 +1060,7 @@
           <div class="space-y-2">
             <p class="text-xs text-zinc-500 flex flex-wrap items-center gap-2"><span class="badge" :class="b.kind === 'refine' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'" x-text="b.kind === 'refine' ? 'Refinement' : 'Design'"></span>
               <span x-text="b.user_text"></span>
-              <button x-show="b.kind === 'refine' && !sd.session.shared" class="act text-[11px] uppercase tracking-widest underline text-zinc-500 hover:text-amber-800" @click="splitBatch(b)"
+              <button x-show="b.kind === 'refine' && !sd.session.shared && (sd.design?.batches || []).length > 1" class="act text-[11px] uppercase tracking-widest underline text-zinc-500 hover:text-amber-800" @click="splitBatch(b)"
                       title="A refinement that landed inside this design becomes a design of its own (its images, movie, choices, orders and 3D requests move with it)">Make it its own design</button></p>
             <div class="grid grid-cols-4 gap-3">
               <template x-for="c in b.candidates" :key="c.id">
