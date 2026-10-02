@@ -23,6 +23,7 @@ from fastapi import Body, FastAPI, Header, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 from p3 import adminauth as AdminAuth
+from p3 import merge as Merge
 from p3 import naming as Naming
 from p3 import orders as OrdersModule
 from p3 import payments as PaymentsModule
@@ -142,6 +143,13 @@ def Attention(Ctx: Context, Orders=None) -> dict:
             Items.append({**Base, "kind": "3d_failed", "severity": "error", "label": "3D processing failed"})
         if "Generation failed" in X["path"]:
             Items.append({**Base, "kind": "generation_failed", "severity": "error", "label": "Design generation failed"})
+    Mock = Sessions.MockDesignIds(Ctx)
+    for L in Merge.LegacyCopies(Ctx):
+        if L["design_id"] in Mock:
+            continue
+        Items.append({"kind": "legacy_copy", "severity": "info", "ref": L["ring_id"], "title": L["title"],
+                      "href": f"#/sessions/{L['design_id']}", "at": L["created_at"], "customer": None,
+                      "label": f"Copy of {L['master_title']} ({L['master_ring_id']}) from before shared designs — the same ring twice. Merge it."})
     if Orders is not None:
         NowIso = Now()
         for O in Orders.AdminList():
@@ -373,6 +381,8 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
         "last_choice": Last,
         "timeline": Timeline,
         "design": {**Design, "shared": bool(Use), "master_ring_id": Summary["ring_id"]} if Design else None,
+        # A legacy gallery copy (same images as a master, no refinement of its own): where it can be merged
+        "merge": None if Use else Merge.MergeTarget(Ctx, Ctx.Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))),
         "choices": Choices,
         "ai_usage": {"requests": len(Usage),
                      "by_kind": {K: sum(1 for U in Usage if U["kind"] == K) for K in sorted({U["kind"] for U in Usage})},
@@ -543,6 +553,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             Names = Naming.Suggestions(D["prompt"], Taken, N=8)
         return {"id": DesignId, "title": D["title"], "suggestions": Names, "lineage": Master["title"] if Master else None}
 
+    @App_.post("/api/admin/designs/{DesignId}/merge")
+    async def AdminMergeLegacyCopy(DesignId: str, authorization: str | None = Header(None)):
+        """Fold a legacy gallery copy back into its master: one ring, one Ring ID, one 3D model (p3/merge.py)."""
+        Who = Admin(authorization)
+        return Merge.MergeLegacyCopy(Ctx, DesignId, Who.Id)
+
     # ── orders (operational), promo codes, quote requests ─────────────────
     @App_.get("/api/admin/orders")
     async def AdminOrders(status: str | None = None, payment: str | None = None, q: str | None = None,
@@ -605,7 +621,8 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     async def ListSessions(include_mock: bool = False, authorization: str | None = Header(None)):
         Admin(authorization)
         return {"sessions": Sessions.Summaries(Ctx, IncludeMock=include_mock), "idle_minutes": Sessions.IdleMinutes,
-                "mock_sessions": len(Sessions.MockDesignIds(Ctx)), "include_mock": include_mock}
+                "mock_sessions": len(Sessions.MockDesignIds(Ctx)), "include_mock": include_mock,
+                "retired": RingIds.Retired(Ctx.Db)}
 
     @App_.get("/api/admin/sessions/{DesignId}")
     async def GetSession(DesignId: str, authorization: str | None = Header(None)):

@@ -128,6 +128,7 @@ function p3App() {
     // ── preview overlay (P2 fullscreen zoom) ─────────────────────────
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
     gallery: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
+    heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the gallery rings
     previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null, _swipeX: null,
     menuOpen: false,                   // mobile navigation
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
@@ -167,7 +168,7 @@ function p3App() {
       }
       try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch { this.health = null; }
       this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
-      this.loadGallery().then(() => this._openSharedGallery());
+      this.loadGallery().then(() => { this._openSharedGallery(); this.startHeroRotation(); });
       if ((location.hash || '') === '#developer') { this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }   // internal, not linked
       const lux = this.materialsOf('luxury');
       this.lastMaterialByGroup.luxury = lux.length ? lux[0].id : null;
@@ -321,8 +322,41 @@ function p3App() {
       try { this.gallery = (await this.api('GET', '/api/gallery', null, { noAuth: true })).items || []; this.galleryState = 'loaded'; }
       catch (_) { this.galleryState = 'failed'; }
     },
-    get heroRing() { return this.gallery[0] || null; },
-    get heroSiblings() { return this.gallery.slice(1, 3); },
+    get heroRing() { return this.gallery[Math.min(this.heroIndex, Math.max(this.gallery.length - 1, 0))] || null; },
+    // The hero shows every gallery ring in turn: random order (each ring once per round), a smooth
+    // crossfade every few seconds, paused while the visitor hovers or looks at a design; a tap on a
+    // thumbnail shows that ring at once. Nothing moves for visitors who prefer reduced motion.
+    startHeroRotation() {
+      if (this._heroTimer) clearInterval(this._heroTimer);
+      this.heroIndex = 0; this._heroQueue = [];
+      if (this.gallery.length < 2 || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+      this._heroTimer = setInterval(() => {
+        if (this.heroPaused || this.galleryItem || this.view !== 'home' || document.hidden) return;
+        this.heroGo(this._nextHero(), true);
+      }, 5000);
+    },
+    _nextHero() {
+      if (!this._heroQueue.length) {                       // a fresh shuffled round, never the ring that is showing
+        const rest = this.gallery.map((_, i) => i).filter(i => i !== this.heroIndex);
+        for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
+        this._heroQueue = rest;
+      }
+      return this._heroQueue.shift();
+    },
+    heroGo(i, auto = false) {
+      if (i == null || i < 0 || i >= this.gallery.length) return;
+      this.heroIndex = i;
+      this._heroQueue = this._heroQueue.filter(x => x !== i);
+      if (!auto && this._heroTimer) this.startHeroRotationFrom(i);    // a tap restarts the clock from this ring
+    },
+    startHeroRotationFrom(i) {
+      clearInterval(this._heroTimer);
+      this._heroTimer = setInterval(() => {
+        if (this.heroPaused || this.galleryItem || this.view !== 'home' || document.hidden) return;
+        this.heroGo(this._nextHero(), true);
+      }, 5000);
+      this.heroIndex = i;
+    },
     openGallery(g) { this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; },
     closeGallery() { this.galleryItem = null; this.galleryBusy = false; },
     _pendingGallery() { try { return localStorage.getItem(GALLERY_KEY) || ''; } catch { return ''; } },

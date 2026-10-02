@@ -6,6 +6,10 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="p3-base" content="{{BASE}}">
   <title>XJet Admin</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="{{BASE}}/static/images/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{BASE}}/static/images/favicon-16.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="{{BASE}}/static/images/favicon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{BASE}}/static/images/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -680,7 +684,7 @@
                     <p class="flex flex-wrap gap-1 mt-1">
                       <span x-show="x.mock" class="badge !text-[10px] !px-1.5 bg-amber-100 text-amber-800">Mock</span>
                       <span x-show="x.shared" class="badge !text-[10px] !px-1.5 bg-amber-100 text-amber-800" :title="'A customer on the shared gallery design ' + (x.source_ring_id || '')">Gallery</span>
-                      <span x-show="x.legacy_copy" class="badge !text-[10px] !px-1.5 bg-zinc-100 text-zinc-600" :title="'A copy of the gallery design ' + (x.source_ring_id || '') + ' made before shared master designs existed (kept as history)'">Gallery copy · legacy</span>
+                      <span x-show="x.legacy_copy" class="badge !text-[10px] !px-1.5 bg-amber-50 text-amber-800 border border-amber-200" :title="'A copy of the gallery design ' + (x.source_ring_id || '') + ' made before shared master designs existed — the same ring twice. Open it and use Merge into master.'">Gallery copy · legacy</span>
                       <span x-show="x.removed" class="badge !text-[10px] !px-1.5 bg-zinc-200 text-zinc-600" title="Removed from My Designs by the customer">Removed</span>
                       <template x-for="h in [['has_image', 'Image'], ['has_movie', 'Movie'], ['has_3d', '3D']]"><span class="badge !text-[10px] !px-1.5" :class="x[h[0]] ? 'bg-zinc-800 text-white' : 'bg-zinc-100 text-zinc-400'" x-text="h[1]"></span></template>
                       <span class="text-[11px] text-zinc-500 self-center" x-text="x.generations + ' gen · ' + x.refinements + ' ref'"></span>
@@ -710,6 +714,10 @@
       <div x-show="!sessionsFiltered.length && sessionsState === 'loaded'" class="text-center text-zinc-500 py-10 px-6">
         <template x-if="filtersActive">
           <div class="space-y-3"><p class="text-sm" x-text="sq.trim() ? 'No matches for “' + sq.trim() + '”' + (sStage || sBag || s3d || sAttention ? ' with the current filters.' : '.') : 'No sessions match the current filters.'"></p>
+            <template x-for="r in retiredMatches()" :key="r.ring_id">
+              <p class="text-sm text-zinc-700"><span class="font-mono" x-text="r.ring_id"></span> (<span x-text="r.title"></span>) was merged into
+                <a class="underline" :href="'#/sessions/' + r.merged_into.design_id" x-text="r.merged_into.title + ' ' + r.merged_into.ring_id"></a> — the same ring.</p>
+            </template>
             <div class="flex justify-center gap-4 text-sm"><button x-show="sq.trim()" class="underline" @click="sq = ''; saveFilters()">Clear search</button><button class="underline" @click="resetFilters()">Reset filters</button></div></div>
         </template>
         <p x-show="!filtersActive" class="text-sm">No sessions yet.</p>
@@ -741,10 +749,16 @@
           <div class="flex flex-wrap items-center gap-2 ml-auto">
             <button class="btn !py-1.5" @click="scrollToId('sect-3d')" x-text="sd.three_d_defaults.existing_model ? 'Recalculate 3D' : 'Generate 3D'"></button>
             <button class="btn2 !py-1.5" :disabled="!latestResult()" @click="exportStl(latestResult())" :title="latestResult() ? 'Scaled STL of the latest result (US ' + latestResult().production_size + ' · ' + latestResult().material_label + ')' : 'No 3D result yet'">Download STL</button>
+            <button x-show="sd.merge" x-cloak class="btn2 !py-1.5 !text-amber-800 !border-amber-400" @click="mergeCopy()" :title="'A copy of ' + (sd.merge?.master_title || '') + ' — the same ring twice'" x-text="'Merge into ' + (sd.merge?.master_ring_id || 'master')"></button>
             <button class="btn2 !py-1.5" :class="sd.gallery ? '!text-amber-700 !border-amber-400' : ''" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery #' + (sd.gallery?.position || '') : 'Show in gallery'"></button>
           </div>
         </div>
       </div>
+      <p x-show="sd.merge" x-cloak class="text-[13px] px-4 py-3 border border-amber-300 bg-amber-50 text-amber-900">
+        <strong>Same ring twice.</strong> <span x-text="sd.session.ring_id"></span> is a copy of
+        <a class="underline" :href="'#/sessions/' + (sd.merge?.master_id || '')" x-text="(sd.merge?.master_title || '') + ' ' + (sd.merge?.master_ring_id || '')"></a>
+        made before shared gallery designs existed: identical images, no refinement of its own. <button class="underline" @click="mergeCopy()">Merge into master</button>
+        so its orders use the master's 3D model and the ring has one ID.</p>
       <!-- Summary: customer, account status, AI cost -->
       <section class="card p-6 space-y-4 relative">
         <p class="absolute top-2 right-3 text-[11px] text-zinc-500 tabular-nums" :title="sd.cost.basis">AI cost · this session <span class="font-semibold text-zinc-700" x-text="money(sd.cost.session)"></span></p>

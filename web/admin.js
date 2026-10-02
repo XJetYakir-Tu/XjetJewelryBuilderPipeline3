@@ -121,6 +121,7 @@ const EVENTS = {
   gallery_started: ['Started from gallery', 'bg-amber-100 text-amber-800'],
   gallery_reopened: ['Reopened from gallery', 'bg-amber-100 text-amber-800'],
   gallery_refined: ['Refined from gallery', 'bg-violet-100 text-violet-700'],
+  legacy_copy_merged: ['Legacy copy merged', 'bg-amber-100 text-amber-800'],
   design_removed: ['Removed from My Designs', 'bg-zinc-200 text-zinc-600'],
   refinement: ['Refinement', 'bg-violet-100 text-violet-700'],
   movie: ['360° movie', 'bg-purple-100 text-purple-700'],
@@ -152,6 +153,7 @@ function adminApp() {
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
     sect: { gallery: true, pipeline: false, choice: true, designs: false, journey: false },   // session sections (collapsed by default: secondary)
     rename: { open: false, title: '', busy: false, error: '', force: false, suggestions: [], lineage: null },
+    retired: [],                                   // Ring IDs of merged legacy copies (never reused): a search for one says where it went
     // In-app dialogs and toasts instead of the browser's alert() / confirm() / prompt()
     dialog: null, toasts: [],
     newModel: { open: false, text: '', candidate: '', error: '', busy: false },
@@ -473,7 +475,7 @@ function adminApp() {
       this.sessionsState = 'loading';
       try {
         const r = await this.api('GET', '/api/admin/sessions' + (this.sMock ? '?include_mock=true' : ''));
-        this.sessions = r.sessions; this.idleMinutes = r.idle_minutes; this.mockSessions = r.mock_sessions;
+        this.sessions = r.sessions; this.idleMinutes = r.idle_minutes; this.mockSessions = r.mock_sessions; this.retired = r.retired || [];
         this.sessionsState = 'loaded';
       } catch (e) { this.sessionsState = 'failed'; this.fail(e); }
       if (this.sAttention || !this.attention) this.attention = await this.api('GET', '/api/admin/attention').catch(() => null);
@@ -490,6 +492,10 @@ function adminApp() {
       const hay = [x.ring_id, x.selected_ring_id, ...(x.option_ring_ids || []), ...(x.order_refs || []), x.source_ring_id,
                    x.title, x.prompt, x.customer_name, x.customer_email].map(v => (v || '').toLowerCase());
       return hay.some(v => v.includes(q));
+    },
+    retiredMatches() {
+      const q = this.sq.trim().toLowerCase();
+      return q ? this.retired.filter(r => (r.ring_id || '').toLowerCase().includes(q) || (r.title || '').toLowerCase().includes(q)) : [];
     },
     get sessionsFiltered() {
       const q = this.sq.trim().toLowerCase();
@@ -525,6 +531,23 @@ function adminApp() {
       } catch (e) { /* suggestions are a convenience only */ }
     },
     pickName(n) { this.rename.title = n; this.rename.force = false; this.rename.error = ''; },
+    // A legacy gallery copy is the same ring as its master: fold it back (one Ring ID, one 3D model)
+    async mergeCopy() {
+      const m = this.sd?.merge; if (!m) return;
+      const ring = this.sd.session.ring_id;
+      const ok = await this.ask({ title: `Merge ${ring} into ${m.master_title} (${m.master_ring_id})?`,
+        text: `“${this.sd.session.title}” is a copy of the gallery design made before shared designs existed — the same ring under a second Ring ID. ` +
+              `Merging moves this journey (choices, bag lines, orders, 3D requests, history) to ${m.master_ring_id}, whose 3D model and STL then serve it. ` +
+              `${ring} is retired and never reused. This cannot be undone.`,
+        confirmLabel: 'Merge into master', danger: true });
+      if (!ok) return;
+      try {
+        const r = await this.api('POST', '/api/admin/designs/' + encodeURIComponent(this.sd.design_id || this.sd.session.design_id) + '/merge', {});
+        this.notify(`${r.copy.ring_id} merged into ${r.master.title} (${r.master.ring_id})` + (r.orders.length ? ' · orders ' + r.orders.join(', ') : ''));
+        this.sessions = []; this.attention = null;
+        this.go('#/sessions/' + encodeURIComponent(r.session_id));
+      } catch (e) { this.fail(e); }
+    },
     async saveRename() {
       this.rename.busy = true; this.rename.error = '';
       try {
@@ -1139,6 +1162,7 @@ function adminApp() {
       if (e.kind === 'bag_added') return [this.materialLabel(d.material_id), d.ring_size != null && 'US ' + d.ring_size, d.unit_price != null && '$' + Number(d.unit_price).toFixed(2)].filter(Boolean).join(' · ');
       if (e.kind === 'gallery_started') return 'Linked to the shared design ' + (d.source_ring_id || '') + ' — nothing generated or charged';
       if (e.kind === 'gallery_reopened') return 'Opened the shared design again';
+      if (e.kind === 'legacy_copy_merged') return `${d.copy_ring_id || ''} (${d.copy_title || ''}) — a copy of this ring from before shared designs — was merged into ${d.master_ring_id || 'this ring'}` + (d.orders && d.orders.length ? '; orders ' + d.orders.join(', ') : '') + (d.by ? ` (${d.by})` : '');
       if (e.kind === 'gallery_refined') return 'Refinement of ' + (d.source_ring_id || 'the gallery image') + ' into a design of their own';
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
       if (e.kind.startsWith('admin_3d')) return [d.production_size && 'US ' + d.production_size, d.material_id && this.materialLabel(d.material_id),

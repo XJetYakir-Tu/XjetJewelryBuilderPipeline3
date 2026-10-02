@@ -8,8 +8,10 @@
     <meta name="description" content="Design custom rings with AI at XJET Atelier. Describe your vision, choose from four designs, refine it, and preview it in a 360° movie.">
     <meta name="robots" content="noindex">
     <meta name="theme-color" content="#111111">
-    <link rel="icon" type="image/svg+xml" href="{{BASE}}/static/images/favicon.svg">
+    <!-- The browser-tab icon is a real ring from the gallery (Serpent Scale, R-1013-A) -->
     <link rel="icon" type="image/png" sizes="32x32" href="{{BASE}}/static/images/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{BASE}}/static/images/favicon-16.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{BASE}}/static/images/favicon-192.png">
     <link rel="apple-touch-icon" sizes="180x180" href="{{BASE}}/static/images/apple-touch-icon.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -239,19 +241,29 @@
                 <!-- The first product visual is a real ring from the Inspiration Gallery (the sculpture lives on the Technology page) -->
                 <div class="md:w-1/2 relative overflow-hidden md:min-h-0 hidden md:flex items-center justify-center" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
                     <template x-if="heroRing">
-                        <div class="relative w-[72%] max-w-[540px] py-10">
-                            <button type="button" @click="openGallery(heroRing)" class="group block w-full aspect-square bg-white rounded-3xl shadow-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + heroRing.title + ' from the Inspiration Gallery'">
-                                <img :src="heroRing.image_url" :alt="heroRing.title + ' — a ring from the XJet Inspiration Gallery'" class="w-full h-full object-contain p-8 transition-transform duration-700 group-hover:scale-[1.04]">
+                        <div class="relative w-[72%] max-w-[540px] py-8" @mouseenter="heroPaused = true" @mouseleave="heroPaused = false" @focusin="heroPaused = true" @focusout="heroPaused = false">
+                            <!-- Every gallery ring is stacked here; the current one is visible and they crossfade (random order, every few seconds) -->
+                            <button type="button" @click="openGallery(heroRing)" class="group relative block w-full aspect-square bg-white rounded-3xl shadow-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + heroRing.title + ' from the Inspiration Gallery'" data-testid="hero-ring">
+                                <template x-for="(g, i) in gallery" :key="g.id">
+                                    <img :src="g.image_url" :alt="i === heroIndex ? g.title + ' — a ring from the XJet Inspiration Gallery' : ''" :aria-hidden="i !== heroIndex"
+                                         class="absolute inset-0 w-full h-full object-contain p-8 transition-[opacity,transform] duration-[1200ms] ease-in-out group-hover:scale-[1.04]"
+                                         :class="i === heroIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.03] pointer-events-none'" :style="i === heroIndex ? 'z-index:2' : 'z-index:1'" decoding="async">
+                                </template>
                             </button>
-                            <span class="absolute top-14 left-4 inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] font-semibold px-3 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-sm" style="color:#9A7230;">
+                            <span class="absolute top-12 left-4 inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] font-semibold px-3 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-sm" style="color:#9A7230;z-index:3" aria-live="polite">
                                 <span class="w-1.5 h-1.5 rounded-full" style="background:#C9A96E;"></span><span x-text="heroRing.title"></span>
                             </span>
-                            <div x-show="heroSiblings.length" class="absolute -bottom-2 right-6 flex gap-3">
-                                <template x-for="g in heroSiblings" :key="g.id">
-                                    <button type="button" @click="openGallery(g)" class="w-24 h-24 bg-white rounded-2xl shadow-xl overflow-hidden border border-white focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title"><img :src="g.image_url" :alt="g.title" class="w-full h-full object-contain p-2"></button>
+                            <!-- The whole gallery under the main image: tap a ring to show it (the rotation continues from there) -->
+                            <div x-show="gallery.length > 1" class="mt-5 flex flex-wrap justify-center gap-2.5" role="tablist" aria-label="Rings from the Inspiration Gallery">
+                                <template x-for="(g, i) in gallery" :key="g.id">
+                                    <button type="button" role="tab" @click="heroGo(i)" :aria-selected="i === heroIndex" :aria-label="'Show ' + g.title"
+                                            class="w-14 h-14 md:w-16 md:h-16 bg-white rounded-xl overflow-hidden border transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#C9A96E]"
+                                            :class="i === heroIndex ? 'border-[#C9A96E] shadow-lg scale-105' : 'border-white/80 shadow opacity-75 hover:opacity-100'">
+                                        <img :src="g.image_url" :alt="" class="w-full h-full object-contain p-1.5">
+                                    </button>
                                 </template>
                             </div>
-                            <p class="mt-8 text-center text-[12px] uppercase tracking-[0.2em] text-zinc-500">Real rings from the Inspiration Gallery · tap one to make it yours</p>
+                            <p class="mt-5 text-center text-[12px] uppercase tracking-[0.2em] text-zinc-500">Real rings from the Inspiration Gallery · tap one to make it yours</p>
                         </div>
                     </template>
                     <div x-show="!heroRing && galleryState === 'loading'" class="w-[60%] max-w-[480px] aspect-square rounded-3xl shimmer" aria-hidden="true"></div>

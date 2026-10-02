@@ -6,9 +6,19 @@
 
 The design number is stored (designs.ring_no, assigned by a database trigger on insert, so every way
 of creating a design gets one); the option part is derived from the candidate's batch and slot.
+A number is never reused: when a legacy gallery copy is merged into its master, its number is retired
+(retired_rings) and the trigger counts past it.
 """
 
 First = 1001
+
+RetiredTable = """CREATE TABLE IF NOT EXISTS retired_rings (
+    ring_no      INTEGER PRIMARY KEY,
+    design_id    TEXT NOT NULL,
+    merged_into  TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    retired_at   TEXT NOT NULL
+)"""
 
 
 def Install(Conn) -> None:
@@ -22,11 +32,30 @@ def Install(Conn) -> None:
         for N, (Did,) in enumerate(Missing):
             Conn.execute("UPDATE designs SET ring_no = ? WHERE id = ?", (Next + N, Did))
     Conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS designs_ring_no ON designs(ring_no)")
-    Conn.execute(f"""CREATE TRIGGER IF NOT EXISTS designs_ring_no_assign AFTER INSERT ON designs
+    Conn.execute(RetiredTable)
+    Conn.execute("DROP TRIGGER IF EXISTS designs_ring_no_assign")
+    Conn.execute(f"""CREATE TRIGGER designs_ring_no_assign AFTER INSERT ON designs
                      WHEN NEW.ring_no IS NULL BEGIN
-                       UPDATE designs SET ring_no = (SELECT COALESCE(MAX(ring_no), {First - 1}) + 1 FROM designs)
+                       UPDATE designs SET ring_no = (SELECT MAX(n) + 1 FROM (
+                           SELECT COALESCE(MAX(ring_no), {First - 1}) AS n FROM designs
+                           UNION ALL SELECT COALESCE(MAX(ring_no), {First - 1}) FROM retired_rings))
                        WHERE id = NEW.id;
                      END""")
+
+
+def Retire(Conn, RingNo, DesignId: str, MergedInto: str, Title: str, At: str) -> None:
+    """Retire a design's number when the design is merged away; the number is never given out again."""
+    if RingNo is not None:
+        Conn.execute("INSERT OR REPLACE INTO retired_rings (ring_no, design_id, merged_into, title, retired_at) VALUES (?,?,?,?,?)",
+                     (RingNo, DesignId, MergedInto, Title, At))
+
+
+def Retired(Db) -> list[dict]:
+    """Retired numbers with where they went: R-1015 (Fil Line) → Fil Twist R-1012."""
+    return [{"ring_id": DesignRef(R["ring_no"]), "title": R["title"], "design_id": R["design_id"], "retired_at": R["retired_at"],
+             "merged_into": {"design_id": R["merged_into"], "ring_id": DesignRef(R["master_ring_no"]), "title": R["master_title"]}}
+            for R in Db.All("SELECT r.*, d.title AS master_title, d.ring_no AS master_ring_no FROM retired_rings r "
+                            "LEFT JOIN designs d ON d.id = r.merged_into ORDER BY r.ring_no")]
 
 
 def DesignRef(RingNo) -> str | None:
