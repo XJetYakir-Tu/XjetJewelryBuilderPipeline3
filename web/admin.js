@@ -156,7 +156,13 @@ function adminApp() {
     prices: null, pricesEdit: null, pricesBusy: false, pricesMsg: '', pricesErr: false,
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
     galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
-    stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout Clicked']],
+    // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
+    orders: [], ordersMeta: { statuses: [], payment_statuses: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
+    oq: '', oStatus: '', oPayment: '', orderId: '', od: null, odError: '', odBusy: false,
+    oStatusForm: { status: '', note: '' }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
+    promos: [], promoMsg: '', promoErr: false, promoEdit: null,
+    sub: 'pricing', health: null,
+    stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['selected', 'Selected'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout'], ['order', 'Order']],
     chartKinds: [
       { key: 'images', label: 'Images', color: '#3b82f6' },
       { key: 'refinement_images', label: 'Refinement images', color: '#8b5cf6' },
@@ -207,16 +213,25 @@ function adminApp() {
       this.error = everywhere ? 'Signed out of every browser. Sign in again here when needed.' : '';
     },
 
-    // ── routing: #/dashboard  #/sessions[/<id>]  #/users[/<account id>] ──
+    // ── routing: #/dashboard · #/sessions[/<id>] · #/users[/<account id>] · #/orders[/<id>] · #/gallery ·
+    //    #/settings/(pricing|promos|models[/<model>]|system)   (#/models/<id> still works) ──
     go(hash) { if (location.hash === hash) this.route(); else location.hash = hash; },
     async route() {
-      if (this.dirty && this.tab === 'models' && !location.hash.startsWith('#/models/' + this.mid) &&
-          !confirm('Discard unsaved changes to ' + this.mc?.model.label + '?')) { history.replaceState(null, '', '#/models/' + this.mid); return; }
-      const m = location.hash.match(/^#\/(dashboard|sessions|gallery|users|models)(?:\/(.+))?$/);
+      let hash = location.hash;
+      if (hash.startsWith('#/models')) { hash = '#/settings' + hash.slice(1); history.replaceState(null, '', hash); }   // old links
+      if (this.dirty && this.tab === 'settings' && this.sub === 'models' && !hash.startsWith('#/settings/models/' + this.mid) &&
+          !confirm('Discard unsaved changes to ' + this.mc?.model.label + '?')) { history.replaceState(null, '', '#/settings/models/' + this.mid); return; }
+      const m = hash.match(/^#\/(dashboard|sessions|gallery|users|orders|settings)(?:\/(.+))?$/);
       this.tab = m ? m[1] : 'sessions';
-      const id = m && m[2] ? decodeURIComponent(m[2]) : '';
+      let id = m && m[2] ? decodeURIComponent(m[2]) : '';
+      if (this.tab === 'settings') {
+        const parts = id.split('/');
+        this.sub = ['pricing', 'promos', 'models', 'system'].includes(parts[0]) ? parts[0] : 'pricing';
+        id = parts.slice(1).join('/');
+      }
       this.userId = this.tab === 'users' ? id : '';
       this.sessionId = this.tab === 'sessions' ? id : '';
+      this.orderId = this.tab === 'orders' ? id : '';
       this.openDesign = null; this.zoom = null;
       window.scrollTo({ top: 0 });
       if (!this.ok) return;
@@ -228,8 +243,119 @@ function adminApp() {
       if (this.tab === 'sessions' && id) await this.loadSession();
       if (this.tab === 'users' && !id) await this.load();
       if (this.tab === 'users' && id) await this.loadDetail(); else this.d = null;
-      if (this.tab === 'models') await this.loadModels(id);
+      if (this.tab === 'orders' && !id) await this.loadOrders();
+      if (this.tab === 'orders' && id) await this.loadOrder(); else this.od = null;
       if (this.tab === 'gallery') await this.loadGallery();
+      if (this.tab === 'settings') {
+        if (this.sub === 'models' || this.sub === 'pricing') await this.loadModels(id);
+        if (this.sub === 'promos') await this.loadPromos();
+        if (this.sub === 'system') {
+          this.storage = await this.api('GET', '/api/admin/storage').catch(() => null);
+          this.health = await fetch(BASE + '/api/health').then(r => r.json()).catch(() => null);
+        }
+      }
+    },
+
+    // ── orders ──────────────────────────────────────────────────────────
+    async loadOrders() {
+      this.ordersLoading = true; this.ordersMsg = '';
+      try {
+        const q = new URLSearchParams();
+        if (this.oStatus) q.set('status', this.oStatus);
+        if (this.oPayment) q.set('payment', this.oPayment);
+        if (this.oq.trim()) q.set('q', this.oq.trim());
+        const r = await this.api('GET', '/api/admin/orders' + (q.toString() ? '?' + q : ''));
+        this.orders = r.orders; this.quoteRequests = r.quote_requests;
+        this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses };
+      } catch (e) { this.ordersMsg = e.message; }
+      finally { this.ordersLoading = false; }
+    },
+    orderStatusLabel(s) { return (this.ordersMeta.statuses.find(x => x.id === s) || { label: s })?.label || s; },
+    orderStatusClass(s) {
+      return { new: 'bg-sky-100 text-sky-800', payment_confirmed: 'bg-emerald-100 text-emerald-800', three_d_ready: 'bg-green-100 text-green-700',
+               production: 'bg-violet-100 text-violet-700', qc: 'bg-amber-100 text-amber-800', shipped: 'bg-zinc-900 text-white',
+               completed: 'bg-zinc-200 text-zinc-700', cancelled: 'bg-red-100 text-red-700' }[s] || 'bg-zinc-100 text-zinc-600';
+    },
+    payLabel(s) { return (this.ordersMeta.payment_statuses.find(x => x.id === s) || { label: s })?.label || s; },
+    payClass(s) { return { pending: 'bg-amber-100 text-amber-800', paid: 'bg-emerald-100 text-emerald-800', failed: 'bg-red-100 text-red-700',
+                           refunded: 'bg-zinc-200 text-zinc-700', cancelled: 'bg-zinc-100 text-zinc-500' }[s] || 'bg-zinc-100 text-zinc-600'; },
+    addrClass(s) { return { verified: 'bg-emerald-100 text-emerald-800', corrected: 'bg-sky-100 text-sky-800', failed: 'bg-red-100 text-red-700',
+                            unverified: 'bg-zinc-100 text-zinc-600' }[s] || 'bg-zinc-100 text-zinc-600'; },
+    orderLineText(o) {
+      const l = o.lines[0]; if (!l) return '—';
+      return l.title + (o.lines.length > 1 ? ' +' + (o.lines.length - 1) : '');
+    },
+    async loadOrder() {
+      this.odError = ''; this.oPay.open = false; this.oNote = '';
+      try {
+        this.od = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.orderId));
+        if (!this.ordersMeta.statuses.length) { const r = await this.api('GET', '/api/admin/orders'); this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses }; }
+        this.oStatusForm = { status: this.od.status, note: '' };
+      } catch (e) { this.od = null; this.odError = e.message; }
+    },
+    async setOrderStatus() {
+      if (!this.od || this.oStatusForm.status === this.od.status) return;
+      this.odBusy = true; this.odError = '';
+      try { this.od = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/status`, this.oStatusForm); this.oStatusForm.note = ''; }
+      catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    async recordPayment() {
+      if (!this.od || !this.oPay.note.trim()) { this.odError = 'Please say how the payment was received (or why it failed).'; return; }
+      this.odBusy = true; this.odError = '';
+      try {
+        this.od = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/payment`, { status: this.oPay.status, note: this.oPay.note, ref: this.oPay.ref });
+        this.oPay = { open: false, status: 'paid', note: '', ref: '' };
+      } catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    async addOrderNote() {
+      if (!this.od || !this.oNote.trim()) return;
+      this.odBusy = true; this.odError = '';
+      try { this.od = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/note`, { note: this.oNote }); this.oNote = ''; }
+      catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    async setQuoteStatus(q, status) {
+      try { const r = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(q.id)}/status`, { status }); Object.assign(q, r); }
+      catch (e) { this.ordersMsg = e.message; }
+    },
+    // Scaled STL for an ordered ring: the file name carries the Order ID (exported from the design's 3D result).
+    async downloadOrderStl(line) {
+      if (!line.three_d_id) return;
+      await this.exportStl({ id: line.three_d_id, scaled_stl: 'on_demand' }, this.od?.ref);
+    },
+
+    // ── promo codes ─────────────────────────────────────────────────────
+    async loadPromos() {
+      this.promoMsg = '';
+      try { this.promos = (await this.api('GET', '/api/admin/promo-codes')).promo_codes; } catch (e) { this.promoMsg = e.message; this.promoErr = true; }
+    },
+    newPromo() { this.promoEdit = { id: null, code: '', kind: 'percent', value: 10, starts_at: '', ends_at: '', usage_limit: '', materials: [], min_subtotal: '', note: '', active: true }; this.promoMsg = ''; },
+    editPromo(p) {
+      this.promoEdit = { id: p.id, code: p.code, kind: p.kind, value: p.value, starts_at: (p.starts_at || '').slice(0, 10), ends_at: (p.ends_at || '').slice(0, 10),
+                         usage_limit: p.usage_limit ?? '', materials: p.materials || [], min_subtotal: p.min_subtotal ?? '', note: p.note || '', active: p.active };
+      this.promoMsg = '';
+    },
+    togglePromoMaterial(id) { const m = this.promoEdit.materials; const i = m.indexOf(id); if (i >= 0) m.splice(i, 1); else m.push(id); },
+    async savePromo() {
+      const p = this.promoEdit; if (!p) return;
+      this.promoMsg = ''; this.promoErr = false;
+      const body = { ...p, starts_at: p.starts_at ? p.starts_at + 'T00:00:00Z' : null, ends_at: p.ends_at ? p.ends_at + 'T23:59:59Z' : null,
+                     usage_limit: p.usage_limit === '' ? null : p.usage_limit, min_subtotal: p.min_subtotal === '' ? null : p.min_subtotal };
+      try {
+        if (p.id) await this.api('PATCH', '/api/admin/promo-codes/' + encodeURIComponent(p.id), body);
+        else await this.api('POST', '/api/admin/promo-codes', body);
+        this.promoEdit = null; await this.loadPromos(); this.promoMsg = 'Saved.';
+      } catch (e) { this.promoErr = true; this.promoMsg = e.message; }
+    },
+    async setPromoActive(p, active) {
+      try { await this.api('PATCH', '/api/admin/promo-codes/' + encodeURIComponent(p.id), { active }); await this.loadPromos(); }
+      catch (e) { this.promoErr = true; this.promoMsg = e.message; }
+    },
+    promoRule(p) {
+      const parts = [p.kind === 'percent' ? p.value + '% off' : '$' + Number(p.value).toFixed(2) + ' off'];
+      if (p.materials?.length) parts.push(p.materials.map(m => this.materialLabel(m)).join(', ') + ' only');
+      if (p.min_subtotal) parts.push('min $' + p.min_subtotal);
+      if (p.starts_at || p.ends_at) parts.push((p.starts_at ? this.date(p.starts_at) : '…') + ' → ' + (p.ends_at ? this.date(p.ends_at) : '…'));
+      return parts.join(' · ');
     },
 
     // ── list ───────────────────────────────────────────────────────────
@@ -447,19 +573,20 @@ function adminApp() {
       catch (e) { alert(e.message); }
     },
     // Scaled STL: export on demand to a temporary file (queued like any heavy job), then a native download.
-    async exportStl(t) {
+    async exportStl(t, orderRef = null) {
       if (t.scaled_stl === 'stored') return this.downloadStl(t.id, 'production');      // earlier requests kept one
+      const tail = orderRef ? '?order=' + encodeURIComponent(orderRef) : '';          // ORD-… in the file name
       try {
         let e = await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/export`);
         this.exports3d = { ...this.exports3d, [t.id]: e };
         if (!this._tick) this._tick = setInterval(() => { this.clock = Date.now(); }, 1000);
         while (['queued', 'running'].includes(e.status)) {
           await new Promise(r => setTimeout(r, 1000));
-          e = await this.api('GET', `/api/admin/3d/${encodeURIComponent(t.id)}/export/${e.job_id}`);
+          e = await this.api('GET', `/api/admin/3d/${encodeURIComponent(t.id)}/export/${e.job_id}${tail}`);
           this.exports3d = { ...this.exports3d, [t.id]: e };
         }
         if (e.status === 'done') {
-          e = await this.api('GET', `/api/admin/3d/${encodeURIComponent(t.id)}/export/${e.job_id}`);   // fresh signed link
+          e = await this.api('GET', `/api/admin/3d/${encodeURIComponent(t.id)}/export/${e.job_id}${tail}`);   // fresh signed link
           const a = Object.assign(document.createElement('a'), { href: e.url });
           document.body.appendChild(a); a.click(); a.remove();
           this.downloadNote = `Downloading the scaled STL (${this.gb(e.bytes)}) — see your browser's downloads. The temporary file is deleted after an hour.`;
@@ -548,6 +675,7 @@ function adminApp() {
       const want = id || this.mid || this.models[0].model.id;
       if (want !== this.mid || !this.mc || !this.dirty) await this.selectModel(want);
     },
+    modelHash(id) { return '#/settings/models/' + id; },
     async selectModel(id) {
       this.mc = await this.api('GET', '/api/admin/models/' + encodeURIComponent(id));
       this.mid = id; this.note = ''; this.mProblems = []; this.mMessage = ''; this.preview = null;

@@ -16,7 +16,10 @@ const STORE_KEY = 'p3_state' + (BASE ? ':' + BASE : '');
 const SESSION_KEY = 'p3_session' + (BASE ? ':' + BASE : '');
 const PROFILE_KEY = 'p3_profile' + (BASE ? ':' + BASE : '');
 const GALLERY_KEY = 'p3_gallery_pending' + (BASE ? ':' + BASE : '');   // the gallery design chosen before signing in
-const STUDIO_VIEWS = ['ai-studio', 'review', 'checkout'];
+// Studio screens: Design · Customize · Bag ('checkout', historical name) · Checkout steps ('order') · Confirmation
+const STUDIO_VIEWS = ['ai-studio', 'review', 'checkout', 'order', 'confirmation'];
+const CUSTOMER_FIELDS = ['first_name', 'last_name', 'email', 'phone'];
+const ADDRESS_FIELDS = ['recipient', 'line1', 'line2', 'city', 'region', 'postal_code', 'country'];
 const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'designers',
                     'terms', 'privacy', 'shipping-returns', 'contact'];
 
@@ -90,7 +93,6 @@ function p3App() {
       return String((this.userProfile && this.userProfile.email) || this.userSession.email || '').trim();
     },
     accountPanelOpen: false, tokenCopied: false,
-    checkoutNotice: false,
 
     // ── studio: compose ──────────────────────────────────────────────
     userInput: '', uploadedFile: null, uploadedPreview: null, rightsConfirmed: false,
@@ -117,6 +119,15 @@ function p3App() {
 
     // ── bag ──────────────────────────────────────────────────────────
     bag: null,
+
+    // ── checkout & orders ─────────────────────────────────────────────
+    checkout: null, coQuote: null, order: null, orders: [], ordersLoading: false,
+    co: { step: 'details', customer: { first_name: '', last_name: '', email: '', phone: '' },
+          address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
+          shipping_method: 'standard', promo_code: '', promo_input: '', terms: false, busy: false, error: '',
+          problems: {}, addrCheck: null, useSuggested: false, requestId: '' },
+    quoteReq: { open: false, busy: false, error: '', done: null, message: '', quantity: 1, problems: {},
+                customer: { first_name: '', last_name: '', email: '', phone: '' } },
 
     // ── developer AI-mode control (internal; needs P3_ADMIN_KEY) ──────
     devKey: '', devKeyInput: '', devPromptOpen: false, devError: '', devMode: null,
@@ -192,10 +203,21 @@ function p3App() {
       if (!resp.ok) {
         const err = data.error || {};
         if (resp.status === 402) this._refreshQuota();
-        throw new ApiError(resp.status, err.code || 'error', err.message || `Request failed (${resp.status})`);
+        const ex = new ApiError(resp.status, err.code || 'error', err.message || `Request failed (${resp.status})`);
+        if (err.problems) ex.problems = err.problems;          // field-level problems (checkout forms)
+        throw ex;
       }
       return data;
     },
+
+    // ── toast: short confirmation of an action, with an optional follow-up ──
+    toast: null, _toastTimer: null,
+    showToast(text, opts = {}) {
+      clearTimeout(this._toastTimer);
+      this.toast = { text, label: opts.label || '', action: opts.action || null, kind: opts.kind || 'ok' };
+      this._toastTimer = setTimeout(() => { this.toast = null; }, opts.ms || 5000);
+    },
+    toastAction() { const a = this.toast?.action; this.toast = null; if (a) a(); },
 
     // ── mode (mock vs live) ───────────────────────────────────────────
     get isMock() { return this.health?.mode === 'mock'; },
@@ -249,10 +271,6 @@ function p3App() {
     track(kind, designId = null) {
       if (!this.token) return;
       this.api('POST', '/api/events', { kind, design_id: designId }).catch(() => {});
-    },
-    checkoutClicked() {
-      this.track('checkout_clicked');
-      this.checkoutNotice = true;
     },
     scrollToHowItWorks() {
       this.navigateTo('home');
@@ -423,6 +441,10 @@ function p3App() {
       this.userSession = null; this.quotaUsed = 0; this.quotaMax = 10;
       this.signInNotice = null;
       this.design = null; this.cust = null; this.bag = null; this.designs = []; this.designsError = '';
+      this.order = null; this.orders = []; this.checkout = null; this.coQuote = null;
+      this.co = { ...this.co, step: 'details', customer: { first_name: '', last_name: '', email: '', phone: '' },
+                  address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
+                  promo_code: '', promo_input: '', terms: false, error: '', problems: {}, addrCheck: null, requestId: '' };
       this.persist({ designId: null, view: 'home' });
       this.navigateTo('home');
     },
@@ -431,7 +453,7 @@ function p3App() {
     toggleAccountPanel() {
       this.accountPanelOpen = !this.accountPanelOpen;
       this.tokenCopied = false;
-      if (this.accountPanelOpen) this._refreshQuota();
+      if (this.accountPanelOpen) { this._refreshQuota(); this.loadOrders(); }
     },
     closeAccountPanel() { this.accountPanelOpen = false; this.tokenCopied = false; },
     async copyAccessToken() {
@@ -548,8 +570,8 @@ function p3App() {
       this.persist({ designId });
       if (restoreView === 'review' && d.customization) {
         this.showCustomization(d.customization);
-      } else if (restoreView === 'checkout') {
-        this.navigateTo('checkout');
+      } else if (['checkout', 'order', 'confirmation'].includes(restoreView)) {
+        this.navigateTo('checkout');                      // a reload lands on the bag, never mid-order
       } else {
         this.navigateTo('ai-studio');
       }
@@ -971,6 +993,7 @@ function p3App() {
       try {
         this.bag = await this.api('POST', '/api/bag', { customization_id: this.cust.id });
         this.bagMessage = 'Added to your bag.';
+        this.showToast('Added to your bag', { label: 'View bag', action: () => this.goToCheckout() });
       } catch (e) { this.custError = e.message; }
     },
 
@@ -980,8 +1003,154 @@ function p3App() {
     get bagLines() { return this.bag?.lines || []; },
     get bagCount() { return this.bagLines.reduce((n, l) => n + l.quantity, 0); },
     async refreshBag() { if (!this.token) return; try { this.bag = await this.api('GET', '/api/bag'); } catch { /* ignore */ } },
-    async removeLine(l) { try { this.bag = await this.api('DELETE', `/api/bag/${l.id}`); } catch (e) { this.custError = e.message; } },
+    async removeLine(l) {
+      try { this.bag = await this.api('DELETE', `/api/bag/${l.id}`); this.showToast('Removed from your bag'); }
+      catch (e) { this.custError = e.message; }
+    },
     goToCheckout() { this.navigateTo('checkout'); },
+
+    // ── checkout: Bag → details → shipping → review & pay → confirmation ──
+    // The server is authoritative for prices, promo discounts, totals and validation; the browser
+    // only mirrors the rules for instant feedback. Known profile details pre-fill the form but never
+    // overwrite what the customer typed.
+    get checkoutSteps() { return [['details', 'Your details'], ['shipping', 'Shipping'], ['review', 'Review & pay']]; },
+    get coStepIndex() { return this.checkoutSteps.findIndex(s => s[0] === this.co.step); },
+    get coCountry() { return (this.checkout?.countries || []).find(c => c.code === this.co.address.country); },
+    get coRegionRequired() { return (this.checkout?.region_required || []).includes(this.co.address.country); },
+    get coNoPostal() { return (this.checkout?.no_postal_code || []).includes(this.co.address.country); },
+    get coRegionLabel() { return { US: 'State', CA: 'Province', AU: 'State / territory', JP: 'Prefecture' }[this.co.address.country] || 'State / province / region'; },
+    get coPostalLabel() { return this.co.address.country === 'US' ? 'ZIP code' : 'Postal code'; },
+    get coShipping() { return (this.checkout?.shipping_options || []).find(s => s.id === this.co.shipping_method); },
+    get coCanPlace() { return !!this.coQuote?.ok && this.co.terms === true && !this.co.busy && !this.coQuote?.promo_error; },
+    coProblem(field) { return this.co.problems[field] || ''; },
+    _setProblems(list) { this.co.problems = Object.fromEntries((list || []).map(p => [p.field, p.message])); },
+    _scrollTop() { window.scrollTo({ top: 0 }); document.querySelector('main')?.scrollTo?.({ top: 0 }); },
+    async startCheckout() {
+      if (!this.bag?.checkout_available || this.co.busy) return;
+      this.track('checkout_clicked');
+      this.co.busy = true; this.co.error = '';
+      try {
+        const info = await this.api('GET', '/api/checkout');
+        this.checkout = info; this.coQuote = info.quote;
+        const c = this.co.customer, p = info.customer || {};
+        for (const k of CUSTOMER_FIELDS) if (!c[k] && p[k]) c[k] = p[k];
+        if (!this.co.address.recipient) this.co.address.recipient = [c.first_name, c.last_name].filter(Boolean).join(' ');
+        if (!this.co.requestId) this.co.requestId = newRequestId();      // one order per checkout, however many clicks
+        this.co.step = 'details'; this.co.problems = {}; this.co.addrCheck = null; this.co.useSuggested = false;
+        this.navigateTo('order');
+      } catch (e) { this.co.error = e.message; }
+      finally { this.co.busy = false; }
+    },
+    coGoTo(step) {
+      const idx = this.checkoutSteps.findIndex(s => s[0] === step);
+      if (idx <= this.coStepIndex) { this.co.step = step; this.co.error = ''; this._scrollTop(); }
+    },
+    coBack() {
+      if (this.co.step === 'details') { this.navigateTo('checkout'); return; }
+      this.co.step = this.co.step === 'review' ? 'shipping' : 'details'; this.co.error = ''; this._scrollTop();
+    },
+    coNext() { return this.co.step === 'details' ? this.coDetailsNext() : this.co.step === 'shipping' ? this.coShippingNext() : this.placeOrder(); },
+    coDetailsNext() {
+      const c = this.co.customer, probs = [];
+      for (const k of CUSTOMER_FIELDS) c[k] = String(c[k] || '').trim();
+      if (!c.first_name) probs.push({ field: 'first_name', message: 'Please enter your first name.' });
+      if (!c.last_name) probs.push({ field: 'last_name', message: 'Please enter your last name.' });
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) probs.push({ field: 'email', message: 'Please enter a valid email address.' });
+      if (!/^\+?[0-9 ()./-]{7,24}$/.test(c.phone) || (c.phone.match(/\d/g) || []).length < 7) probs.push({ field: 'phone', message: 'Please enter a phone number we can reach you on (with the country code).' });
+      this._setProblems(probs);
+      if (probs.length) return;
+      if (!this.co.address.recipient) this.co.address.recipient = `${c.first_name} ${c.last_name}`;
+      this.co.step = 'shipping'; this.co.error = ''; this._scrollTop();
+    },
+    async coShippingNext() {
+      this.co.busy = true; this.co.error = '';
+      try {
+        const v = await this.api('POST', '/api/checkout/address', { address: this.co.address });
+        this._setProblems(v.problems);
+        if (v.problems.length) return;
+        this.co.addrCheck = v.validation; this.co.useSuggested = false;
+        // A validation service suggested a correction: the customer decides, nothing is replaced silently.
+        if (v.validation.status === 'corrected' && v.validation.suggestion) return;
+        await this.coReview();
+      } catch (e) { this.co.error = e.message; }
+      finally { this.co.busy = false; }
+    },
+    async coChooseAddress(useSuggested) {
+      this.co.useSuggested = useSuggested;
+      if (useSuggested) Object.assign(this.co.address, this.co.addrCheck.suggestion);
+      this.co.addrCheck = { ...this.co.addrCheck, suggestion: null };
+      await this.coReview();
+    },
+    async coReview() { await this.coRequote(); this.co.step = 'review'; this._scrollTop(); },
+    async coRequote() {
+      try { this.coQuote = await this.api('POST', '/api/checkout/quote', { promo_code: this.co.promo_code || null, shipping_method: this.co.shipping_method }); }
+      catch (e) { this.co.error = e.message; }
+    },
+    async applyPromo() {
+      const code = this.co.promo_input.trim();
+      if (!code) return;
+      this.co.promo_code = code; this.co.busy = true;
+      try { await this.coRequote(); } finally { this.co.busy = false; }
+      if (this.coQuote?.promo) this.showToast(`Promo ${this.coQuote.promo.code} applied — ${this.coQuote.promo.label}`);
+    },
+    async removePromo() { this.co.promo_code = ''; this.co.promo_input = ''; await this.coRequote(); },
+    async setShipping(m) { this.co.shipping_method = m; if (this.view === 'order') await this.coRequote(); },
+    async placeOrder() {
+      if (!this.coCanPlace) return;
+      this.co.busy = true; this.co.error = ''; this.co.problems = {};
+      try {
+        const o = await this.api('POST', '/api/orders', {
+          customer: this.co.customer, address: this.co.address, shipping_method: this.co.shipping_method,
+          promo_code: this.co.promo_code || null, terms_accepted: this.co.terms === true,
+          client_request_id: this.co.requestId, use_suggested_address: this.co.useSuggested,
+        });
+        this.order = o;
+        this.co.requestId = ''; this.co.promo_code = ''; this.co.promo_input = ''; this.co.terms = false; this.co.addrCheck = null;
+        await this.refreshBag();
+        this.navigateTo('confirmation');
+        this.showToast(`Order ${o.ref} received — a confirmation is on its way to ${o.customer.email}`, { ms: 7000 });
+      } catch (e) {
+        this.co.error = e.message;
+        if (e.problems) {
+          this._setProblems(e.problems);
+          const f = e.problems.map(p => p.field);
+          this.co.step = f.some(x => CUSTOMER_FIELDS.includes(x)) ? 'details' : f.some(x => ADDRESS_FIELDS.includes(x) || x === 'shipping_method') ? 'shipping' : 'review';
+        }
+        if (e.code === 'bag_empty' || e.code === 'bag_not_orderable') { await this.refreshBag(); this.navigateTo('checkout'); }
+      } finally { this.co.busy = false; }
+    },
+    async loadOrders() {
+      if (!this.token) return;
+      this.ordersLoading = true;
+      try { this.orders = (await this.api('GET', '/api/orders')).orders; } catch (_) { /* keep what we have */ }
+      finally { this.ordersLoading = false; }
+    },
+    openOrder(o) { this.order = o; this.closeAccountPanel(); this.navigateTo('confirmation'); },
+    orderDate(iso) { return iso ? new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; },
+
+    // ── gold: "Request a quote" instead of the fixed-price path ──────────
+    openQuoteRequest() {
+      const c = this.quoteReq.customer, name = (this.displayName || '').trim().split(/\s+/);
+      if (!c.first_name && name[0]) c.first_name = name[0];
+      if (!c.last_name && name.length > 1) c.last_name = name.slice(1).join(' ');
+      if (!c.email && this.displayEmail) c.email = this.displayEmail;
+      this.quoteReq = { ...this.quoteReq, open: true, busy: false, error: '', done: null, problems: {}, quantity: this.cust?.quantity || 1 };
+    },
+    closeQuoteRequest() { this.quoteReq.open = false; },
+    async sendQuoteRequest() {
+      if (!this.cust || !this.design) return;
+      this.quoteReq.busy = true; this.quoteReq.error = ''; this.quoteReq.problems = {};
+      try {
+        const r = await this.api('POST', '/api/quote-requests', {
+          design_id: this.design.id, candidate_id: this.cust.candidate_id, material_id: this.cust.material_id,
+          ring_size: this.cust.ring_size, quantity: this.quoteReq.quantity, customer: this.quoteReq.customer, message: this.quoteReq.message,
+        });
+        this.quoteReq.done = r;
+      } catch (e) {
+        this.quoteReq.error = e.message;
+        if (e.problems) this.quoteReq.problems = Object.fromEntries(e.problems.map(p => [p.field, p.message]));
+      } finally { this.quoteReq.busy = false; }
+    },
   };
 }
 

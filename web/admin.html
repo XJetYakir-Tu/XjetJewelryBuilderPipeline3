@@ -51,7 +51,7 @@
               x-text="mode === 'mock' ? 'Mock AI' : 'Live AI'"></span>
       </div>
       <nav class="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs uppercase tracking-widest">
-        <template x-for="t in [['dashboard','Dashboard'],['sessions','Sessions'],['gallery','Gallery'],['users','Users'],['models','AI Prompts & Params']]">
+        <template x-for="t in [['dashboard','Dashboard'],['sessions','Sessions'],['users','Users'],['orders','Orders'],['gallery','Gallery'],['settings','Settings']]">
           <a :href="'#/' + t[0]" :class="tab === t[0] ? 'text-black font-semibold' : 'text-zinc-500 hover:text-black'" x-text="t[1]"></a>
         </template>
         <a :href="BASE + '/dev'" class="text-zinc-500 hover:text-black">Developer tools</a>
@@ -439,7 +439,7 @@
             </div>
           </template>
         </div>
-        <p class="text-[11px] text-zinc-400 mt-4">Live AI sessions only — activity in Mock Mode is not counted. Checkout is not implemented yet — "Checkout Clicked" counts clicks on the unavailable Checkout button.</p>
+        <p class="text-[11px] text-zinc-400 mt-4">Live AI sessions only — activity in Mock Mode is not counted. "Checkout" = the customer opened the checkout from the bag; "Order" = an order was placed.</p>
         <div class="mt-5 overflow-x-auto" x-show="dash.funnel_by_origin && dash.funnel_by_origin.gallery.sessions">
           <p class="lbl mb-2">By origin — own prompt vs Inspiration Gallery</p>
           <table class="w-full !text-xs">
@@ -451,6 +451,18 @@
               <td class="text-right tabular-nums"><span x-text="dash.funnel_by_origin.gallery.funnel[i].sessions"></span> <span class="text-zinc-400" x-text="dash.funnel_by_origin.gallery.funnel[i].pct == null ? '' : '· ' + dash.funnel_by_origin.gallery.funnel[i].pct + '%'"></span></td>
             </tr></template></tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- Orders · checkout activity -->
+      <section class="card p-6" x-show="dash.orders">
+        <div class="flex flex-wrap items-baseline justify-between gap-3 mb-4"><p class="lbl">Orders</p><a href="#/orders" class="text-[11px] underline text-zinc-500 hover:text-black">Open Orders</a></div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+          <div><p class="lbl mb-1">Orders</p><p class="text-2xl font-semibold" x-text="dash.orders?.orders ?? 0"></p><p class="text-[11px] text-zinc-400" x-text="(dash.orders?.open ?? 0) + ' open'"></p></div>
+          <div><p class="lbl mb-1">Payment pending</p><p class="text-2xl font-semibold" :class="dash.orders?.payment_pending ? 'text-amber-700' : ''" x-text="dash.orders?.payment_pending ?? 0"></p><p class="text-[11px] text-zinc-400" x-text="money(dash.orders?.reserved_value) + ' reserved'"></p></div>
+          <div><p class="lbl mb-1">Paid revenue</p><p class="text-2xl font-semibold" x-text="money(dash.orders?.revenue)"></p></div>
+          <div><p class="lbl mb-1">Quote requests</p><p class="text-2xl font-semibold" :class="dash.orders?.quote_requests_open ? 'text-amber-700' : ''" x-text="dash.orders?.quote_requests_open ?? 0"></p><p class="text-[11px] text-zinc-400">gold · awaiting a reply</p></div>
+          <div><p class="lbl mb-1">By status</p><p class="text-[12px] text-zinc-600 leading-relaxed"><template x-for="(n, s) in (dash.orders?.by_status || {})" :key="s"><span x-show="n" class="mr-2 whitespace-nowrap"><span x-text="orderStatusLabel(s) || s"></span> <strong x-text="n"></strong></span></template></p></div>
         </div>
       </section>
 
@@ -549,7 +561,7 @@
       </div>
       <div class="overflow-x-auto">
       <table class="w-full">
-        <thead><tr><th></th><th>Customer</th><th>Started / last activity</th><th>Has</th><th>Stage</th><th class="text-right">Gen / Ref</th><th>Size</th><th>Material</th><th>Bag</th><th>Checkout clicked</th><th>3D</th><th class="text-right">Fixed price</th></tr></thead>
+        <thead><tr><th></th><th>Customer</th><th>Started / last activity</th><th>Has</th><th>Stage</th><th class="text-right">Gen / Ref</th><th>Size</th><th>Material</th><th>Bag</th><th>Checkout · Order</th><th>3D</th><th class="text-right">Fixed price</th></tr></thead>
         <tbody>
           <template x-for="x in sessionsFiltered" :key="x.session_id">
             <tr class="hover:bg-zinc-50 cursor-pointer" @click="go('#/sessions/' + encodeURIComponent(x.session_id))">
@@ -573,7 +585,8 @@
               <td x-text="x.ring_size_chosen ? 'US ' + x.ring_size : (x.stage_times.customize ? 'US 10 (default)' : '—')" :class="x.ring_size_chosen ? '' : 'text-zinc-400'"></td>
               <td x-text="x.material_chosen ? x.material_label : '—'"></td>
               <td x-text="x.add_to_bag ? '✓' : '—'" :class="x.add_to_bag ? 'text-emerald-700 font-semibold' : 'text-zinc-300'"></td>
-              <td x-text="x.checkout_clicked ? '✓' : '—'" :class="x.checkout_clicked ? 'text-emerald-700 font-semibold' : 'text-zinc-300'"></td>
+              <td class="whitespace-nowrap"><span x-text="x.checkout_clicked ? '✓' : '—'" :class="x.checkout_clicked ? 'text-emerald-700 font-semibold' : 'text-zinc-300'"></span>
+                <template x-for="r in (x.order_refs || [])" :key="r"><a class="badge bg-zinc-900 text-white ml-1 hover:bg-zinc-700" :href="'#/orders/' + encodeURIComponent(r)" @click.stop x-text="r"></a></template></td>
               <td><span x-show="x.three_d_state" class="badge" :class="prodClass(x.three_d_state)" :title="x.three_d_state === 'review_required' ? 'Processing finished, but the model has warnings — open the session to review them' : ''" x-text="x.three_d_state === 'review_required' ? 'Review required' : prodLabel(x.three_d_state)"></span><span x-show="!x.three_d_state" class="text-zinc-300">—</span></td>
               <td class="text-right tabular-nums" x-text="priceText(x.fixed_price)"></td>
             </tr>
@@ -895,13 +908,290 @@
     </template>
   </main>
 
-  <!-- ══════════════════════════ AI prompts & params ══════════════════════════ -->
-  <main x-show="ok && tab === 'models'" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
-    <!-- Model navigation -->
-    <nav class="card flex flex-wrap">
+  <!-- ══════════════════════════ Orders ══════════════════════════ -->
+  <main x-show="ok && tab === 'orders' && !orderId" x-cloak class="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+    <section class="card">
+      <div class="px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100">
+        <p class="lbl">Orders (<span x-text="orders.length"></span>)</p>
+        <form class="flex flex-wrap items-center gap-3 text-xs" @submit.prevent="loadOrders()">
+          <input class="inp !w-72 !py-1.5" x-model="oq" placeholder="Order ID, Ring ID, design name, customer, email" aria-label="Search orders">
+          <select class="inp !w-auto !py-1.5" x-model="oStatus" @change="loadOrders()" aria-label="Order status">
+            <option value="">Any status</option>
+            <template x-for="s in ordersMeta.statuses" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+          </select>
+          <select class="inp !w-auto !py-1.5" x-model="oPayment" @change="loadOrders()" aria-label="Payment status">
+            <option value="">Any payment</option>
+            <template x-for="s in ordersMeta.payment_statuses" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+          </select>
+          <button type="submit" class="btn2 !py-1.5">Search</button>
+          <button type="button" x-show="oq || oStatus || oPayment" class="text-zinc-500 hover:text-black uppercase tracking-widest" @click="oq = ''; oStatus = ''; oPayment = ''; loadOrders()">Clear</button>
+        </form>
+      </div>
+      <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead class="sticky top-0 bg-white z-10"><tr><th>Order</th><th>Customer</th><th>Ring</th><th class="text-right">Total</th><th>Payment</th><th>Address</th><th>3D</th><th>Status</th></tr></thead>
+        <tbody>
+          <template x-for="o in orders" :key="o.id">
+            <tr class="hover:bg-zinc-50 cursor-pointer align-top" @click="go('#/orders/' + encodeURIComponent(o.id))">
+              <td><p class="font-mono font-semibold" x-text="o.ref"></p><p class="text-[12px] text-zinc-500 whitespace-nowrap" x-text="dateTime(o.created_at)"></p>
+                <span x-show="o.mock" class="badge !text-[9px] !px-1.5 bg-amber-100 text-amber-800 mt-1">Mock</span></td>
+              <td><p class="font-medium" x-text="(o.customer.first_name + ' ' + o.customer.last_name).trim() || '—'"></p><p class="text-[12px] text-zinc-500" x-text="o.customer.email"></p></td>
+              <td><template x-for="l in o.lines" :key="l.id">
+                  <p class="whitespace-nowrap"><span class="font-medium" x-text="l.title"></span> <span class="font-mono text-[12px] text-zinc-500" x-text="l.ring_id || ''"></span>
+                    <span class="block text-[12px] text-zinc-500" x-text="l.material_label + ' · US ' + l.ring_size + ' · ×' + l.quantity"></span></p>
+                </template></td>
+              <td class="text-right tabular-nums whitespace-nowrap"><p class="font-semibold" x-text="money(o.total)"></p>
+                <p x-show="o.promo_code" class="text-[12px] text-emerald-700" x-text="o.promo_code + ' −' + money(o.discount)"></p></td>
+              <td><span class="badge" :class="payClass(o.payment_status)" x-text="payLabel(o.payment_status)"></span></td>
+              <td><span class="badge" :class="addrClass(o.address_validation)" x-text="o.address_validation"></span></td>
+              <td><span x-show="o.three_d_state" class="badge" :class="prodClass(o.three_d_state)" x-text="o.three_d_state === 'review_required' ? 'Review required' : prodLabel(o.three_d_state)"></span><span x-show="!o.three_d_state" class="text-zinc-300">—</span></td>
+              <td><span class="badge" :class="orderStatusClass(o.status)" x-text="orderStatusLabel(o.status)"></span></td>
+            </tr>
+          </template>
+          <tr x-show="!orders.length && !ordersLoading"><td colspan="8" class="text-center text-zinc-400 !py-10">
+            <span x-show="oq || oStatus || oPayment" x-text="'No orders match' + (oq ? ' “' + oq + '”' : '') + '.'"></span>
+            <span x-show="!(oq || oStatus || oPayment)">No orders yet.</span></td></tr>
+          <tr x-show="ordersLoading"><td colspan="8" class="text-center text-zinc-400 !py-10">Loading…</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p x-show="ordersMsg" class="px-6 py-3 text-sm text-red-600" x-text="ordersMsg"></p>
+    </section>
+
+    <!-- Gold: quote requests (no fixed price yet) -->
+    <section class="card">
+      <div class="px-6 py-4 border-b border-zinc-100 flex items-baseline justify-between gap-3"><p class="lbl">Quote requests · gold (<span x-text="quoteRequests.length"></span>)</p>
+        <p class="text-[12px] text-zinc-500">Reply to the customer by email; mark the request answered or closed here.</p></div>
+      <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead><tr><th>Request</th><th>Customer</th><th>Ring</th><th>Material · size · qty</th><th>Message</th><th>Status</th></tr></thead>
+        <tbody>
+          <template x-for="q in quoteRequests" :key="q.id">
+            <tr class="align-top">
+              <td><p class="font-mono font-semibold" x-text="q.ref"></p><p class="text-[12px] text-zinc-500 whitespace-nowrap" x-text="dateTime(q.created_at)"></p></td>
+              <td><p class="font-medium" x-text="(q.customer.first_name + ' ' + q.customer.last_name).trim()"></p><p class="text-[12px] text-zinc-500" x-text="q.customer.email"></p><p class="text-[12px] text-zinc-500" x-text="q.customer.phone"></p></td>
+              <td><a class="hover:underline" :href="'#/sessions/' + encodeURIComponent(q.design_id)"><span class="font-medium" x-text="q.title"></span> <span class="font-mono text-[12px] text-zinc-500" x-text="q.ring_id || ''"></span></a></td>
+              <td class="whitespace-nowrap" x-text="q.material_label + ' · ' + (q.ring_size != null ? 'US ' + q.ring_size : 'size TBC') + ' · ×' + q.quantity"></td>
+              <td class="text-[12px] text-zinc-600 max-w-[280px]" x-text="q.message || '—'"></td>
+              <td><select class="inp !w-auto !py-1 !text-[12px]" :value="q.status" @change="setQuoteStatus(q, $event.target.value)" aria-label="Request status">
+                  <option value="new">New</option><option value="answered">Answered</option><option value="closed">Closed</option></select></td>
+            </tr>
+          </template>
+          <tr x-show="!quoteRequests.length"><td colspan="6" class="text-center text-zinc-400 !py-8">No quote requests.</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- ══════════════════════════ Order detail ══════════════════════════ -->
+  <main x-show="ok && tab === 'orders' && orderId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+    <p class="text-xs uppercase tracking-widest text-zinc-400"><a href="#/orders" class="hover:text-black">Orders</a> / <span x-text="od?.ref || orderId"></span></p>
+    <p x-show="odError" class="text-sm text-red-600" role="alert" x-text="odError"></p>
+    <template x-if="od">
+    <div class="space-y-6">
+      <!-- Header + the operational actions -->
+      <section class="card p-6 space-y-4">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-3">
+              <h1 class="cinzel text-2xl" x-text="od.ref"></h1>
+              <span class="badge" :class="orderStatusClass(od.status)" x-text="orderStatusLabel(od.status)"></span>
+              <span class="badge" :class="payClass(od.payment_status)" x-text="payLabel(od.payment_status)"></span>
+              <span x-show="od.mock" class="badge bg-amber-100 text-amber-800">Mock</span>
+            </div>
+            <p class="text-sm text-zinc-600"><span x-text="dateTime(od.created_at)"></span> · <a class="font-medium hover:underline" :href="'#/users/' + encodeURIComponent(od.owner_account_id)" x-text="(od.customer.first_name + ' ' + od.customer.last_name).trim()"></a> · <span x-text="od.customer.email"></span> · <span x-text="od.customer.phone"></span></p>
+          </div>
+          <p class="text-2xl font-semibold tabular-nums" x-text="money(od.total)"></p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-zinc-100">
+          <div class="space-y-2">
+            <p class="lbl">Order status</p>
+            <div class="flex gap-2">
+              <select class="inp !py-1.5" x-model="oStatusForm.status" aria-label="New order status"><template x-for="s in od.allowed_statuses" :key="s"><option :value="s" x-text="orderStatusLabel(s)"></option></template></select>
+              <button class="btn !py-1.5 whitespace-nowrap" :disabled="odBusy || oStatusForm.status === od.status" @click="setOrderStatus()">Update</button>
+            </div>
+            <input class="inp !py-1.5 !text-[12px]" x-model="oStatusForm.note" placeholder="Note for the log (optional)">
+            <p class="text-[12px] text-zinc-500">New → Payment confirmed → 3D ready → Production → QC → Shipped → Completed. Completed is final.</p>
+          </div>
+          <div class="space-y-2">
+            <p class="lbl">Payment</p>
+            <p class="text-sm"><span class="badge" :class="payClass(od.payment_status)" x-text="payLabel(od.payment_status)"></span>
+              <span class="text-zinc-500 text-[12px] ml-1" x-text="od.payment_provider ? 'via ' + od.payment_provider + (od.payment_ref ? ' · ' + od.payment_ref : '') : 'no provider connected'"></span></p>
+            <button class="btn2 !py-1.5" @click="oPay.open = !oPay.open" x-text="oPay.open ? 'Cancel' : 'Record a payment…'"></button>
+            <div x-show="oPay.open" class="space-y-2 border border-zinc-200 p-3 bg-zinc-50">
+              <select class="inp !py-1.5" x-model="oPay.status" aria-label="Payment outcome"><template x-for="s in ordersMeta.payment_statuses" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></select>
+              <input class="inp !py-1.5 !text-[12px]" x-model="oPay.ref" placeholder="Reference (transfer id, receipt …)">
+              <input class="inp !py-1.5 !text-[12px]" x-model="oPay.note" placeholder="How was it received? (required)">
+              <button class="btn !py-1.5 w-full" :disabled="odBusy || !oPay.note.trim()" @click="recordPayment()">Save payment</button>
+              <p class="text-[11px] text-zinc-500">Recorded by hand with your name and the note. A connected provider will write these fields itself.</p>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <p class="lbl">Notes</p>
+            <p x-show="od.notes" class="text-sm text-zinc-700 whitespace-pre-wrap" x-text="od.notes"></p>
+            <div class="flex gap-2"><input class="inp !py-1.5 !text-[12px]" x-model="oNote" placeholder="Add a note" @keydown.enter="addOrderNote()"><button class="btn2 !py-1.5" :disabled="odBusy || !oNote.trim()" @click="addOrderNote()">Add</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Lines: what to make -->
+      <section class="card">
+        <div class="px-6 py-4 border-b border-zinc-100"><p class="lbl">Rings to make (<span x-text="od.count"></span>)</p></div>
+        <table class="w-full">
+          <thead><tr><th></th><th>Design</th><th>Material · size</th><th class="text-right">Qty</th><th class="text-right">Unit</th><th class="text-right">Total</th><th>3D</th><th class="text-right">Files</th></tr></thead>
+          <tbody>
+            <template x-for="l in od.lines" :key="l.id">
+              <tr class="align-middle">
+                <td class="w-16"><div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden" :class="l.image_url ? 'cursor-zoom-in' : ''" @mouseenter="l.image_url && showZoom($event, l.image_url, (l.ring_id || '') + ' · ' + l.title)" @mouseleave="zoom = null"><img x-show="l.image_url" :src="l.image_url" class="w-full h-full object-cover" alt=""></div></td>
+                <td><p class="font-medium" x-text="l.title"></p><p class="font-mono text-[12px] text-zinc-500" x-text="l.ring_id || '—'"></p>
+                  <a class="text-[12px] underline text-zinc-500 hover:text-black" :href="'#/sessions/' + encodeURIComponent(l.session_id)">Open session</a></td>
+                <td class="whitespace-nowrap"><span class="inline-block w-3 h-3 rounded-full border border-zinc-300 mr-1.5 align-middle" :style="'background:' + swatch(l.material_id)"></span><span x-text="l.material_label + ' · US ' + l.ring_size"></span></td>
+                <td class="text-right tabular-nums" x-text="l.quantity"></td>
+                <td class="text-right tabular-nums" x-text="money(l.unit_price)"></td>
+                <td class="text-right tabular-nums font-semibold" x-text="money(l.line_total)"></td>
+                <td><span x-show="l.three_d_state" class="badge" :class="prodClass(l.three_d_state)" x-text="l.three_d_state === 'review_required' ? 'Review required' : prodLabel(l.three_d_state)"></span>
+                  <span x-show="!l.three_d_state" class="text-[12px] text-zinc-400">Not generated — use the session page</span>
+                  <p x-show="l.three_d_id && (l.three_d_size !== l.ring_size || l.three_d_material_id !== l.material_id)" class="text-[11px] text-amber-700" x-text="'Latest result is US ' + l.three_d_size + ' · ' + materialLabel(l.three_d_material_id) + ' — recalculate for this line on the session page'"></p></td>
+                <td class="text-right whitespace-nowrap"><button x-show="l.three_d_id && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)">Download STL</button>
+                  <p x-show="l.three_d_id && exports3d[l.three_d_id]" class="text-[11px] text-sky-800" x-text="exportLine({ id: l.three_d_id })"></p></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <p x-show="downloadNote" class="px-6 py-3 text-[12px] text-emerald-700" x-text="downloadNote"></p>
+        <p class="px-6 py-3 text-[12px] text-zinc-500 border-t border-zinc-100">STL files are named <span class="font-mono">Design-Name_RingID_OrderID_Material_USsize.stl</span> so they can be found months later.</p>
+      </section>
+
+      <!-- Customer · address · totals -->
+      <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="card p-5 space-y-1 text-sm">
+          <p class="lbl mb-2">Ships to <span class="badge ml-1" :class="addrClass(od.address_validation)" x-text="od.address_validation"></span></p>
+          <template x-for="(ln, i) in od.address_lines" :key="i"><p x-text="ln"></p></template>
+          <p class="text-zinc-500 pt-1" x-text="(od.shipping_label || '') + ' · ' + (od.shipping_eta || '')"></p>
+          <p x-show="od.address_validation_detail?.message" class="text-[12px] text-zinc-500" x-text="od.address_validation_detail?.message"></p>
+        </div>
+        <div class="card p-5 space-y-1.5 text-sm">
+          <p class="lbl mb-2">Totals</p>
+          <div class="flex justify-between"><span class="text-zinc-500">Subtotal</span><span class="tabular-nums" x-text="money(od.subtotal)"></span></div>
+          <div x-show="od.discount" class="flex justify-between text-emerald-700"><span x-text="'Promo ' + (od.promo_code || '') + (od.promo ? ' (' + od.promo.label + ')' : '')"></span><span class="tabular-nums" x-text="'−' + money(od.discount)"></span></div>
+          <div class="flex justify-between"><span class="text-zinc-500" x-text="od.shipping_label || 'Delivery'"></span><span class="tabular-nums" x-text="od.shipping ? money(od.shipping) : 'Free'"></span></div>
+          <div class="flex justify-between font-semibold pt-2 border-t border-zinc-100"><span>Total</span><span class="tabular-nums" x-text="money(od.total)"></span></div>
+          <p class="text-[11px] text-zinc-400 pt-1" x-text="'Terms ' + (od.terms_version || '—') + ' accepted ' + dateTime(od.terms_accepted_at)"></p>
+        </div>
+        <div class="card p-5 text-sm">
+          <p class="lbl mb-2">History</p>
+          <ol class="space-y-2 max-h-64 overflow-y-auto">
+            <template x-for="e in od.events" :key="e.id">
+              <li class="text-[12px]"><span class="text-zinc-400 tabular-nums" x-text="dateTime(e.created_at)"></span>
+                <span class="ml-2 font-medium" x-text="{ placed: 'Order placed', status: 'Status → ' + orderStatusLabel(e.data.to), payment: 'Payment → ' + payLabel(e.data.to) + (e.data.manual ? ' (manual)' : ''), note: 'Note', email: 'Confirmation emailed', email_failed: 'Email failed' }[e.kind] || e.kind"></span>
+                <span class="text-zinc-500" x-text="e.by ? ' · ' + e.by : ''"></span>
+                <p x-show="e.data.note || e.data.error || e.data.to_email" class="text-zinc-600 pl-2 border-l border-zinc-200 mt-0.5" x-text="e.data.note || e.data.error || ''"></p></li>
+            </template>
+          </ol>
+        </div>
+      </section>
+    </div>
+    </template>
+  </main>
+
+  <!-- ══════════════════════════ Settings: pricing & materials · promo codes · AI models & prompts · system ══════════════════════════ -->
+  <main x-show="ok && tab === 'settings'" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+    <nav class="card flex flex-wrap" aria-label="Settings sections">
+      <template x-for="s in [['pricing','Pricing & Materials','Website fixed prices, densities, 3D cost / price, AI list prices'],['promos','Promo codes','Discounts: percent or fixed, dates, limits, materials'],['models','AI models & prompts','Versioned prompts and parameters per model'],['system','System health','Mode, storage, versions']]" :key="s[0]">
+        <a :href="'#/settings/' + s[0]" class="px-4 py-3 text-left border-r border-zinc-100 last:border-r-0 flex-1 min-w-[170px] transition block" :class="sub === s[0] ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-50'">
+          <span class="block text-[13px] font-semibold" x-text="s[1]"></span>
+          <span class="block text-[11px] mt-0.5" :class="sub === s[0] ? 'text-zinc-300' : 'text-zinc-500'" x-text="s[2]"></span>
+        </a>
+      </template>
+    </nav>
+
+    <!-- Promo codes -->
+    <section class="card p-5 space-y-4" x-show="sub === 'promos'">
+      <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <p class="lbl">Promo codes (<span x-text="promos.length"></span>)</p>
+        <button class="btn2 !py-1.5" @click="newPromo()">New promo code</button>
+      </div>
+      <p class="text-[12px] text-zinc-500">Codes are validated on the server at checkout. Every order keeps a snapshot of the code, the original amount, the discount and the final amount, so later edits never change past orders.</p>
+      <template x-if="promoEdit">
+        <div class="border border-zinc-200 bg-zinc-50 p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div><label class="lbl block mb-1" for="pr-code">Code</label><input id="pr-code" class="inp font-mono uppercase" x-model="promoEdit.code" placeholder="LAUNCH10" :disabled="!!promoEdit.id"></div>
+          <div><label class="lbl block mb-1" for="pr-kind">Kind</label><select id="pr-kind" class="inp" x-model="promoEdit.kind"><option value="percent">Percent off</option><option value="fixed">Fixed amount off ($)</option></select></div>
+          <div><label class="lbl block mb-1" for="pr-value" x-text="promoEdit.kind === 'percent' ? 'Percent (0–100)' : 'Amount $'"></label><input id="pr-value" type="number" step="any" min="0" class="inp" x-model.number="promoEdit.value"></div>
+          <div><label class="lbl block mb-1" for="pr-limit">Usage limit <span class="normal-case tracking-normal">(blank = unlimited)</span></label><input id="pr-limit" type="number" min="1" class="inp" x-model="promoEdit.usage_limit"></div>
+          <div><label class="lbl block mb-1" for="pr-from">Valid from</label><input id="pr-from" type="date" class="inp" x-model="promoEdit.starts_at"></div>
+          <div><label class="lbl block mb-1" for="pr-to">Valid until</label><input id="pr-to" type="date" class="inp" x-model="promoEdit.ends_at"></div>
+          <div><label class="lbl block mb-1" for="pr-min">Minimum subtotal $ <span class="normal-case tracking-normal">(optional)</span></label><input id="pr-min" type="number" step="any" min="0" class="inp" x-model="promoEdit.min_subtotal"></div>
+          <div><label class="lbl block mb-1" for="pr-note">Note</label><input id="pr-note" class="inp" x-model="promoEdit.note" placeholder="Launch campaign"></div>
+          <div class="md:col-span-4">
+            <p class="lbl mb-1">Applies to <span class="normal-case tracking-normal">(none ticked = every material)</span></p>
+            <div class="flex flex-wrap gap-3">
+              <template x-for="(label, id) in materials" :key="id">
+                <label class="flex items-center gap-1.5 text-sm"><input type="checkbox" :checked="promoEdit.materials.includes(id)" @change="togglePromoMaterial(id)"><span x-text="label"></span></label>
+              </template>
+            </div>
+          </div>
+          <div class="md:col-span-4 flex items-center gap-3">
+            <label class="flex items-center gap-1.5 text-sm"><input type="checkbox" x-model="promoEdit.active"> Active</label>
+            <span class="flex-1"></span>
+            <button class="btn2" @click="promoEdit = null">Cancel</button>
+            <button class="btn" @click="savePromo()">Save</button>
+          </div>
+        </div>
+      </template>
+      <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead><tr><th>Code</th><th>Rule</th><th class="text-right">Used</th><th>Status</th><th>Note</th><th class="text-right">Actions</th></tr></thead>
+        <tbody>
+          <template x-for="p in promos" :key="p.id">
+            <tr :class="p.active ? '' : 'opacity-60'">
+              <td class="font-mono font-semibold" x-text="p.code"></td>
+              <td class="text-[13px]" x-text="promoRule(p)"></td>
+              <td class="text-right tabular-nums" x-text="p.usage_count + (p.usage_limit != null ? ' / ' + p.usage_limit : '')"></td>
+              <td><span class="badge" :class="p.active ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-600'" x-text="p.active ? 'Active' : 'Inactive'"></span></td>
+              <td class="text-[12px] text-zinc-500" x-text="p.note || ''"></td>
+              <td class="text-right whitespace-nowrap space-x-3 text-xs">
+                <button class="underline" @click="editPromo(p)">Edit</button>
+                <button class="underline text-zinc-500" @click="setPromoActive(p, !p.active)" x-text="p.active ? 'Deactivate' : 'Activate'"></button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="!promos.length"><td colspan="6" class="text-center text-zinc-400 !py-8">No promo codes yet.</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p x-show="promoMsg" class="text-sm" :class="promoErr ? 'text-red-600' : 'text-emerald-700'" x-text="promoMsg"></p>
+    </section>
+
+    <!-- System health -->
+    <section class="space-y-4" x-show="sub === 'system'">
+      <div class="card p-5 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div><p class="lbl mb-1">AI mode</p><p class="text-xl font-semibold" x-text="health?.mode || mode || '—'"></p><p class="text-[11px] text-zinc-400" x-text="health?.mode_source ? 'set by ' + health.mode_source : ''"></p></div>
+        <div><p class="lbl mb-1">Provider</p><p class="text-xl font-semibold" x-text="health?.provider || '—'"></p></div>
+        <div><p class="lbl mb-1">Base path</p><p class="text-xl font-semibold font-mono" x-text="health?.base_path || '/'"></p></div>
+        <div><p class="lbl mb-1">Pricing profile</p><p class="text-sm font-mono break-all" x-text="health?.pricing_profile || '—'"></p><p class="text-[11px]" :class="health?.pricing_profile_approved ? 'text-emerald-700' : 'text-amber-700'" x-text="health?.pricing_profile_approved ? 'approved' : 'not approved (fixed prices from the material table take precedence)'"></p></div>
+      </div>
+      <div class="card p-5">
+        <p class="lbl mb-3">Active configuration versions</p>
+        <div class="flex flex-wrap gap-4 text-sm"><template x-for="(v, m) in (health?.config_versions || {})" :key="m"><span><span class="font-mono text-zinc-600" x-text="m"></span> <span class="badge bg-zinc-100 text-zinc-700 ml-1" x-text="v"></span></span></template></div>
+      </div>
+      <section class="card p-6" x-show="storage">
+        <p class="lbl mb-4">3D storage · this server</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div><p class="lbl mb-1">3D files</p><p class="text-xl font-semibold" x-text="gb(storage?.total_3d_bytes)"></p><p class="text-[11px] text-zinc-400" x-text="(storage?.models ?? 0) + ' Hi3D model' + (storage?.models === 1 ? '' : 's')"></p></div>
+          <div><p class="lbl mb-1">Temporary scaled STLs</p><p class="text-xl font-semibold" x-text="gb(storage?.exports_bytes)"></p><p class="text-[11px] text-zinc-400">Deleted an hour after export</p></div>
+          <div><p class="lbl mb-1">Free disk</p><p class="text-xl font-semibold" :class="storage && storage.disk_free_bytes < 0.1 * storage.disk_total_bytes ? 'text-red-600' : ''" x-text="gb(storage?.disk_free_bytes)"></p><p class="text-[11px] text-zinc-400" x-text="'of ' + gb(storage?.disk_total_bytes)"></p></div>
+          <div><p class="lbl mb-1">Clean-up</p><p class="text-sm text-zinc-600">No automatic deletion of Hi3D models</p></div>
+        </div>
+      </section>
+      <p class="text-[12px] text-zinc-500">Developer tools (mesh experiments, AI mode switch, outbox) stay on the <a class="underline" :href="BASE + '/dev'">/dev</a> page.</p>
+    </section>
+
+    <!-- AI models: navigation + export -->
+    <nav class="card flex flex-wrap" x-show="sub === 'models'" aria-label="AI models">
       <template x-for="m in models" :key="m.model.id">
         <button class="px-4 py-3 text-left border-r border-zinc-100 last:border-r-0 flex-1 min-w-[170px] transition"
-                :class="mid === m.model.id ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-50'" @click="go('#/models/' + m.model.id)">
+                :class="mid === m.model.id ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-50'" @click="go(modelHash(m.model.id))" :aria-current="mid === m.model.id ? 'page' : null">
           <span class="block font-mono text-[12px] font-semibold" x-text="m.model.label"></span>
           <span class="block text-[10px] mt-0.5" :class="mid === m.model.id ? 'text-zinc-300' : 'text-zinc-400'"
                 x-text="'v' + m.active.number + (m.model.connected ? '' : ' · not connected')"></span>
@@ -909,14 +1199,14 @@
       </template>
     </nav>
 
-    <div class="flex flex-wrap items-center justify-end gap-3 text-xs uppercase tracking-widest">
+    <div class="flex flex-wrap items-center justify-end gap-3 text-xs uppercase tracking-widest" x-show="sub === 'models'">
       <span class="text-zinc-400">Export all</span>
       <button class="underline" @click="exportModels('all', 'txt')">TXT</button>
       <button class="underline" @click="exportModels('all', 'json')">JSON</button>
     </div>
 
     <!-- Material pricing: one table for weight, 3D cost / price and the website's fixed price -->
-    <section class="card p-5 space-y-3" x-show="mprices">
+    <section class="card p-5 space-y-3" x-show="sub === 'pricing' && mprices">
       <div class="flex flex-wrap items-baseline justify-between gap-3">
         <p class="lbl">Pricing · materials</p>
         <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="mpEdit ? (mpEdit = null) : editMaterialPrices()" x-text="mpEdit ? 'Cancel edit' : 'Edit'"></button>
@@ -954,7 +1244,7 @@
     </section>
 
     <!-- AI prices used for cost estimates -->
-    <section class="card p-5 space-y-3" x-show="prices">
+    <section class="card p-5 space-y-3" x-show="sub === 'pricing' && prices">
       <div class="flex flex-wrap items-baseline justify-between gap-3">
         <p class="lbl">AI prices (used for cost estimates)</p>
         <div class="flex gap-4 text-xs uppercase tracking-widest">
@@ -978,7 +1268,7 @@
       <p x-show="pricesMsg" class="text-sm" :class="pricesErr ? 'text-red-600' : 'text-emerald-700'" x-text="pricesMsg"></p>
     </section>
 
-    <template x-if="mc">
+    <template x-if="mc && sub === 'models'">
     <div class="space-y-6">
       <!-- Header -->
       <section class="card p-6 space-y-2">
