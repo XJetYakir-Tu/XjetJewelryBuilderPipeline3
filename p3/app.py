@@ -60,7 +60,7 @@ class Services:
         self.Gallery = GalleryService(Ctx)                       # Inspiration Gallery: curated XJet designs
         self.Promos = PromoService(Ctx)                          # promo codes (Admin), evaluated server-side
         # Checkout + orders: payment and address validation sit behind adapters (none connected yet).
-        self.Orders = OrderService(Ctx, self.Customize, self.Promos, BuildPaymentProvider(), BuildValidator(), Mailer)
+        self.Orders = OrderService(Ctx, self.Customize, self.Promos, BuildPaymentProvider(), BuildValidator(), Mailer, self.Production3D)
 
     def Reconcile(self) -> dict:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),

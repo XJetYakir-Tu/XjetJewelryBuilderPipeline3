@@ -347,10 +347,28 @@ function adminApp() {
       try { const r = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(q.id)}/status`, { status }); Object.assign(q, r); }
       catch (e) { this.ordersMsg = e.message; }
     },
-    // Scaled STL for an ordered ring: the file name carries the Order ID (exported from the design's 3D result).
+    // Scaled STL for an ordered ring: ONLY the result for the ordered size and material, with the Order ID in the name.
+    linePrep: {},
     async downloadOrderStl(line) {
-      if (!line.three_d_id) return;
+      if (!line.three_d_id || !line.three_d_match) return;
       await this.exportStl({ id: line.three_d_id, scaled_stl: 'on_demand' }, this.od?.ref);
+    },
+    // No result for this size/material yet: scale the design's existing model to it (arithmetic, no Hi3D
+    // call), wait for the numbers, then download. A design without a model is handled on its session page.
+    async prepareOrderStl(line) {
+      this.linePrep = { ...this.linePrep, [line.id]: true };
+      try {
+        const r = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/lines/${encodeURIComponent(line.id)}/3d`);
+        let s = await this.api('GET', `/api/admin/3d/${encodeURIComponent(r.three_d_id)}/status`);
+        const until = Date.now() + 120000;
+        while (!s.done && Date.now() < until) { await new Promise(x => setTimeout(x, 1500)); s = await this.api('GET', `/api/admin/3d/${encodeURIComponent(r.three_d_id)}/status`); }
+        this.od = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id));
+        if (!s.done) { this.notify('The geometry is still being calculated — try again in a moment.', 'error'); return; }
+        if (s.status === 'failed') { this.notify('Geometry failed: ' + (s.error || ''), 'error'); return; }
+        const fresh = this.od.lines.find(x => x.id === line.id);
+        if (fresh?.three_d_id && fresh.three_d_match) await this.exportStl({ id: fresh.three_d_id, scaled_stl: 'on_demand' }, this.od.ref);
+      } catch (e) { this.fail(e); }
+      finally { const p = { ...this.linePrep }; delete p[line.id]; this.linePrep = p; }
     },
 
     // ── promo codes ─────────────────────────────────────────────────────

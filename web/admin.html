@@ -1219,10 +1219,18 @@
                 <td class="text-right tabular-nums" x-text="l.quantity"></td>
                 <td class="text-right tabular-nums" x-text="money(l.unit_price)"></td>
                 <td class="text-right tabular-nums font-semibold" x-text="money(l.line_total)"></td>
-                <td><span x-show="l.three_d_state" class="badge" :class="prodClass(l.three_d_state)" x-text="l.three_d_state === 'review_required' ? 'Review required' : prodLabel(l.three_d_state)"></span>
-                  <span x-show="!l.three_d_state" class="text-[12px] text-zinc-500">Not generated — use the session page</span>
-                  <p x-show="l.three_d_id && (l.three_d_size !== l.ring_size || l.three_d_material_id !== l.material_id)" class="text-[12px] text-amber-700" x-text="'Latest result is US ' + l.three_d_size + ' · ' + materialLabel(l.three_d_material_id) + ' — recalculate for this line on the session page'"></p></td>
-                <td class="text-right whitespace-nowrap"><button x-show="l.three_d_id && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)">Download STL</button>
+                <td class="max-w-[260px]">
+                  <!-- Only a result for THIS size and material counts as the line's 3D; anything else is "not prepared yet" -->
+                  <span x-show="l.three_d_state && l.three_d_match" class="badge" :class="prodClass(l.three_d_state)" x-text="l.three_d_state === 'review_required' ? 'Review required' : prodLabel(l.three_d_state)"></span>
+                  <span x-show="l.three_d_state && !l.three_d_match" class="badge bg-sky-100 text-sky-800">Preparing…</span>
+                  <span x-show="!l.three_d_state && l.has_model" class="text-[12px] text-zinc-600" x-text="'Model exists — not yet scaled to US ' + l.ring_size + ' · ' + l.material_label"></span>
+                  <span x-show="!l.three_d_state && !l.has_model" class="text-[12px] text-amber-700">No 3D model yet — generate it on the session page (paid Hi3D call)</span>
+                  <p x-show="l.three_d_latest" class="text-[11px] text-zinc-500" x-text="'Latest result: US ' + l.three_d_latest?.size + ' · ' + materialLabel(l.three_d_latest?.material_id) + ' (not this line)'"></p>
+                  <p x-show="l.model_ring_id && l.ring_id && l.model_ring_id !== l.ring_id" class="text-[11px] text-amber-700" x-text="'The design’s model is of option ' + l.model_ring_id + '; this order is for ' + l.ring_id + ' — check on the session page whether a new model is needed'"></p></td>
+                <td class="text-right whitespace-nowrap">
+                  <button x-show="l.three_d_id && l.three_d_match && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)">Download STL</button>
+                  <button x-show="!l.three_d_match && l.has_model" class="btn2 !py-1.5 !text-[11px]" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · US ' + l.ring_size + ' · ' + l.material_label"></button>
+                  <a x-show="!l.has_model" class="text-xs uppercase tracking-widest underline" :href="'#/sessions/' + encodeURIComponent(l.session_id)">Generate 3D on the session</a>
                   <p x-show="l.three_d_id && exports3d[l.three_d_id]" class="text-[12px] text-sky-800" x-text="exportLine({ id: l.three_d_id })"></p></td>
               </tr>
             </template>

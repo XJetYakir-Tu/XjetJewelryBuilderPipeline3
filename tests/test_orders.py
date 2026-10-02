@@ -245,19 +245,37 @@ async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     assert D["notes"] == "Customer asked for gift wrap"
     Mine = (await H.Client.get(f"/api/orders/{O['id']}")).json()
     assert Mine["status_label"] == "Completed" and Mine["payment_label"] == "Paid" and "notes" not in Mine
-    # 3D for the ordered design: the order's lines show its state, and the STL carries the Order ID
-    T = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).json()
+    # 3D for the ordered design: only a result for the ORDERED size and material counts as the line's 3D.
+    # Without any model the order page refuses (a paid Hi3D call belongs to the session page).
+    Line = D["lines"][0]
+    assert Line["three_d_id"] is None and not Line["has_model"] and Line["three_d_latest"] is None
+    R = await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{Line['id']}/3d", headers=Admin)
+    assert R.status_code == 409 and R.json()["error"]["code"] == "no_model"
+    # The admin generated the model on the session page — but at another size and material (US 7 · vermeil)
+    T = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7, "material_id": "vermeil"}, headers=Admin)).json()
     await H.Idle()
     D = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()
-    assert D["lines"][0]["three_d_id"] == T["id"] and D["lines"][0]["three_d_state"] == "complete" and D["three_d_state"] == "complete"
-    E = (await H.Client.post(f"/api/admin/3d/{T['id']}/export", headers=Admin)).json()
+    Line = D["lines"][0]
+    assert Line["three_d_id"] is None and Line["three_d_state"] is None and Line["has_model"] and Line["model_ring_id"] == "R-1001-A"
+    assert Line["three_d_latest"]["size"] == 7 and Line["three_d_latest"]["material_id"] == "vermeil"   # exists, but not this line's
+    # Prepare: the model is scaled to the ordered US 10 · Silver by arithmetic — no second Hi3D call
+    Subs = len(H.Provider.SubmissionsFor(endpoints.Mesh))
+    P = (await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{Line['id']}/3d", headers=Admin)).json()
     await H.Idle()
-    E = (await H.Client.get(f"/api/admin/3d/{T['id']}/export/{E['job_id']}?order=ORD-10001", headers=Admin)).json()
+    assert P["prepared"] and P["three_d_id"] != T["id"] and len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs
+    D = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()
+    Line = D["lines"][0]
+    assert Line["three_d_id"] == P["three_d_id"] and Line["three_d_match"] and Line["three_d_state"] == "complete" and D["three_d_state"] == "complete"
+    assert any(E["kind"] == "3d_prepared" for E in D["events"])
+    assert (await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{Line['id']}/3d", headers=Admin)).json()["prepared"] is False   # idempotent
+    E = (await H.Client.post(f"/api/admin/3d/{Line['three_d_id']}/export", headers=Admin)).json()
+    await H.Idle()
+    E = (await H.Client.get(f"/api/admin/3d/{Line['three_d_id']}/export/{E['job_id']}?order=ORD-10001", headers=Admin)).json()
     assert "order=ORD-10001" in E["url"]
     R = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
     from p3.production3d import SlugPart
     Name = SlugPart((await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["session"]["title"])
-    assert f'filename="{Name}_R-1001-A_ORD-10001_Silver_US10.stl"' in R.headers["content-disposition"]
+    assert f'filename="{Name}_R-1001-A_ORD-10001_Silver_US10.stl"' in R.headers["content-disposition"]   # the ORDERED size and material
     Bad = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath).replace("ORD-10001", "../evil"))
     assert "evil" not in Bad.headers.get("content-disposition", "") and Bad.status_code == 200    # never trusted
     # Dashboard: orders are counted (mock excluded by default, so none here) and gallery stats know orders

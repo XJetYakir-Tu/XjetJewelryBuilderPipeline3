@@ -53,13 +53,14 @@ def QuoteRef(No) -> str | None:
 
 
 class OrderService:
-    def __init__(self, Ctx: Context, Customize, Promos, Payment=None, Validator=None, Mailer=None):
+    def __init__(self, Ctx: Context, Customize, Promos, Payment=None, Validator=None, Mailer=None, Production=None):
         self.Ctx = Ctx
         self.Customize = Customize
         self.Promos = Promos
         self.Payment = Payment or Payments.NoPaymentProvider()
         self.Validator = Validator or Addressing.NoValidator()
         self.Mailer = Mailer
+        self.Production = Production          # Production3D: the STL for an ordered line at its size/material
 
     # ── checkout: what the customer sees before ordering ─────────────────
     def CheckoutInfo(self, Who: Principal) -> dict:
@@ -349,19 +350,54 @@ class OrderService:
                 "image_url": self.Ctx.AssetUrl(Cand["asset_path"]) if Cand else None, "owner_account_id": R["owner_account_id"]}
 
     # ── admin ────────────────────────────────────────────────────────────
-    def _ThreeDByDesign(self, DesignIds: list[str]) -> dict[str, dict]:
-        """Latest 3D result per design (the master model is per design), with its production state."""
-        if not DesignIds:
-            return {}
+    def _ThreeDForLine(self, L: dict) -> dict:
+        """The 3D result that belongs to THIS line: the design's model scaled to the ordered size in the
+        ordered material. A result for another size or material is never offered as the line's file —
+        it is reported as `latest` so the admin sees what exists and can prepare the right one."""
         from p3.production3d import ProductionState
-        Q = ",".join("?" * len(DesignIds))
-        Out = {}
-        for R in self.Ctx.Db.All(f"SELECT s.id, s.design_id, s.status, s.production_size, s.material_id, r.integrity FROM session_3d s "
-                                 f"LEFT JOIN raw_geometry r ON r.mesh_id = s.mesh_id WHERE s.design_id IN ({Q}) ORDER BY s.created_at DESC", DesignIds):
-            Out.setdefault(R["design_id"], {"three_d_id": R["id"], "three_d_status": R["status"],
-                                            "three_d_state": ProductionState(R["status"], R["integrity"]),
-                                            "three_d_size": R["production_size"], "three_d_material_id": R["material_id"]})
-        return Out
+        Rows = self.Ctx.Db.All("SELECT s.id, s.status, s.production_size, s.material_id, s.candidate_id, r.integrity FROM session_3d s "
+                               "LEFT JOIN raw_geometry r ON r.mesh_id = s.mesh_id WHERE s.design_id = ? ORDER BY s.created_at DESC", (L["design_id"],))
+        Done = ("measured", "needs_review")
+        Match = next((R for R in Rows if R["status"] in Done and float(R["production_size"]) == float(L["ring_size"])
+                      and R["material_id"] == L["material_id"]), None)
+        Pending = next((R for R in Rows if R["status"] not in Done + ("failed", "cancelled") and float(R["production_size"]) == float(L["ring_size"])
+                        and R["material_id"] == L["material_id"]), None)
+        Latest = Rows[0] if Rows else None
+        Model = self.Ctx.Db.One("SELECT m.candidate_id FROM meshes m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
+                                "WHERE b.design_id = ? AND m.status = 'ready' ORDER BY m.created_at DESC LIMIT 1", (L["design_id"],))
+        Chosen = Match or Pending
+        return {"three_d_id": Chosen["id"] if Chosen else None,
+                "three_d_status": Chosen["status"] if Chosen else None,
+                "three_d_state": ProductionState(Chosen["status"], Chosen["integrity"]) if Chosen else None,
+                "three_d_match": bool(Match),
+                "has_model": Model is not None,
+                # the modelled option: the one Hi3D model per design may be of another option than the ordered one
+                "model_ring_id": RingIds.CandidateRef(self.Ctx.Db, Model["candidate_id"]) if Model else None,
+                "three_d_latest": {"id": Latest["id"], "size": Latest["production_size"], "material_id": Latest["material_id"],
+                                   "state": ProductionState(Latest["status"], Latest["integrity"])} if Latest and not Chosen else None}
+
+    def PrepareLine3D(self, OrderId: str, LineId: str, By: str) -> dict:
+        """The STL for an ordered ring must be the ordered size and material. Reuse the design's model
+        (arithmetic, no Hi3D call) when the matching result does not exist yet; never start a paid
+        Hi3D request from here — a design without a model is generated on its session page."""
+        O = self.AdminGet(OrderId)
+        L = next((X for X in O["lines"] if X["id"] == LineId), None)
+        if L is None:
+            raise HttpError(404, "order_line_not_found", "Order line not found.")
+        if L["three_d_id"]:
+            return {"line": L, "three_d_id": L["three_d_id"], "prepared": False}
+        if not L["has_model"]:
+            raise HttpError(409, "no_model", f"{L['title']} ({L['ring_id']}) has no 3D model yet. Generate it on the session page first "
+                                             "(a paid Hi3D call), then prepare the STL here.")
+        if self.Production is None:
+            raise HttpError(503, "production_unavailable", "3D production is not available.")
+        Customer = (Sessions.Summaries(self.Ctx, SessionIds=[L["session_id"]]) or [None])[0]
+        T = self.Production.Request(L["design_id"], ProductionSize=L["ring_size"], MaterialId=L["material_id"], RequestedBy=By, Customer=Customer)
+        self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                            (O["id"], "3d_prepared", Dumps({"line_id": LineId, "session_3d_id": T["id"], "ring_size": L["ring_size"],
+                                                            "material_id": L["material_id"], "reused_model": bool(T.get("raw_available"))}), By, Now()))
+        Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
+        return {"line": Fresh, "three_d_id": T["id"], "prepared": True}
 
     def AdminList(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None, Limit: int = 300) -> list[dict]:
         Where, Params = [], []
@@ -380,9 +416,8 @@ class OrderService:
             Lines = self._Lines(O["id"])
             J = self.ToJson(O, Lines, ForCustomer=False)
             J["mock"] = bool(Lines) and all(L["design_id"] in Mock for L in Lines)
-            ThreeD = self._ThreeDByDesign([L["design_id"] for L in Lines])
             for L in J["lines"]:
-                L.update(ThreeD.get(L["design_id"], {"three_d_id": None, "three_d_status": None, "three_d_state": None}))
+                L.update(self._ThreeDForLine(L))
             J["three_d_state"] = _WorstState([L["three_d_state"] for L in J["lines"]])
             Hay = " ".join(str(X or "") for X in (J["ref"], J["customer"]["first_name"], J["customer"]["last_name"], J["customer"]["email"],
                                                  J["promo_code"], *[L["title"] for L in J["lines"]], *[L["ring_id"] for L in J["lines"]],
@@ -398,9 +433,8 @@ class OrderService:
             raise HttpError(404, "order_not_found", "Order not found.")
         Lines = self._Lines(O["id"])
         J = self.ToJson(O, Lines, ForCustomer=False)
-        ThreeD = self._ThreeDByDesign([L["design_id"] for L in Lines])
         for L in J["lines"]:
-            L.update(ThreeD.get(L["design_id"], {"three_d_id": None, "three_d_status": None, "three_d_state": None}))
+            L.update(self._ThreeDForLine(L))
             Use = self.Ctx.Db.One("SELECT id FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?", (L["design_id"], O["owner_account_id"]))
             L["session_id"] = Use["id"] if Use else L["design_id"]       # the customer's journey in Sessions
         J["three_d_state"] = _WorstState([L["three_d_state"] for L in J["lines"]])

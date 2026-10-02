@@ -534,6 +534,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Who = Admin(authorization)
         return Orders.AddNote(OrderId, str(Body_.get("note") or ""), Who.Id)
 
+    # The STL for an ordered ring: the design's model at the ordered size and material (no Hi3D call)
+    @App_.post("/api/admin/orders/{OrderId}/lines/{LineId}/3d")
+    async def AdminOrderLine3D(OrderId: str, LineId: str, authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.PrepareLine3D(OrderId, LineId, Who.Id)
+
     @App_.get("/api/admin/promo-codes")
     async def AdminPromos(authorization: str | None = Header(None)):
         Admin(authorization)
