@@ -219,7 +219,10 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         Did = D["id"]
         Owner = U["owner_account_id"] if U else D["owner_account_id"]
         Ready = [X for X in C[Did] if X["status"] == "ready"]
-        InitialReady = [X for X in Ready if X["kind"] == "initial"]
+        # A design's first generation is its initial batch — or, for a design that began as a refinement of
+        # another (a fork or a split-off refinement), its first refinement batch
+        FirstKind = min(B[Did], key=lambda X: X["created_at"])["kind"] if B[Did] else "initial"
+        InitialReady = [X for X in Ready if X["kind"] == FirstKind]
         RefineBatches = [] if U else [X for X in B[Did] if X["kind"] == "refine"]
         # Only this customer's steps count on a shared design (their choices, bag lines, events).
         Ev = [X for X in E[Did] if X["owner_account_id"] == Owner]
@@ -269,7 +272,7 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         Fixed = FixedPrice(Ctx, Line, Ev, Material)
         Thumb = next((X for X in Ready if X["id"] == Selected), Ready[0] if Ready else None)
         Last3D = T3[Did][-1] if T3[Did] else None
-        Failed = (not U) and bool(C[Did]) and not InitialReady and all(X["status"] == "failed" for X in C[Did] if X["kind"] == "initial")
+        Failed = (not U) and bool(C[Did]) and not InitialReady and all(X["status"] == "failed" for X in C[Did] if X["kind"] == FirstKind)
         Path = [StageLabels["generated"]] if Times["generated"] else []
         if Times["selected"]:
             Path.append(StageLabels["selected"])

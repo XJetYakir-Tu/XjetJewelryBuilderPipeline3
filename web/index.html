@@ -920,7 +920,7 @@
                                 <p x-show="composeError" class="text-[13px] px-1" style="color:#A1261D;" x-text="composeError"></p>
                                 <!-- A design that already has a movie, 3D or order is kept as it is: a refinement becomes a new design -->
                                 <p x-show="composerMode === 'refine' && design && !design.shared && design.refinement_creates_new_design" class="text-[12px] px-1" style="color:#8F8F8F;">
-                                    Your refinement will be saved as a new design — <span x-text="design?.title"></span> already has a 360° movie, so it stays as it is.</p>
+                                    <span x-text="'Your refinement will be saved as a new design — ' + (design?.title || 'this design') + ' ' + ({movie: 'already has a 360° movie', '3d': 'already has a 3D model', order: 'already has an order', quote: 'already has a quote request', gallery: 'is in the Inspiration Gallery'}[design?.refinement_creates_new_design] || 'is already in use') + ', so it stays as it is.'"></span></p>
 
                                 <!-- Generations remaining — anchored right under the prompt input -->
                                 <div x-show="userSession" class="w-full flex items-center justify-end px-1 -mt-1">

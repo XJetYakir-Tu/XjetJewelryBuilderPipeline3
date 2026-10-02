@@ -49,6 +49,7 @@ async def test_images_only_is_refined_in_place_but_a_movie_makes_it_a_master(HF)
     S = (await H.Client.get(f"/api/admin/sessions/{R2['design_id']}", headers=Admin)).json()
     Ev = next(E for E in S["timeline"] if E["kind"] == "design_forked")
     assert Ev["data"]["reason"] == "movie" and Ev["data"]["source_ring_id"] == "R-1001-R1B"
+    assert "Generation failed" not in S["session"]["path"] and S["session"]["stage_times"]["generated"]    # its first batch is the refinement
     # One Hi3D model per design still applies: the fork sees the master's model only once the master has one
     assert S["three_d_defaults"]["source_model"] is None
 
