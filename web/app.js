@@ -627,16 +627,38 @@ function p3App() {
       const f = ev.target.files[0];
       ev.target.value = '';
       if (!f) return;
+      this.setReference(f);
+    },
+    setReference(f) {
       this.uploadedFile = f;
       this.uploadedPreview = URL.createObjectURL(f);
       this.rightsConfirmed = false;
+      this.composeError = '';
+    },
+    // Ctrl+V / Cmd+V on the Design screen: a pasted image (a screenshot, a copied picture) becomes the
+    // reference image exactly as if it had been chosen with the upload button; pasted text is left to the
+    // composer. Pastes meant for another field (the sign-in form, a search box) are never touched.
+    handlePaste(ev) {
+      if (this.view !== 'ai-studio' || ev.defaultPrevented) return;
+      const t = ev.target;
+      if (t && t !== this.$refs.composer && t.matches && t.matches('input, textarea, select, [contenteditable]')) return;
+      const items = [...(ev.clipboardData?.items || [])];
+      const file = items.map(i => i.kind === 'file' ? i.getAsFile() : null).find(f => f && /^image\/(png|jpeg|webp)$/.test(f.type));
+      if (!file) return;
+      ev.preventDefault();
+      if (this.design) {
+        this.composeError = 'A pasted image starts a new design: click New Design, then paste it again.';
+        return;
+      }
+      this.setReference(new File([file], file.name && file.name !== 'image.png' ? file.name : 'pasted-image.' + (file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1]), { type: file.type }));
+      this.$nextTick(() => this.$refs.composer?.focus());
     },
     clearUpload() { this.uploadedFile = null; this.uploadedPreview = null; this.rightsConfirmed = false; },
     handleEnterKey(ev) { if (!ev.shiftKey) { ev.preventDefault(); this.sendComposer(); } },
 
     get composerMode() { return this.design ? 'refine' : 'create'; },
     get composerPlaceholder() {
-      if (!this.design) return 'Describe your ring…';
+      if (!this.design) return this.uploadedFile ? 'Describe what to make from this image… (optional)' : 'Describe your ring… or paste an image (Ctrl+V)';
       return this.canActOnSelection ? 'Describe how to refine the selected design…' : 'Select one of the designs above to refine it…';
     },
     get canSend() {

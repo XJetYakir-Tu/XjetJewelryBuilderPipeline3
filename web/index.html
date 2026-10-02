@@ -89,7 +89,7 @@
         .ferr { font-size: 12px; color: #A1261D; margin-top: 5px; }
     </style>
 </head>
-<body x-data="p3App()" x-init="init()" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white">
+<body x-data="p3App()" x-init="init()" @paste.window="handlePaste($event)" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white">
     <!-- Metal recolour filters (one per material), built from the catalog swatches by app.js. -->
     <svg aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute; width:0; height:0; overflow:hidden" x-html="metalFilterDefs"></svg>
 
@@ -902,7 +902,7 @@
                                 <div class="w-full flex items-center gap-2 sm:gap-3 rounded-3xl sm:rounded-[24px] px-3 sm:px-4 py-2 sm:py-3 bg-white min-h-[52px] sm:min-h-[72px]"
                                      style="border:2px solid #C9A96E; box-shadow:0 14px 44px rgba(0,0,0,0.09);">
                                     <button x-show="!design" @click="requestUpload()" class="tap shrink-0 flex items-center justify-center rounded-xl transition w-9 h-9 sm:w-11 sm:h-11 bg-[#FAF6EE] text-[#9B7040] hover:bg-[#F1E7D6]"
-                                            title="Upload reference image" aria-label="Upload reference image">
+                                            title="Upload a reference image (or paste one with Ctrl+V)" aria-label="Upload reference image">
                                         <svg class="w-[18px] h-[18px] sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M4.5 19.5h15a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5h-15A1.5 1.5 0 003 6v12a1.5 1.5 0 001.5 1.5z"/><circle cx="8.25" cy="8.25" r="1.25"/></svg>
                                     </button>
                                     <input type="file" x-ref="uploader" class="hidden" @change="handleUpload($event)" accept="image/png,image/jpeg,image/webp">
