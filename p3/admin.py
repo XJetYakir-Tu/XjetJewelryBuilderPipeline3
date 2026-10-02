@@ -116,6 +116,30 @@ def _Detail(Ctx: Context, AccountId: str) -> dict:
 DownloadLinkSeconds = 600
 
 
+def Lineage(Ctx: Context, DesignId: str) -> dict:
+    """Where a design came from (its source design and the option that was refined) and every design
+    refined from it — so a master's session leads to its variations and a variation back to its master."""
+    Db = Ctx.Db
+    D = Db.One("SELECT source_design_id, source_candidate_id FROM designs WHERE id = ?", (DesignId,))
+    Source = None
+    if D and D["source_design_id"]:
+        S = Db.One("SELECT id, title, ring_no, owner_account_id FROM designs WHERE id = ?", (D["source_design_id"],))
+        if S:
+            Source = {"design_id": S["id"], "title": S["title"], "ring_id": RingIds.DesignRef(S["ring_no"]),
+                      "option_ring_id": RingIds.CandidateRef(Db, D["source_candidate_id"]) if D["source_candidate_id"] else None}
+    Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (DesignId,))
+    Variations = []
+    for V in Db.All("SELECT d.id, d.title, d.ring_no, d.owner_account_id, d.created_at, d.source_candidate_id FROM designs d "
+                    "WHERE d.source_design_id = ? ORDER BY d.created_at", (DesignId,)):
+        Use = None if Owner and V["owner_account_id"] == Owner["owner_account_id"] else Db.One(
+            "SELECT id FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?", (DesignId, V["owner_account_id"]))
+        Variations.append({"design_id": V["id"], "title": V["title"], "ring_id": RingIds.DesignRef(V["ring_no"]), "created_at": V["created_at"],
+                           "own": bool(Owner and V["owner_account_id"] == Owner["owner_account_id"]),
+                           "from_option": RingIds.CandidateRef(Db, V["source_candidate_id"]) if V["source_candidate_id"] else None,
+                           "customer_session_id": Use["id"] if Use else None})
+    return {"source": Source, "variations": Variations}
+
+
 def _ForkInstruction(Ctx: Context, DesignId: str) -> str:
     """The refinement instruction a variation was born from (its first batch) — it names the variation."""
     B = Ctx.Db.One("SELECT user_text FROM batches WHERE design_id = ? ORDER BY created_at, id LIMIT 1", (DesignId,))
@@ -383,6 +407,8 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
         "design": {**Design, "shared": bool(Use), "master_ring_id": Summary["ring_id"]} if Design else None,
         # A legacy gallery copy (same images as a master, no refinement of its own): where it can be merged
         "merge": None if Use else Merge.MergeTarget(Ctx, Ctx.Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))),
+        # Lineage: the design this one was refined from, and the designs refined from this one (variations)
+        "lineage": Lineage(Ctx, DesignId),
         "choices": Choices,
         "ai_usage": {"requests": len(Usage),
                      "by_kind": {K: sum(1 for U in Usage if U["kind"] == K) for K in sorted({U["kind"] for U in Usage})},

@@ -50,6 +50,11 @@ async def test_images_only_is_refined_in_place_but_a_movie_makes_it_a_master(HF)
     Ev = next(E for E in S["timeline"] if E["kind"] == "design_forked")
     assert Ev["data"]["reason"] == "movie" and Ev["data"]["source_ring_id"] == "R-1001-R1B"
     assert "Generation failed" not in S["session"]["path"] and S["session"]["stage_times"]["generated"]    # its first batch is the refinement
+    # Lineage both ways: the variation points at its master and the option it was refined from; the master lists it
+    assert S["lineage"]["source"] == {"design_id": Did, "title": D["title"], "ring_id": "R-1001", "option_ring_id": "R-1001-R1B"}
+    M = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()
+    assert M["lineage"]["source"] is None and [V["ring_id"] for V in M["lineage"]["variations"]] == ["R-1002"]
+    assert M["lineage"]["variations"][0]["own"] and M["lineage"]["variations"][0]["from_option"] == "R-1001-R1B"
     # One Hi3D model per design still applies: the fork sees the master's model only once the master has one
     assert S["three_d_defaults"]["source_model"] is None
 

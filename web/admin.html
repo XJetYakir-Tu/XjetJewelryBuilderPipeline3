@@ -644,6 +644,11 @@
         </form>
       </div>
 
+      <!-- Filters that persist between visits can hide new sessions: say so, with the way out -->
+      <div x-show="filtersActive && sessionsState === 'loaded' && sessionsFiltered.length !== sessions.length" class="px-4 md:px-6 py-2 text-[12px] bg-amber-50 text-amber-900 border-b border-amber-200 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span x-text="'Showing ' + sessionsFiltered.length + ' of ' + sessions.length + ' sessions — ' + activeFilterText()"></span>
+        <button class="underline" @click="resetFilters()">Show all sessions</button>
+      </div>
       <!-- Phones: one card per session (identity · status · customer · last activity) -->
       <ul class="md:hidden divide-y divide-zinc-100" x-show="sessionsFiltered.length">
         <template x-for="x in sessionsFiltered" :key="'m' + x.session_id">
@@ -795,6 +800,16 @@
               <span class="text-[12px] text-zinc-500" x-show="sd.user" x-text="sd.user ? sd.user.used + ' / ' + sd.user.max + ' generations used' : ''"></span>
             </p>
             <p class="text-sm text-zinc-500 italic" x-text="'“' + sd.session.prompt + '”'"></p>
+            <!-- Lineage: refined from … / variations made from this design -->
+            <p x-show="sd.lineage?.source" class="text-[13px] text-zinc-600">Refined from
+              <a class="underline" :href="'#/sessions/' + (sd.lineage?.source?.design_id || '')" x-text="(sd.lineage?.source?.title || '') + ' ' + (sd.lineage?.source?.ring_id || '')"></a><span x-show="sd.lineage?.source?.option_ring_id" x-text="' (option ' + (sd.lineage?.source?.option_ring_id || '') + ')'"></span>
+              — that design stays as it was; this is a design of its own.</p>
+            <p x-show="sd.lineage?.variations?.length" class="text-[13px] text-zinc-600 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span x-text="'Variations made from this design (' + (sd.lineage?.variations?.length || 0) + '):'"></span>
+              <template x-for="v in sd.lineage?.variations || []" :key="v.design_id">
+                <a class="underline whitespace-nowrap" :href="'#/sessions/' + v.design_id" :title="(v.from_option ? 'From option ' + v.from_option + ' · ' : '') + (v.own ? 'XJet\'s own variation' : 'A customer\'s variation')" x-text="v.title + ' ' + v.ring_id + (v.own ? '' : ' · customer')"></a>
+              </template>
+            </p>
           </div>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm pt-3 border-t border-zinc-100">

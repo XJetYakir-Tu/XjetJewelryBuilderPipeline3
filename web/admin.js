@@ -182,6 +182,7 @@ function adminApp() {
 
     async init() {
       window.addEventListener('hashchange', () => this.route());
+      this.startSessionsRefresh();
       this.installZoom();
       try {   // the Sessions filters survive a reload
         const f = JSON.parse(sessionStorage.getItem('p3_admin_filters') || 'null');
@@ -474,8 +475,8 @@ function adminApp() {
     // ── sessions ───────────────────────────────────────────────────────
     // Three states for every list: loading (skeleton) · loaded (rows, or a real empty message) · failed (retry)
     sessionsState: 'idle', galleryState: 'idle',
-    async loadSessions() {
-      this.sessionsState = 'loading';
+    async loadSessions(opts = {}) {
+      if (!opts.quiet) this.sessionsState = 'loading';
       try {
         const r = await this.api('GET', '/api/admin/sessions' + (this.sMock ? '?include_mock=true' : ''));
         this.sessions = r.sessions; this.idleMinutes = r.idle_minutes; this.mockSessions = r.mock_sessions; this.retired = r.retired || [];
@@ -488,6 +489,26 @@ function adminApp() {
       try { sessionStorage.setItem('p3_admin_filters', JSON.stringify({ sq: this.sq, sStage: this.sStage, sBag: this.sBag, s3d: this.s3d, sMock: this.sMock, sAttention: this.sAttention, sSort: this.sSort })); } catch (_) {}
     },
     resetFilters() { this.sq = ''; this.sStage = ''; this.sBag = ''; this.s3d = ''; this.sAttention = false; this.saveFilters(); },
+    activeFilterText() {
+      const parts = [];
+      if (this.sq.trim()) parts.push('search “' + this.sq.trim() + '”');
+      if (this.sAttention) parts.push('Needs attention only');
+      if (this.sStage) parts.push('stopped at ' + (this.stageOptions.find(o => o[0] === this.sStage)?.[1] || this.sStage));
+      if (this.sBag) parts.push(this.sBag === 'yes' ? 'reached Bag' : 'no Bag');
+      if (this.s3d) parts.push(this.s3d === 'any' ? 'has 3D' : 'no 3D');
+      return parts.length ? 'filters on: ' + parts.join(', ') : 'filters on';
+    },
+    // The list refreshes itself while it is open (new sessions appear without a reload), and when the tab comes back
+    _sessionsTimer: null,
+    startSessionsRefresh() {
+      if (this._sessionsTimer) return;
+      this._sessionsTimer = setInterval(() => {
+        if (this.ok && this.tab === 'sessions' && !this.sessionId && !document.hidden && this.sessionsState === 'loaded') this.loadSessions({ quiet: true }).catch(() => {});
+      }, 30000);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && this.ok && this.tab === 'sessions' && !this.sessionId) this.loadSessions({ quiet: true }).catch(() => {});
+      });
+    },
     get filtersActive() { return !!(this.sq.trim() || this.sStage || this.sBag || this.s3d || this.sAttention); },
     // Search by what staff actually use: Ring ID (R-1013), option ID (R-1013-B), design name, Order ID, customer, email
     sessionMatches(x, q) {
