@@ -129,6 +129,7 @@ function p3App() {
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
     gallery: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
     heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the gallery rings
+    zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
     previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null, _swipeX: null,
     menuOpen: false,                   // mobile navigation
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
@@ -321,6 +322,15 @@ function p3App() {
       this.galleryState = 'loading';
       try { this.gallery = (await this.api('GET', '/api/gallery', null, { noAuth: true })).items || []; this.galleryState = 'loaded'; }
       catch (_) { this.galleryState = 'failed'; }
+    },
+    // A My Designs thumbnail enlarges on hover: a floating preview beside the list, on whichever side has room
+    showZoom(ev, src, label) {
+      if (!window.matchMedia || !window.matchMedia('(hover: hover)').matches) return;        // no hover on touch screens
+      const r = ev.currentTarget.getBoundingClientRect(), size = Math.min(360, window.innerWidth - 32, window.innerHeight - 96);
+      let x = r.left - size - 14;                                                           // the list sits at the right edge: open to the left
+      if (x < 16) x = Math.min(window.innerWidth - size - 16, r.right + 14);
+      const y = Math.max(16, Math.min(r.top + r.height / 2 - size / 2, window.innerHeight - size - 56));
+      this.zoom = { src, label, x, y, size };
     },
     get heroRing() { return this.gallery[Math.min(this.heroIndex, Math.max(this.gallery.length - 1, 0))] || null; },
     // The hero shows every gallery ring in turn: random order (each ring once per round), a smooth
