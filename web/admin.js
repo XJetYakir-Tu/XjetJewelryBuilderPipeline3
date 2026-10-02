@@ -121,6 +121,8 @@ const EVENTS = {
   gallery_started: ['Started from gallery', 'bg-amber-100 text-amber-800'],
   gallery_reopened: ['Reopened from gallery', 'bg-amber-100 text-amber-800'],
   gallery_refined: ['Refined from gallery', 'bg-violet-100 text-violet-700'],
+  design_forked: ['Refined into a new design', 'bg-violet-100 text-violet-700'],
+  admin_refinement_split: ['Refinement moved to its own design', 'bg-amber-100 text-amber-800'],
   legacy_copy_merged: ['Legacy copy merged', 'bg-amber-100 text-amber-800'],
   design_removed: ['Removed from My Designs', 'bg-zinc-200 text-zinc-600'],
   refinement: ['Refinement', 'bg-violet-100 text-violet-700'],
@@ -531,6 +533,20 @@ function adminApp() {
       } catch (e) { /* suggestions are a convenience only */ }
     },
     pickName(n) { this.rename.title = n; this.rename.force = false; this.rename.error = ''; },
+    // A refinement that landed inside a master (before masters became untouchable) becomes a design of its own
+    async splitBatch(b) {
+      const ok = await this.ask({ title: `Move this refinement into a design of its own?`,
+        text: `“${b.user_text}” and everything made from its images (movie, choices, bag lines, orders, 3D requests) move to a new design named in the lineage of ${this.sd.session.title}. ` +
+              `${this.sd.session.ring_id} keeps its original images, its gallery image, its 3D model and its orders, and its selection goes back to the option that was refined. This cannot be undone.`,
+        confirmLabel: 'Move into its own design', danger: true });
+      if (!ok) return;
+      try {
+        const r = await this.api('POST', '/api/admin/batches/' + encodeURIComponent(b.id) + '/split', {});
+        this.notify(`Refinement moved to ${r.title} (${r.ring_id})`);
+        this.sessions = []; this.attention = null;
+        this.go('#/sessions/' + encodeURIComponent(r.design_id));
+      } catch (e) { this.fail(e); }
+    },
     // A legacy gallery copy is the same ring as its master: fold it back (one Ring ID, one 3D model)
     async mergeCopy() {
       const m = this.sd?.merge; if (!m) return;
@@ -1165,6 +1181,12 @@ function adminApp() {
       if (e.kind === 'gallery_reopened') return 'Opened the shared design again';
       if (e.kind === 'legacy_copy_merged') return `${d.copy_ring_id || ''} (${d.copy_title || ''}) — a copy of this ring from before shared designs — was merged into ${d.master_ring_id || 'this ring'}` + (d.orders && d.orders.length ? '; orders ' + d.orders.join(', ') : '') + (d.by ? ` (${d.by})` : '');
       if (e.kind === 'gallery_refined') return 'Refinement of ' + (d.source_ring_id || 'the gallery image') + ' into a design of their own';
+      if (e.kind === 'design_forked') {
+        const why = { movie: 'already had a 360° movie', '3d': 'already had a 3D request', order: 'already had an order', quote: 'already had a quote request',
+                      gallery: 'is in the gallery', split: 'was split off by ' + (d.by || 'the admin') }[d.reason] || 'is a master';
+        return 'Refinement of ' + (d.source_ring_id || 'the selected image') + ' into this new design — the original ' + why + ', so it stays as it was';
+      }
+      if (e.kind === 'admin_refinement_split') return `Refinement “${d.text || ''}” moved into its own design ${d.new_ring_id || ''} (${d.new_title || ''}) by ${d.by || 'admin'}`;
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
       if (e.kind.startsWith('admin_3d')) return [d.production_size && 'US ' + d.production_size, d.material_id && this.materialLabel(d.material_id),
                 d.reused_raw_mesh && 'reused Hi3D model', d.status, d.weight_g != null && d.weight_g + ' g'].filter(Boolean).join(' · ');

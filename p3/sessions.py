@@ -206,6 +206,9 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
     SourceRefs = RingIds.CandidateRefs(Db, list({D["source_design_id"] for D, _ in Journeys if D.get("source_design_id")}
                                                  | {U["design_id"] for U in Uses}))
     OptionRefs = RingIds.CandidateRefs(Db, Ids)
+    SourceOwners = {R["id"]: R["owner_account_id"] for R in Db.All(
+        f"SELECT id, owner_account_id FROM designs WHERE id IN ({','.join('?' * len(SourceIds))})", SourceIds)} if (
+        SourceIds := list({D["source_design_id"] for D, _ in Journeys if D.get("source_design_id")})) else {}
     OrderRefsByOwner = defaultdict(set)              # (design, owner) → order references
     for R in Db.All(f"SELECT l.design_id, o.owner_account_id, o.order_no FROM order_lines l JOIN orders o ON o.id = l.order_id "
                     f"WHERE l.design_id IN ({Q})", Ids):
@@ -284,7 +287,9 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "selected_candidate_id": Selected, "selected_ring_id": OptionRefs.get(Selected) if Selected else None,
             "option_ring_ids": sorted(OptionRefs[X["id"]] for X in C[Did] if X["id"] in OptionRefs),
             "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
-            "origin": "gallery" if (U or D.get("source_design_id")) else "prompt",
+            # A journey from a gallery image (a customer's use, or their fork of a master); the owner's own
+            # refinement of their own master is a new design of their own, not a gallery journey
+            "origin": "gallery" if (U or (D.get("source_design_id") and SourceOwners.get(D["source_design_id"]) != Owner)) else "prompt",
             # A design copied from the gallery before shared master designs existed (kept as history, labelled)
             "legacy_copy": bool(not U and D.get("source_design_id") and not Db.One(
                 "SELECT 1 AS x FROM batches WHERE design_id = ? AND kind = 'refine'", (Did,))),

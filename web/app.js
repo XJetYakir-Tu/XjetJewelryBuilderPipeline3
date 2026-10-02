@@ -838,10 +838,12 @@ function p3App() {
           parent_candidate_id: this.selectedId, instruction: text, client_request_id: newRequestId(),
         });
         if (this.design?.id !== designId) return;
-        if (b.design_id !== designId) {           // a shared gallery design: the refinement is a design of your own
+        if (b.design_id !== designId) {           // a shared gallery design, or one that already has a movie / 3D / order: a design of your own
+          const was = this.design?.title, own = !this.design?.shared;
           this.userInput = '';
           await this.openDesign(b.design_id);
           this.loadDesigns();
+          if (own && this.design?.title) this.showToast(`Saved as a new design “${this.design.title}” — “${was}” stays as it is`, { ms: 7000 });
           return;
         }
         this.design.batches.push(b);

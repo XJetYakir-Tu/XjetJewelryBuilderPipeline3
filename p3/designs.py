@@ -73,9 +73,15 @@ class DesignService:
                                   (Who.AccountId, DesignId, Selected))
             Customization = self.Customize.ToJson(Row) if Row else None
         SourceCandidate = Use["source_candidate_id"] if Use else D.get("source_candidate_id")
+        # Derived from another design: a gallery journey when that design belongs to someone else (a customer's
+        # fork of a master); the owner's own refinement of their own master is a design of their own
+        Source = self.Ctx.Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (D["source_design_id"],)) if D.get("source_design_id") else None
+        FromGallery = bool(Use) or bool(D.get("source_design_id") and (Source is None or Source["owner_account_id"] != D["owner_account_id"]))
         return {"id": D["id"], "title": D["title"], "prompt": D["prompt"],
                 "selected_candidate_id": Selected, "created_at": Use["started_at"] if Use else D["created_at"],
                 "updated_at": Use["last_active_at"] if Use else D["updated_at"], "batches": Batches,
                 "customization": Customization, "shared": bool(Use),
-                "origin": "gallery" if (Use or D.get("source_design_id")) else "prompt",
-                "source_ring_id": RingIds.CandidateRef(self.Ctx.Db, SourceCandidate) if SourceCandidate else None}
+                "origin": "gallery" if FromGallery else "prompt",
+                "source_ring_id": RingIds.CandidateRef(self.Ctx.Db, SourceCandidate) if SourceCandidate else None,
+                # Set once the design has a movie, 3D, order or gallery tile: a refinement is then saved as a new design
+                "refinement_creates_new_design": "shared" if Use else self.Images.CommittedReason(DesignId)}

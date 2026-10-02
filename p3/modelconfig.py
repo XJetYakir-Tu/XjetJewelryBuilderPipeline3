@@ -132,7 +132,29 @@ def _ImageParams(AspectDefault: str) -> tuple:
 VariationGroup = ("Refinement variations — the same instruction for all four images, plus one directive per image "
                   "(added to the end of that image's prompt; refinements only, not New Designs from an uploaded photo). "
                   "Blank = that image gets the plain prompt, as before.")
+# The four are deliberately far apart (no gentle gradient): A stays faithful, B pushes the change to an
+# extreme, C rebuilds the proportions and placement, D is free to be a different ring in the same family.
+# B–D say explicitly that they override the "preserve everything" instruction above where the two conflict.
+_Override = ("Where this conflicts with any instruction above to preserve the design, this directive wins. ")
 VariationDefaults = {
+    "a": "Image A of four — the faithful version. Apply the requested change exactly and nothing else: every other "
+         "detail, proportion, finish and the metal stay identical to the reference image.",
+    "b": "Image B of four — the extreme version. " + _Override +
+         "Push the requested change as far as it can go: at least three times stronger than a minimal edit, so that it "
+         "dominates the design and is obvious at first glance. Other parts of the ring may change where the extreme "
+         "version demands it; the ring stays wearable and the metal stays the same.",
+    "c": "Image C of four — the reinterpretation. " + _Override +
+         "Rebuild the ring around the requested change with clearly different proportions and placement: move it, "
+         "scale it up or down dramatically, repeat it, wrap it around the band or let it take over the whole shank, so "
+         "that the silhouette itself changes. Keep only the metal and the fact that it is the same type of ring.",
+    "d": "Image D of four — the free variant. " + _Override +
+         "Treat the requested change as the brief for a new design in the same family: choose a different structure, "
+         "finish, texture and detailing that express the change boldly. It may look completely different from the "
+         "reference image; only the metal must stay the same.",
+}
+# Earlier default texts: an installation that still runs one of these sets, unedited, is moved to the current
+# defaults on start (a new visible version); edited texts are never touched.
+PreviousVariationDefaults = [{
     "a": "This is image A of four: the most faithful, conservative version. Apply exactly the requested change and "
          "nothing more; keep every other detail, proportion, finish and the metal identical to the reference image.",
     "b": "This is image B of four: a bolder version of the requested change. Make the change clearly more pronounced "
@@ -144,11 +166,11 @@ VariationDefaults = {
     "d": "This is image D of four: the requested change with a different finish or detail treatment (surface texture, "
          "polish, edge or ornament detail), keeping the form and every other feature of the design identical to the "
          "reference image.",
-}
-VariationLabels = {"a": "Image A — most faithful / conservative version of the requested change.",
-                   "b": "Image B — bolder version of the requested change.",
-                   "c": "Image C — alternative interpretation in proportions or placement.",
-                   "d": "Image D — different finish or detail treatment."}
+}]
+VariationLabels = {"a": "Image A — the faithful version: exactly the requested change, nothing else.",
+                   "b": "Image B — the extreme version: the change pushed as far as it can go.",
+                   "c": "Image C — the reinterpretation: different proportions and placement, the silhouette may change.",
+                   "d": "Image D — the free variant: a different ring in the same family, may be completely different."}
 _VariationParams = tuple(
     Param(f"variation_{K}", "text", VariationLabels[K] + " Appended to the end of this image's prompt in a refinement. "
           "Blank = no directive for this image (same prompt as before).", Default=VariationDefaults[K], MaxLength=2000,
@@ -511,6 +533,22 @@ class ModelConfigStore:
             V = self._Insert(ModelId, Validate(ModelId, Params), "update",
                              "Refinement variations A–D added with their default directives (edit or blank them here)")
             self._Activate(ModelId, V.Id, "update")
+        self._UpgradeUneditedDefaults()
+
+    def _UpgradeUneditedDefaults(self) -> None:
+        """An installation still running an earlier set of default directives, unedited, gets the current
+        defaults as a new visible version. Texts the admin changed (or blanked) are never touched."""
+        Spec = Models.get("nano-banana-pro-edit")
+        if Spec is None:
+            return
+        Active = self.Active(Spec.Id)
+        Current = {K: Active.Params.get(f"variation_{K}") for K in "abcd"}
+        if Current == VariationDefaults or Current not in PreviousVariationDefaults:
+            return
+        Params = {**Active.Params, **{f"variation_{K}": V for K, V in VariationDefaults.items()}}
+        V = self._Insert(Spec.Id, Validate(Spec.Id, Params), "update",
+                         "Refinement variations A–D: stronger default directives (the earlier defaults were in use, unedited)")
+        self._Activate(Spec.Id, V.Id, "update")
 
     def _Row(self, R: dict) -> Version:
         return Version(R["id"], R["model"], R["number"], json.loads(R["config_json"]), R["created_at"],

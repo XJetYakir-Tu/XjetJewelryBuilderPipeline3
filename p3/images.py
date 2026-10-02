@@ -91,8 +91,12 @@ class ImageService:
         Instruction = ValidateText(Instruction, "refinement")
         D = self.RequireDesign(Who, DesignId)
         # A customer refining a shared gallery design gets their own design (a fork): the XJet master
-        # design is never changed, and the four new images are theirs alone.
-        Fork = D["owner_account_id"] != Who.AccountId
+        # design is never changed, and the four new images are theirs alone. The owner's own design is
+        # treated the same way once it has become a master (a 360° movie, a 3D request, an order or a
+        # gallery tile): the refinement is a new design, so what was made or sold stays exactly as it was.
+        Shared = D["owner_account_id"] != Who.AccountId
+        Committed = None if Shared else self.CommittedReason(DesignId)
+        Fork = Shared or bool(Committed)
         if ClientRequestId:
             Existing = Db.One("SELECT id FROM designs WHERE owner_account_id = ? AND client_request_id = ?",
                               (Who.AccountId, ClientRequestId)) if Fork else None
@@ -133,10 +137,33 @@ class ImageService:
         if Fork:
             from p3 import ringids as RingIds
             from p3 import sessions as Sessions
-            Sessions.Record(self.Ctx, Who.AccountId, "gallery_refined", Target, source_design_id=DesignId,
-                            source_ring_id=RingIds.CandidateRef(Db, ParentCandidateId), parent_candidate_id=ParentCandidateId)
+            if Shared:
+                Sessions.Record(self.Ctx, Who.AccountId, "gallery_refined", Target, source_design_id=DesignId,
+                                source_ring_id=RingIds.CandidateRef(Db, ParentCandidateId), parent_candidate_id=ParentCandidateId)
+            else:
+                Sessions.Record(self.Ctx, Who.AccountId, "design_forked", Target, source_design_id=DesignId,
+                                source_ring_id=RingIds.CandidateRef(Db, ParentCandidateId), parent_candidate_id=ParentCandidateId,
+                                reason=Committed)
         self._StartBatch(BatchId)
         return self.GetBatch(BatchId)
+
+    def CommittedReason(self, DesignId: str) -> str | None:
+        """Why a design is a master that a refinement must not change any more: it sits in the gallery, has
+        an order or quote request, a 3D request, or a 360° movie (made or being made). None = still a draft
+        of images only, which a refinement may extend in place."""
+        Db = self.Ctx.Db
+        if Db.One("SELECT 1 AS x FROM gallery_items WHERE design_id = ?", (DesignId,)):
+            return "gallery"
+        if Db.One("SELECT 1 AS x FROM order_lines WHERE design_id = ?", (DesignId,)):
+            return "order"
+        if Db.One("SELECT 1 AS x FROM quote_requests WHERE design_id = ?", (DesignId,)):
+            return "quote"
+        if Db.One("SELECT 1 AS x FROM session_3d WHERE design_id = ?", (DesignId,)):
+            return "3d"
+        if Db.One("SELECT 1 AS x FROM movies m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
+                  "WHERE b.design_id = ? AND m.status IN ('queued', 'running', 'ready')", (DesignId,)):
+            return "movie"
+        return None
 
     def _InsertBatch(self, Conn, BatchId, DesignId, Kind, ParentId, UserText, RefPath, ClientRequestId):
         Img = self.Ctx.Gen.Images

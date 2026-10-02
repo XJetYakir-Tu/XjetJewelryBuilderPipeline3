@@ -553,6 +553,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             Names = Naming.Suggestions(D["prompt"], Taken, N=8)
         return {"id": DesignId, "title": D["title"], "suggestions": Names, "lineage": Master["title"] if Master else None}
 
+    @App_.post("/api/admin/batches/{BatchId}/split")
+    async def AdminSplitRefinement(BatchId: str, authorization: str | None = Header(None)):
+        """A refinement that landed inside a master becomes a design of its own (p3/merge.py SplitRefinement)."""
+        Who = Admin(authorization)
+        return Merge.SplitRefinement(Ctx, BatchId, Who.Id)
+
     @App_.post("/api/admin/designs/{DesignId}/merge")
     async def AdminMergeLegacyCopy(DesignId: str, authorization: str | None = Header(None)):
         """Fold a legacy gallery copy back into its master: one ring, one Ring ID, one 3D model (p3/merge.py)."""

@@ -42,7 +42,7 @@ def test_the_edit_model_has_four_pipeline_only_directives_with_defaults():
         P = Spec.Param(f"variation_{K}")
         assert P.Kind == "text" and P.Default == VariationDefaults[K] and P.Group and not P.Required
     assert not any(P.Internal for P in Models["nano-banana-pro"].Params)      # New Designs are untouched
-    assert "preserv" in VariationDefaults["b"] or "stay exactly" in VariationDefaults["b"]  # bolder, but the rest is kept
+    assert "directive wins" in VariationDefaults["b"] and "faithful" in VariationDefaults["a"]        # far apart, not a gradient
 
 
 def test_directives_never_become_provider_fields_and_land_at_the_end_of_the_prompt():
