@@ -239,7 +239,7 @@ def SessionDetail(Ctx: Context, Production, DesignId: str, Prices) -> dict:
     }
 
 
-def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None:
+def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery=None) -> None:
     """Add the admin page and API to the (inner) app. `Page(name)` renders a web/ page."""
 
     def Admin(Authorization: str | None) -> AdminPrincipal:
@@ -311,6 +311,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
         for T in D["three_d"]:                          # the Hi3D thumbnail is shown first (an <img>: signed link)
             if (T["live"].get("raw") or {}).get("thumbnail"):
                 T["live"]["thumbnail_url"] = _SignedUrl(T["id"], "thumbnail")
+        D["gallery"] = Gallery.ForDesign(DesignId) if Gallery else None     # is this design in the Inspiration Gallery?
         return D
 
     @App_.post("/api/admin/sessions/{DesignId}/3d")
@@ -456,6 +457,29 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices) -> None
             return Ctx.Models.Restore(_Model(ModelId), str(Body_.get("version_id") or ""), Who.Id)
         except ConfigError as E:
             return _Invalid(E)
+
+    # ── Inspiration Gallery: curated XJet designs shown on the customer site ──────
+    @App_.get("/api/admin/gallery")
+    async def AdminGallery(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return {"items": Gallery.AdminList()}
+
+    @App_.post("/api/admin/gallery")
+    async def AdminGalleryAdd(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Gallery.Add(str(Body_.get("design_id") or ""), Body_.get("candidate_id") or None, Who.Id)
+
+    @App_.delete("/api/admin/gallery/{ItemId}")
+    async def AdminGalleryRemove(ItemId: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        Gallery.Remove(ItemId)
+        return {"items": Gallery.AdminList()}
+
+    @App_.post("/api/admin/gallery/{ItemId}/move")
+    async def AdminGalleryMove(ItemId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Admin(authorization)
+        Gallery.Move(ItemId, str(Body_.get("direction") or "up"))
+        return {"items": Gallery.AdminList()}
 
     # ── Material pricing (density, price $/g, cost $/g, website fixed price) ─────
     def _MaterialTable() -> dict:

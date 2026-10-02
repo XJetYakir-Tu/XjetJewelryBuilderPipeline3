@@ -15,6 +15,7 @@ const STORE_KEY = 'p3_state' + (BASE ? ':' + BASE : '');
 // has its own token store, so it uses its own keys and never reads or overwrites P2's session.
 const SESSION_KEY = 'p3_session' + (BASE ? ':' + BASE : '');
 const PROFILE_KEY = 'p3_profile' + (BASE ? ':' + BASE : '');
+const GALLERY_KEY = 'p3_gallery_pending' + (BASE ? ':' + BASE : '');   // the gallery design chosen before signing in
 const STUDIO_VIEWS = ['ai-studio', 'review', 'checkout'];
 const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'designers',
                     'terms', 'privacy', 'shipping-returns', 'contact'];
@@ -105,6 +106,7 @@ function p3App() {
 
     // ── preview overlay (P2 fullscreen zoom) ─────────────────────────
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
+    gallery: [], galleryItem: null, galleryBusy: false, galleryError: '',      // Inspiration Gallery (real XJet designs)
     previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null,
 
     // ── customize ────────────────────────────────────────────────────
@@ -132,6 +134,7 @@ function p3App() {
       }
       try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch { this.health = null; }
       this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
+      this.api('GET', '/api/gallery', null, { noAuth: true }).then(r => { this.gallery = r.items || []; }).catch(() => {});
       const lux = this.materialsOf('luxury');
       this.lastMaterialByGroup.luxury = lux.length ? lux[0].id : null;
       try {
@@ -162,7 +165,7 @@ function p3App() {
       if (fromLink) {
         // Record the sign-in (verify page / token email link); the session is already set.
         this.api('POST', '/api/register-token', { Token: this.token, Via: 'link' }, { noAuth: true }).catch(() => {});
-        this._enterDesignAfterSignIn(true);
+        await this._afterSignIn(true);
         return;
       }
       if (st.designId && STUDIO_VIEWS.includes(st.view)) {
@@ -267,6 +270,46 @@ function p3App() {
       this._refreshQuota();             // authoritative count every time the Design screen opens
     },
 
+    // ── Inspiration Gallery: a real XJet design as the starting point ─────
+    openGallery(g) { this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; },
+    closeGallery() { this.galleryItem = null; this.galleryBusy = false; },
+    _pendingGallery() { try { return localStorage.getItem(GALLERY_KEY) || ''; } catch { return ''; } },
+    _setPendingGallery(id) { try { id ? localStorage.setItem(GALLERY_KEY, id) : localStorage.removeItem(GALLERY_KEY); } catch {} },
+    async makeItYours() {
+      const g = this.galleryItem; if (!g) return;
+      if (!this.userSession) {               // sign in first; the chosen design is remembered and opened right after
+        this._setPendingGallery(g.id);
+        this.closeGallery();
+        this.openRegModal();
+        return;
+      }
+      await this.startFromGallery(g.id);
+    },
+    // The customer gets their own copy of the design's four options (nothing is generated or charged),
+    // with the gallery image selected, and continues exactly as with any design of their own.
+    async startFromGallery(id) {
+      this.galleryBusy = true; this.galleryError = '';
+      try {
+        const d = await this.api('POST', `/api/gallery/${encodeURIComponent(id)}/start`, { client_request_id: newRequestId() });
+        this._setPendingGallery('');
+        this.closeGallery(); this.showRegModal = false; this.closePreview(); this.signInNotice = null;
+        await this.openDesign(d.id);
+        this.loadDesigns(); this._refreshQuota();
+      } catch (e) {
+        this.galleryBusy = false;
+        if (this.galleryItem) { this.galleryError = e.message; return; }
+        this._setPendingGallery('');           // resumed after sign-in and the design is gone: plain Design screen
+        this._enterDesignAfterSignIn(false);
+        this.actionError = e.message;
+      }
+    },
+    // After any sign-in: straight into the gallery design the customer chose, else the Design screen.
+    async _afterSignIn(fromVerification) {
+      const pending = this._pendingGallery();
+      if (pending) { await this.startFromGallery(pending); return; }
+      this._enterDesignAfterSignIn(fromVerification);
+    },
+
     // ── Sign-in / registration (P2 JewelryB2C2) ───────────────────────
     openRegModal(mode = 'email') {
       this.regMode = mode;
@@ -298,7 +341,7 @@ function p3App() {
         if (Result.name) this._saveUserProfile(Result.name, null);
         this.showRegModal = false;
         this.regForm = { token: '', name: '', email: '' };
-        this._enterDesignAfterSignIn(false);   // land on the Design screen, as P2 does
+        await this._afterSignIn(false);        // the chosen gallery design, else the Design screen (as P2)
         this.refreshBag();
       } catch (E) {
         this.regError = E.message;

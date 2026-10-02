@@ -48,7 +48,7 @@
               x-text="mode === 'mock' ? 'Mock AI' : 'Live AI'"></span>
       </div>
       <nav class="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs uppercase tracking-widest">
-        <template x-for="t in [['dashboard','Dashboard'],['sessions','Sessions'],['users','Users'],['models','AI Prompts & Params']]">
+        <template x-for="t in [['dashboard','Dashboard'],['sessions','Sessions'],['gallery','Gallery'],['users','Users'],['models','AI Prompts & Params']]">
           <a :href="'#/' + t[0]" :class="tab === t[0] ? 'text-black font-semibold' : 'text-zinc-500 hover:text-black'" x-text="t[1]"></a>
         </template>
         <a :href="BASE + '/dev'" class="text-zinc-500 hover:text-black">Developer tools</a>
@@ -330,6 +330,40 @@
   </main>
 
   <!-- ══════════════════════════ Dashboard ══════════════════════════ -->
+  <!-- ── Inspiration Gallery: the XJet designs shown on the customer site ─────── -->
+  <main x-show="ok && tab === 'gallery'" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+    <section class="card p-6 space-y-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <p class="lbl">Inspiration Gallery (<span x-text="galleryItems.length"></span>)</p>
+        <p class="text-[11px] text-zinc-400">Shown on the customer home page (first 8) and the Inspiration page, in this order. Add a design from its session page: Sessions → open a session → <strong>Show in gallery</strong>.</p>
+      </div>
+      <p x-show="!galleryItems.length" class="text-sm text-zinc-500">No designs in the gallery yet — customers see "New designs are being added to the gallery".</p>
+      <div class="overflow-x-auto" x-show="galleryItems.length">
+      <table class="w-full">
+        <thead><tr><th>#</th><th></th><th>Design</th><th>Image</th><th class="text-right">Started by customers</th><th>Added</th><th class="text-right">Actions</th></tr></thead>
+        <tbody>
+          <template x-for="(g, i) in galleryItems" :key="g.id">
+            <tr>
+              <td class="tabular-nums text-zinc-500" x-text="g.position"></td>
+              <td class="w-16"><div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden"><img :src="g.image_url" class="w-full h-full object-cover" alt=""></div></td>
+              <td><a class="font-medium hover:underline" :href="'#/sessions/' + encodeURIComponent(g.design_id)" x-text="g.title"></a><p class="text-[11px] text-zinc-500 truncate max-w-[360px]" x-text="g.prompt"></p></td>
+              <td class="font-mono text-xs whitespace-nowrap"><span x-text="g.ring_id"></span> <span x-show="!g.ready" class="badge bg-red-100 text-red-700 ml-1">image missing</span></td>
+              <td class="text-right tabular-nums" x-text="g.starts"></td>
+              <td class="text-zinc-500 text-xs whitespace-nowrap" x-text="dateTime(g.created_at)"></td>
+              <td class="text-right whitespace-nowrap space-x-3 text-xs">
+                <button class="text-zinc-500 hover:underline disabled:opacity-30" :disabled="i === 0" @click="galleryMove(g.id, 'up')">↑ Up</button>
+                <button class="text-zinc-500 hover:underline disabled:opacity-30" :disabled="i === galleryItems.length - 1" @click="galleryMove(g.id, 'down')">↓ Down</button>
+                <button class="text-red-400 hover:underline" @click="galleryRemove(g)">Remove</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      </div>
+      <p x-show="galleryMsg" class="text-sm text-red-600" x-text="galleryMsg"></p>
+    </section>
+  </main>
+
   <main x-show="ok && tab === 'dashboard'" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
     <template x-if="dash">
     <div class="space-y-8">
@@ -416,7 +450,8 @@
             <tr class="hover:bg-zinc-50 cursor-pointer" @click="go('#/sessions/' + encodeURIComponent(x.session_id))">
               <td class="w-16"><div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden" :class="x.thumbnail_url ? 'cursor-zoom-in' : ''"
                      @mouseenter="x.thumbnail_url && showZoom($event, x.thumbnail_url, (x.ring_id ? x.ring_id + ' · ' : '') + x.title)" @mouseleave="zoom = null"><img x-show="x.thumbnail_url" :src="x.thumbnail_url" class="w-full h-full object-cover" loading="lazy" alt=""></div>
-                <p class="font-mono text-[10px] text-zinc-500 mt-1 whitespace-nowrap" x-text="x.ring_id || ''"></p></td>
+                <p class="font-mono text-[10px] text-zinc-500 mt-1 whitespace-nowrap" x-text="x.ring_id || ''"></p>
+                <p x-show="x.source_ring_id" class="text-[10px] text-amber-700 whitespace-nowrap" :title="'Started from the gallery design ' + x.source_ring_id" x-text="'from ' + x.source_ring_id"></p></td>
               <td><p class="font-medium flex items-center gap-2"><span x-text="x.customer_name || '—'"></span>
                   <span class="badge !text-[9px] !px-1.5" :class="statusClass(x.user_status)" x-text="statusLabel(x.user_status)"></span></p>
                 <p class="text-[11px] text-zinc-500" x-text="x.customer_email || ''"></p></td>
@@ -458,6 +493,8 @@
             <div class="flex flex-wrap items-center gap-3">
               <h1 class="cinzel text-2xl" x-text="sd.session.title"></h1>
               <span class="font-mono text-sm px-2 py-0.5 border border-zinc-300 text-zinc-700" title="Ring ID — use it to refer to this design" x-text="sd.session.ring_id"></span>
+              <span x-show="sd.session.origin === 'gallery'" class="badge bg-amber-100 text-amber-800" x-text="'Started from gallery · ' + (sd.session.source_ring_id || '')"></span>
+              <span x-show="sd.gallery" class="badge bg-amber-100 text-amber-800" x-text="'In gallery #' + (sd.gallery?.position || '') + ' · ' + (sd.gallery?.starts || 0) + ' started'"></span>
               <span x-show="sd.session.mock" class="badge bg-amber-100 text-amber-800">Mock session — not counted in statistics</span>
               <span class="badge" :class="sd.session.state === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'" x-text="sd.session.state === 'active' ? 'Session active' : ('Session ended · ' + (sd.session.end_reason === 'new_design' ? 'new design started' : 'inactive'))"></span>
             </div>
@@ -480,7 +517,8 @@
 
       <!-- What exists: image · movie · 3D -->
       <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="card overflow-hidden"><p class="lbl px-4 pt-3 pb-2" x-text="'Selected image' + (sd.artifacts.ring_id ? ' · ' + sd.artifacts.ring_id : '')"></p>
+        <div class="card overflow-hidden"><div class="flex items-center justify-between gap-2 px-4 pt-3 pb-2"><p class="lbl" x-text="'Selected image' + (sd.artifacts.ring_id ? ' · ' + sd.artifacts.ring_id : '')"></p>
+            <button x-show="sd.artifacts.image_url" class="text-[10px] uppercase tracking-widest underline whitespace-nowrap" :class="sd.gallery ? 'text-amber-700' : 'text-zinc-500'" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery · remove' : 'Show in gallery'"></button></div>
           <div class="aspect-square bg-zinc-50 flex items-center justify-center"><img x-show="sd.artifacts.image_url" :src="sd.artifacts.image_url" class="w-full h-full object-contain" alt="">
             <span x-show="!sd.artifacts.image_url" class="text-xs text-zinc-400">No image</span></div></div>
         <div class="card overflow-hidden"><p class="lbl px-4 pt-3 pb-2">360° movie</p>
@@ -640,6 +678,7 @@
                 <div class="space-y-1">
                   <a :href="c.image_url" target="_blank" class="block aspect-square bg-zinc-100 border" :class="c.selected ? 'border-black border-2' : 'border-zinc-200'"><img x-show="c.image_url" :src="c.image_url" class="w-full h-full object-cover" loading="lazy" alt=""></a>
                   <p class="text-[11px] text-zinc-400"><span class="font-mono text-zinc-700" x-text="c.ring_id || ('Option ' + (c.slot + 1))"></span><span x-text="(c.selected ? ' · selected' : '') + (c.status !== 'ready' ? ' · ' + c.status : '')"></span></p>
+                  <button x-show="c.status === 'ready'" class="block text-[10px] uppercase tracking-widest underline" :class="sd.gallery?.candidate_id === c.id ? 'text-amber-700' : 'text-zinc-400 hover:text-zinc-700'" @click="sd.gallery?.candidate_id === c.id ? galleryRemove(sd.gallery) : galleryAdd(c.id)" x-text="sd.gallery?.candidate_id === c.id ? 'In gallery' : 'Use in gallery'"></button>
                   <template x-for="m in c.movies" :key="m.id"><a :href="m.url" target="_blank" class="text-[11px] underline" x-text="m.status === 'ready' ? '▶ 360° movie' : '360° movie · ' + m.status"></a></template>
                 </div>
               </template>

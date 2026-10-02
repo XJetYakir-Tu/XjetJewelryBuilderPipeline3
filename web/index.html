@@ -244,13 +244,15 @@
                     <h2 class="text-3xl md:text-4xl brand-font mb-4">What Will You Create?</h2>
                     <p class="text-zinc-500 text-sm max-w-xl mx-auto">Bands, signets, statement and stackable rings — if you can imagine it, we can make it. <span class="text-zinc-400">Pendants, charms and other categories are coming soon.</span></p>
                 </div>
+                <!-- Real XJet designs: one tap opens the design; "Make it yours" copies its four options into the customer's own design -->
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
-                    <template x-for="n in 8" :key="n">
-                        <div class="aspect-square bg-zinc-50 rounded-xl border border-zinc-100 flex flex-col items-center justify-center gap-2 text-zinc-400">
-                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                            <span class="text-[10px] uppercase tracking-widest">Coming Soon</span>
-                        </div>
+                    <template x-for="g in gallery.slice(0, 8)" :key="g.id">
+                        <button type="button" @click="openGallery(g)" class="group relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
+                            <img :src="g.image_url" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy">
+                            <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-zinc-700 bg-white/85 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0" style="color:#9A7230;">Make it yours →</span></span>
+                        </button>
                     </template>
+                    <div x-show="!gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-400 italic">New designs are being added to the gallery.</div>
                 </div>
                 <div class="text-center mt-10">
                     <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Your Design</button>
@@ -346,12 +348,13 @@
                 <p class="text-zinc-500 text-sm max-w-xl mx-auto">Bands, signets, statement and stackable rings — if you can imagine it, we can make it. <span class="text-zinc-400">Pendants, charms and other categories are coming soon.</span></p>
             </div>
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto mb-16">
-                <template x-for="n in 12" :key="n">
-                    <div class="aspect-square bg-zinc-50 rounded-xl border border-zinc-100 flex flex-col items-center justify-center gap-2 text-zinc-400">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                        <span class="text-[10px] uppercase tracking-widest">Coming Soon</span>
-                    </div>
+                <template x-for="g in gallery" :key="g.id">
+                    <button type="button" @click="openGallery(g)" class="group relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
+                        <img :src="g.image_url" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy">
+                        <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-zinc-700 bg-white/85 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0" style="color:#9A7230;">Make it yours →</span></span>
+                    </button>
                 </template>
+                <div x-show="!gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-400 italic">New designs are being added to the gallery.</div>
             </div>
             <div class="text-center"><button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Your Design</button></div>
         </main>
@@ -659,7 +662,7 @@
 
                                     <div x-show="!waitVariant" class="flex flex-col gap-4">
                                     <p x-show="!viewBatchGenerating" class="text-[15px] sm:text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#A9791F;"
-                                       x-text="viewBatch?.kind === 'refine' ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite'"></p>
+                                       x-text="viewBatch?.kind === 'refine' ? 'Here are four refinements — select your favourite' : (design?.origin === 'gallery' && viewBatch?.kind === 'initial' ? 'Your gallery pick and its three siblings — select your favourite' : 'Here are your four designs — select your favourite')"></p>
 
                                     <div x-show="viewBatch?.status === 'partial'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
                                         <span class="flex-1" x-text="readyCount(viewBatch) + ' of ' + viewBatch?.desired_count + ' designs are ready — some options could not be created.'"></span>
@@ -1388,6 +1391,29 @@
     </template>
 
     <!-- ── Fullscreen zoomable preview overlay (P2) ── -->
+    <!-- Inspiration Gallery lightbox: a real XJet design; "Make it yours" copies its four options into the customer's own design -->
+    <template x-if="galleryItem">
+        <div class="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" @click.self="closeGallery()" @keydown.escape.window="closeGallery()" role="dialog" aria-modal="true" :aria-label="galleryItem.title">
+            <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col md:flex-row fade-in">
+                <div class="md:w-3/5 bg-zinc-50 flex items-center justify-center p-4 md:p-6">
+                    <img :src="galleryItem.image_url" :alt="galleryItem.title" class="max-h-[46vh] md:max-h-[78vh] w-auto object-contain">
+                </div>
+                <div class="md:w-2/5 p-7 md:p-9 flex flex-col justify-center text-center md:text-left gap-4">
+                    <span class="text-[10px] uppercase tracking-[0.4em]" style="color:#C9A96E">Inspiration Gallery</span>
+                    <h3 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h3>
+                    <p class="brand-font text-xl leading-snug text-zinc-800">Love this design? Make it yours.</p>
+                    <p class="text-sm text-zinc-500 leading-relaxed">Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size and watch it in 360°.</p>
+                    <p x-show="galleryError" class="text-sm text-red-600" x-text="galleryError"></p>
+                    <div class="flex flex-col gap-3 pt-1">
+                        <button @click="makeItYours()" :disabled="galleryBusy" class="btn-gold py-4 text-xs uppercase tracking-[0.2em] stream-glow transition" x-text="galleryBusy ? 'Opening your design…' : 'Make it yours'"></button>
+                        <button @click="closeGallery()" class="btn-outline py-3 text-xs uppercase tracking-[0.2em]">Back to gallery</button>
+                    </div>
+                    <p x-show="!userSession" class="text-[11px] text-zinc-400">Sign in or register first — we'll bring you straight back to this design.</p>
+                </div>
+            </div>
+        </div>
+    </template>
+
     <template x-if="previewOpen">
         <div class="fixed inset-0 z-[100] flex items-center justify-center fade-in" style="background:rgba(248,248,248,0.97);"
              @click.self="closePreview()" @keydown.escape.window="closePreview()">

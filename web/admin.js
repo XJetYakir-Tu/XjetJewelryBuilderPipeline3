@@ -108,6 +108,7 @@ const STAGE_SHORT = { waiting_hi3d: 'Waiting for Hi3D', generating_3d: 'Generati
   queued: 'Queued', calculating_geometry: 'Geometry', exporting: 'Scaled STL' };
 const EVENTS = {
   design_created: ['Design', 'bg-blue-100 text-blue-700'],
+  gallery_started: ['Started from gallery', 'bg-amber-100 text-amber-800'],
   refinement: ['Refinement', 'bg-violet-100 text-violet-700'],
   movie: ['360° movie', 'bg-purple-100 text-purple-700'],
   mesh: ['3D', 'bg-green-100 text-green-700'],
@@ -139,6 +140,7 @@ function adminApp() {
     mProblems: [], mMessage: '', mBusy: false, preview: null,
     prices: null, pricesEdit: null, pricesBusy: false, pricesMsg: '', pricesErr: false,
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
+    galleryItems: [], galleryMsg: '',
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout Clicked']],
     chartKinds: [
       { key: 'images', label: 'Images', color: '#3b82f6' },
@@ -191,7 +193,7 @@ function adminApp() {
     async route() {
       if (this.dirty && this.tab === 'models' && !location.hash.startsWith('#/models/' + this.mid) &&
           !confirm('Discard unsaved changes to ' + this.mc?.model.label + '?')) { history.replaceState(null, '', '#/models/' + this.mid); return; }
-      const m = location.hash.match(/^#\/(dashboard|sessions|users|models)(?:\/(.+))?$/);
+      const m = location.hash.match(/^#\/(dashboard|sessions|gallery|users|models)(?:\/(.+))?$/);
       this.tab = m ? m[1] : 'sessions';
       const id = m && m[2] ? decodeURIComponent(m[2]) : '';
       this.userId = this.tab === 'users' ? id : '';
@@ -208,6 +210,7 @@ function adminApp() {
       if (this.tab === 'users' && !id) await this.load();
       if (this.tab === 'users' && id) await this.loadDetail(); else this.d = null;
       if (this.tab === 'models') await this.loadModels(id);
+      if (this.tab === 'gallery') await this.loadGallery();
     },
 
     // ── list ───────────────────────────────────────────────────────────
@@ -612,6 +615,29 @@ function adminApp() {
       } catch (e) { this.pricesErr = true; this.pricesMsg = e instanceof SyntaxError ? 'Invalid JSON: ' + e.message : e.message; }
       finally { this.pricesBusy = false; }
     },
+    // ── Inspiration Gallery: the XJet designs shown on the customer site ──
+    async loadGallery() {
+      this.galleryMsg = '';
+      try { this.galleryItems = (await this.api('GET', '/api/admin/gallery')).items; } catch (e) { this.galleryMsg = e.message; }
+    },
+    async galleryAdd(candidateId) {
+      try {
+        await this.api('POST', '/api/admin/gallery', { design_id: this.sessionId, candidate_id: candidateId });
+        await this.loadSession();
+      } catch (e) { alert('Could not add this design to the gallery: ' + e.message); }
+    },
+    async galleryRemove(g) {
+      if (!confirm(`Remove "${g.title}" (${g.ring_id}) from the gallery?\n\nCustomers who already started from it keep their designs.`)) return;
+      try {
+        this.galleryItems = (await this.api('DELETE', `/api/admin/gallery/${encodeURIComponent(g.id)}`)).items;
+        if (this.tab === 'sessions' && this.sessionId) await this.loadSession();
+      } catch (e) { alert(e.message); }
+    },
+    async galleryMove(id, direction) {
+      try { this.galleryItems = (await this.api('POST', `/api/admin/gallery/${encodeURIComponent(id)}/move`, { direction })).items; }
+      catch (e) { this.galleryMsg = e.message; }
+    },
+
     // ── material pricing: density · price $/g · cost $/g · website fixed price ──
     editMaterialPrices() {
       this.mpMsg = ''; this.mpNote = '';
@@ -775,6 +801,7 @@ function adminApp() {
         return [d.material_id && this.materialLabel(d.material_id), d.ring_size != null && 'US ' + d.ring_size,
                 d.quantity && d.quantity > 1 && '×' + d.quantity, d.unit_price != null && '$' + Number(d.unit_price).toFixed(2)].filter(Boolean).join(' · ');
       if (e.kind === 'bag_added') return [this.materialLabel(d.material_id), d.ring_size != null && 'US ' + d.ring_size, d.unit_price != null && '$' + Number(d.unit_price).toFixed(2)].filter(Boolean).join(' · ');
+      if (e.kind === 'gallery_started') return 'Copy of ' + (d.source_ring_id || 'a gallery design') + ' — all its options, nothing generated or charged';
       if (e.kind.startsWith('admin_3d')) return [d.production_size && 'US ' + d.production_size, d.material_id && this.materialLabel(d.material_id),
                 d.reused_raw_mesh && 'reused Hi3D model', d.status, d.weight_g != null && d.weight_g + ' g'].filter(Boolean).join(' · ');
       return '';

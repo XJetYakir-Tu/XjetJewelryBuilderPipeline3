@@ -30,6 +30,7 @@ from p3.modelconfig import ModelConfigStore
 from p3.materialprices import MaterialPriceBook
 from p3.production3d import Production3D
 from p3.geoqueue import GeometryQueue
+from p3.gallery import GalleryService
 from p3.mail import BuildMailer
 from p3.registration import RegistrationService
 from p3 import sessions as Sessions
@@ -52,6 +53,7 @@ class Services:
         self.Meshes = MeshService(Ctx)
         self.Geometry = GeometryQueue(Ctx)                       # one heavy local STL job at a time, persisted
         self.Production3D = Production3D(Ctx, self.Meshes, self.Geometry)   # admin-only; never automatic
+        self.Gallery = GalleryService(Ctx)                       # Inspiration Gallery: curated XJet designs
 
     def Reconcile(self) -> dict:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),
@@ -157,7 +159,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def DevPage():
         return HTMLResponse(_VersionedPage("dev.html", Base))
 
-    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db))
+    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db), Svc.Gallery)
 
     App_.mount("/static", StaticFiles(directory=WebDir), name="static")
     App_.mount("/assets", StaticFiles(directory=S.AssetsDir), name="assets")
@@ -198,6 +200,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def SessionEvent(Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         return Sessions.RecordClientEvent(Ctx, Tok(x_access_token).AccountId, str(Body_.get("kind", "")),
                                           Body_.get("design_id") or None)
+
+    # ── inspiration gallery: public tiles; "Make it yours" copies the batch into the customer's own design ──
+    @App_.get("/api/gallery")
+    async def GalleryTiles():
+        return {"items": Svc.Gallery.List()}
+
+    @App_.post("/api/gallery/{ItemId}/start")
+    async def GalleryStart(ItemId: str, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
+        Who = Tok(x_access_token)
+        return Svc.Designs.Get(Who, Svc.Gallery.Start(Who, ItemId, Body_.get("client_request_id") or None))
 
     @App_.get("/api/catalog")
     async def CatalogRoute():

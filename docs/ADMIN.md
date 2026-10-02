@@ -78,6 +78,16 @@ A **session is one design journey**:
   - average refinements and % selected for 3D;
   - 3D averages (volume, weight by material) and the fixed vs 3D price variance once measured.
 
+## Inspiration Gallery
+
+The gallery on the customer site (home page, first 8, and the Inspiration page) shows **real XJet designs**, chosen in the Admin. Code: `p3/gallery.py`, table `gallery_items`.
+
+- **Curate:** Sessions → open a session → **Show in gallery** (uses the design's selected image), or **Use in gallery** under any ready option. The **Gallery** tab lists the tiles in display order, with ↑ ↓ and Remove, and how many customers started from each.
+- **Customer:** one tap on a tile opens a large preview — "Love this design? Make it yours." — with **Make it yours** and **Back to gallery**.
+- **Make it yours** copies the batch behind the gallery image (all four options, the customer's own files) into a **new design owned by the customer**, with the gallery image selected. Nothing is generated or charged, no quota is used, and the XJet original is never touched. The customer then continues as with any design: refine, 360° movie, Customize, Bag.
+- **Not signed in:** the normal sign-in opens; the chosen design is remembered in that browser (also across the verification email link) and opens right after sign-in.
+- **Admin visibility:** the copy shows "Started from gallery · R-1013-B" (session header and list), a `gallery_started` event in the journey, and `origin` / `source_ring_id` in the session summary.
+
 ## Generate 3D (admin only)
 
 `POST /api/admin/sessions/{id}/3d`, code in `p3/production3d.py` and `p3/geometry.py`.

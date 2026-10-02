@@ -130,6 +130,16 @@ CREATE TABLE IF NOT EXISTS geometry_jobs (
 );
 CREATE INDEX IF NOT EXISTS geometry_jobs_queue ON geometry_jobs(status, priority, created_at);
 
+-- Inspiration Gallery: curated XJet designs shown on the customer site (the design's chosen image).
+CREATE TABLE IF NOT EXISTS gallery_items (
+    id            TEXT PRIMARY KEY,
+    design_id     TEXT NOT NULL UNIQUE REFERENCES designs(id),
+    candidate_id  TEXT NOT NULL REFERENCES candidates(id),
+    position      INTEGER NOT NULL,
+    created_at    TEXT NOT NULL,
+    created_by    TEXT NOT NULL
+);
+
 -- Real processing stages with start/end times (Hi3D, download, queue, geometry, ready).
 CREATE TABLE IF NOT EXISTS stage_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -292,6 +302,10 @@ class Database:
                 if "owner_account_id" in Cols and "ai_mode" not in Cols:
                     # AI mode the session was created in ('mock' | 'fal'); mock sessions stay out of the Admin.
                     Conn.execute("ALTER TABLE designs ADD COLUMN ai_mode TEXT")
+                if "owner_account_id" in Cols and "source_design_id" not in Cols:
+                    # Designs started from the Inspiration Gallery: a copy of an XJet design's batch.
+                    Conn.execute("ALTER TABLE designs ADD COLUMN source_design_id TEXT")
+                    Conn.execute("ALTER TABLE designs ADD COLUMN source_candidate_id TEXT")
                 if "owner_account_id" in Cols:
                     from p3 import ringids
                     ringids.Install(Conn)                 # shared ring IDs (R-1042, R-1042-B …)

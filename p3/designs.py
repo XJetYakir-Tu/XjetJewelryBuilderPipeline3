@@ -1,5 +1,6 @@
 """Saved designs: list and full state (for reload recovery)."""
 
+from p3 import ringids as RingIds
 from p3.accounts import Principal
 from p3.context import Context
 from p3.customize import CustomizeService
@@ -39,4 +40,6 @@ class DesignService:
             Customization = self.Customize.ToJson(Row) if Row else None
         return {"id": D["id"], "title": D["title"], "prompt": D["prompt"],
                 "selected_candidate_id": D["selected_candidate_id"], "created_at": D["created_at"],
-                "updated_at": D["updated_at"], "batches": Batches, "customization": Customization}
+                "updated_at": D["updated_at"], "batches": Batches, "customization": Customization,
+                "origin": "gallery" if D.get("source_design_id") else "prompt",
+                "source_ring_id": RingIds.CandidateRef(self.Ctx.Db, D["source_candidate_id"]) if D.get("source_candidate_id") else None}

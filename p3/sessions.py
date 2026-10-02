@@ -171,6 +171,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         except Exception:  # noqa: BLE001 — an unknown owner must not hide the session
             Names[Oid], Status[Oid] = ("", ""), "unknown"
     NowDt = datetime.now(timezone.utc)
+    # Designs started from the Inspiration Gallery carry the ring ID of the XJet image they came from.
+    SourceRefs = RingIds.CandidateRefs(Db, list({D["source_design_id"] for D in Designs if D.get("source_design_id")}))
     Out = []
     for D in Designs:
         Did = D["id"]
@@ -227,6 +229,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         Out.append({
             "session_id": Did, "design_id": Did, "ring_id": RingIds.DesignRef(D.get("ring_no")),
             "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
+            "origin": "gallery" if D.get("source_design_id") else "prompt",
+            "source_ring_id": SourceRefs.get(D.get("source_candidate_id")),
             "account_id": D["owner_account_id"], "customer_name": Name, "customer_email": Email,
             "thumbnail_url": Url(Thumb["asset_path"]) if Thumb else None,
             "started_at": D["created_at"], "last_activity_at": LastActivity, "state": State, "end_reason": EndReason,
