@@ -17,9 +17,10 @@ import hmac
 import time
 from statistics import mean
 
-from fastapi import Body, FastAPI, Header
+from fastapi import Body, FastAPI, Header, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
+from p3 import adminauth as AdminAuth
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import AccountNotFound, DuplicateEmail
@@ -326,6 +327,9 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     def Admin(Authorization: str | None) -> AdminPrincipal:
         return RequireAdmin(Ctx, Authorization)
 
+    AdminAuth.Install(Ctx)
+    AdminAuth.InstallMiddleware(App_, Ctx)       # a remembered browser's session cookie → the Bearer key
+
     @App_.get("/admin", include_in_schema=False)
     @App_.get("/admin/", include_in_schema=False)
     async def AdminPage():
@@ -335,6 +339,33 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     async def AdminSession(authorization: str | None = Header(None)):
         Who = Admin(authorization)
         return {"ok": True, "admin": Who.Id, "method": Who.Method, "mode": Ctx.Provider.Name}
+
+    # ── persistent sign-in: the key once per browser, then a server-side session cookie ──
+    @App_.post("/api/admin/login")
+    async def AdminLogin(Req: Request, Body_: dict = Body(...)):
+        if not Ctx.Settings.AdminKey:
+            raise HttpError(503, "developer_tools_disabled", "Admin is disabled (P3_ADMIN_KEY is not set).")
+        Token = AdminAuth.Login(Ctx, str(Body_.get("key") or ""), Req.headers.get("user-agent"))
+        if Token is None:
+            raise HttpError(403, "developer_auth_required", "The admin key was not accepted.")
+        Resp = JSONResponse({"ok": True, "mode": Ctx.Provider.Name, "remembered": True, "days": AdminAuth.SessionDays})
+        AdminAuth.SetCookie(Resp, Req, Ctx.Settings.BasePath, Token)
+        return Resp
+
+    @App_.post("/api/admin/logout")
+    async def AdminLogout(Req: Request):
+        AdminAuth.Revoke(Ctx, Req.cookies.get(AdminAuth.CookieName))     # this browser's session only
+        Resp = JSONResponse({"ok": True})
+        AdminAuth.SetCookie(Resp, Req, Ctx.Settings.BasePath, None)
+        return Resp
+
+    @App_.post("/api/admin/logout-everywhere")
+    async def AdminLogoutEverywhere(Req: Request, authorization: str | None = Header(None)):
+        Admin(authorization)
+        N = AdminAuth.RevokeAll(Ctx)                                      # server-side revocation of every browser
+        Resp = JSONResponse({"ok": True, "revoked": N})
+        AdminAuth.SetCookie(Resp, Req, Ctx.Settings.BasePath, None)
+        return Resp
 
     @App_.get("/api/admin/users")
     async def ListUsers(include_removed: bool = False, authorization: str | None = Header(None)):

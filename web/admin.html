@@ -57,6 +57,7 @@
         <a :href="BASE + '/dev'" class="text-zinc-500 hover:text-black">Developer tools</a>
         <a :href="BASE + '/'" class="text-zinc-500 hover:text-black">← Site</a>
         <button x-show="ok" x-cloak @click="signOut()" class="text-zinc-400 hover:text-black uppercase tracking-widest">Sign out</button>
+        <button x-show="ok" x-cloak @click="signOut(true)" class="text-zinc-300 hover:text-black normal-case tracking-normal text-[11px]" title="Revoke the remembered sign-in in every browser and device">everywhere</button>
       </nav>
     </div>
   </header>
@@ -65,9 +66,10 @@
   <main x-show="!ok" x-cloak class="max-w-md mx-auto p-8 mt-16">
     <div class="card p-8 space-y-4">
       <h1 class="cinzel text-xl">Admin sign-in</h1>
-      <p class="text-sm text-zinc-500">Enter the P3 admin key. It is kept only for this browser tab.</p>
-      <input type="password" class="inp" x-model="keyInput" placeholder="Admin key" @keydown.enter="connect()" autofocus>
-      <p x-show="error" class="text-sm text-red-600" x-text="error"></p>
+      <p class="text-sm text-zinc-500">Enter the P3 admin key once. This browser stays signed in — across closed tabs, a closed browser and restarts — until you sign out. The key itself is never stored in the browser.</p>
+      <label class="lbl block" for="admin-key">Admin key</label>
+      <input id="admin-key" type="password" class="inp" x-model="keyInput" placeholder="Admin key" @keydown.enter="connect()" autocomplete="current-password" autofocus>
+      <p x-show="error" class="text-sm text-red-600" role="alert" x-text="error"></p>
       <button class="btn w-full" @click="connect()" :disabled="busy || !keyInput.trim()">Sign in</button>
     </div>
   </main>

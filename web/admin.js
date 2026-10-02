@@ -1,7 +1,7 @@
-// P3 Admin — Dashboard | Sessions | Users. Talks only to {base}/api/admin/* with the admin key as a Bearer
-// token (today the developer key; later an admin role / company sign-in replaces RequireAdmin).
+// P3 Admin — Dashboard | Sessions | Users. Talks only to {base}/api/admin/*. The admin key is entered once
+// per browser: POST /api/admin/login turns it into a server-side session cookie (HttpOnly) that outlives
+// closed tabs, a closed browser and a restart, until Sign out. The key itself is never stored here.
 const BASE = document.querySelector('meta[name="p3-base"]')?.content || '';
-const KEY_STORE = 'p3_admin_key' + (BASE ? ':' + BASE : '');   // sessionStorage: this tab only
 
 const STATUS = {
   active: ['Active', 'bg-emerald-100 text-emerald-800'],
@@ -165,42 +165,46 @@ function adminApp() {
     ],
 
     async init() {
-      try { this.key = sessionStorage.getItem(KEY_STORE) || ''; } catch (_) {}
       window.addEventListener('hashchange', () => this.route());
-      if (this.key) await this.connect(this.key);
+      // A remembered browser: the session cookie signs in without asking for the key again.
+      try { await this._enter(await this.api('GET', '/api/admin/session')); } catch (_) { this.ok = false; this.error = ''; }
     },
 
+    authHeaders() { return this.key ? { Authorization: 'Bearer ' + this.key } : {}; },   // cookie otherwise
     async api(method, path, body) {
       const r = await fetch(BASE + path, {
-        method, headers: { Authorization: 'Bearer ' + this.key, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        method, headers: { ...this.authHeaders(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined,
       });
       const data = await r.json().catch(() => ({}));
-      if (r.status === 401 || r.status === 403) { this.ok = false; this.error = 'The admin key was not accepted.'; }
+      if ((r.status === 401 || r.status === 403) && !path.endsWith('/login')) {
+        this.ok = false; this.error = 'Your admin sign-in has expired or was revoked — please sign in again.';
+      }
       if (!r.ok) { const e = new Error(data?.error?.message || ('Request failed (' + r.status + ')')); e.code = data?.error?.code; throw e; }
       return data;
     },
 
-    async connect(given) {
-      this.key = (given || this.keyInput).trim();
-      this.busy = true; this.error = '';
+    async _enter(s) {
+      this.mode = s.mode; this.ok = true; this.keyInput = ''; this.error = '';
       try {
-        const s = await this.api('GET', '/api/admin/session');
-        this.mode = s.mode; this.ok = true; this.keyInput = '';
-        try { sessionStorage.setItem(KEY_STORE, this.key); } catch (_) {}
-        try {
-          const cat = await (await fetch(BASE + '/api/catalog')).json();
-          for (const g of cat.groups || []) for (const m of g.materials || []) { this.materials[m.id] = m.label; this.swatches[m.id] = m.swatch; }
-        } catch (_) {}
-        this.route();
-      } catch (e) {
-        this.ok = false; this.error = e.message;
-        try { sessionStorage.removeItem(KEY_STORE); } catch (_) {}
-      } finally { this.busy = false; }
+        const cat = await (await fetch(BASE + '/api/catalog')).json();
+        for (const g of cat.groups || []) for (const m of g.materials || []) { this.materials[m.id] = m.label; this.swatches[m.id] = m.swatch; }
+      } catch (_) {}
+      this.route();
     },
-    signOut() {
-      try { sessionStorage.removeItem(KEY_STORE); } catch (_) {}
-      this.key = ''; this.ok = false; this.users = []; this.d = null;
+    // The key is sent once, to /api/admin/login, and never kept in the browser.
+    async connect() {
+      const key = this.keyInput.trim();
+      if (!key) return;
+      this.busy = true; this.error = '';
+      try { await this._enter(await this.api('POST', '/api/admin/login', { key })); }
+      catch (e) { this.ok = false; this.error = e.message; }
+      finally { this.busy = false; }
+    },
+    async signOut(everywhere = false) {
+      try { await this.api('POST', everywhere ? '/api/admin/logout-everywhere' : '/api/admin/logout'); } catch (_) {}
+      this.key = ''; this.ok = false; this.users = []; this.d = null; this.sd = null; this.dash = null;
+      this.error = everywhere ? 'Signed out of every browser. Sign in again here when needed.' : '';
     },
 
     // ── routing: #/dashboard  #/sessions[/<id>]  #/users[/<account id>] ──
@@ -609,7 +613,7 @@ function adminApp() {
     async previewModel() {
       this.mProblems = [];
       const r = await fetch(BASE + `/api/admin/models/${this.mid}/preview`, { method: 'POST',
-        headers: { Authorization: 'Bearer ' + this.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ params: this.draftParams() }) });
+        headers: { ...this.authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ params: this.draftParams() }) });
       const data = await r.json();
       if (!r.ok) { this.mProblems = data?.error?.problems || [data?.error?.message || 'Preview failed']; this.preview = null; return; }
       this.preview = data;
@@ -620,7 +624,7 @@ function adminApp() {
       this.mBusy = true; this.mProblems = []; this.mMessage = '';
       try {
         const r = await fetch(BASE + `/api/admin/models/${this.mid}/activate`, { method: 'POST',
-          headers: { Authorization: 'Bearer ' + this.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ params: this.draftParams(), note: this.note }) });
+          headers: { ...this.authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ params: this.draftParams(), note: this.note }) });
         const data = await r.json();
         if (!r.ok) { this.mProblems = data?.error?.problems || [data?.error?.message || 'Activation failed']; return; }
         this.dirty = false;
@@ -632,7 +636,7 @@ function adminApp() {
     async restoreVersion(v) {
       if (!confirm(`Restore v${v.number} as a new active version?`)) return;
       const r = await fetch(BASE + `/api/admin/models/${this.mid}/restore`, { method: 'POST',
-        headers: { Authorization: 'Bearer ' + this.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: v.id }) });
+        headers: { ...this.authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: v.id }) });
       const data = await r.json();
       if (!r.ok) { this.mProblems = data?.error?.problems || ['Restore failed']; return; }
       this.dirty = false;
@@ -725,7 +729,7 @@ function adminApp() {
     },
     num(v, d = 2) { return v == null ? '—' : Number(v).toFixed(d).replace(/\.?0+$/, ''); },
     async exportModels(model, fmt) {
-      const r = await fetch(BASE + `/api/admin/models/export?model=${encodeURIComponent(model)}&format=${fmt}`, { headers: { Authorization: 'Bearer ' + this.key } });
+      const r = await fetch(BASE + `/api/admin/models/export?model=${encodeURIComponent(model)}&format=${fmt}`, { headers: this.authHeaders() });
       if (!r.ok) { alert('Export failed (' + r.status + ')'); return; }
       const url = URL.createObjectURL(await r.blob());
       const a = Object.assign(document.createElement('a'), { href: url, download: `p3-ai-config-${model}.${fmt}` });
@@ -766,7 +770,7 @@ function adminApp() {
       this.viewer3d = { id: t.id, label: (t.ring_id ? t.ring_id + ' · ' : '') + 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '',
                         note: renderer ? '' : 'Basic 3D view (WebGL is off in this browser) · drag to rotate' };
       try {
-        const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: { Authorization: 'Bearer ' + this.key } });   // light, visual only
+        const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: this.authHeaders() });   // light, visual only
         if (!r.ok) throw new Error('Preview download failed (' + r.status + ')');
         const buf = await r.arrayBuffer();
         if (this.viewer3d.id !== t.id) return;        // another model was opened meanwhile

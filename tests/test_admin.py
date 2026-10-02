@@ -36,6 +36,41 @@ async def test_admin_requires_the_admin_key_and_is_separate_from_the_customer_si
     assert "/admin" not in Site and "api/admin" not in (await H.Client.get("/static/app.js")).text
 
 
+async def test_admin_sign_in_is_remembered_by_a_server_side_session_cookie(HA):
+    """The key is entered once per browser; a server-side session (HttpOnly cookie) signs the admin in
+    afterwards, survives restarts, and can be revoked on the server. The key is never stored client-side."""
+    H = HA
+    assert "sessionStorage" not in (await H.Client.get("/static/admin.js")).text
+    assert (await H.Client.post("/api/admin/login", json={"key": "wrong"})).status_code == 403
+    assert (await H.Client.get("/api/admin/session")).status_code == 403                    # nothing remembered yet
+    R = await H.Client.post("/api/admin/login", json={"key": AdminKey})
+    assert R.status_code == 200 and R.json()["remembered"] and R.json()["mode"] == "mock"
+    C = R.headers["set-cookie"]
+    assert "p3_admin_session=" in C and "HttpOnly" in C and "Path=/JewelryB2C3/" in C and "Max-Age=" in C and "SameSite=lax" in C.lower().replace("samesite=lax", "SameSite=lax")
+    assert AdminKey not in C
+    # The cookie alone (no Authorization header) authenticates every admin route — the client keeps the jar
+    assert (await H.Client.get("/api/admin/session")).status_code == 200
+    assert (await H.Client.get("/api/admin/users")).status_code == 200
+    assert (await H.Client.get("/api/admin/session", headers={"Cookie": "p3_admin_session=forged"})).status_code == 403
+    # Revoked on the server (e.g. a lost laptop) → that browser must sign in again
+    H.Ctx.Db.Execute("UPDATE admin_sessions SET revoked_at = '2026-01-01T00:00:00+00:00'")
+    assert (await H.Client.get("/api/admin/session")).status_code == 403
+    assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+    assert (await H.Client.get("/api/admin/session")).status_code == 200
+    Rows = H.Ctx.Db.All("SELECT * FROM admin_sessions")
+    assert len(Rows) == 2 and all(len(R["token_hash"]) == 64 for R in Rows) and Rows[1]["expires_at"] > Rows[1]["created_at"]
+    # Sign out: the session is revoked and the cookie cleared
+    assert (await H.Client.post("/api/admin/logout")).json()["ok"]
+    assert (await H.Client.get("/api/admin/session")).status_code == 403
+    assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM admin_sessions WHERE revoked_at IS NULL")["n"] == 0
+    # "Sign out everywhere" revokes every remembered browser at once
+    await H.Client.post("/api/admin/login", json={"key": AdminKey})
+    Other = await H.Client.post("/api/admin/login", json={"key": AdminKey}, headers={"Cookie": ""})
+    assert Other.status_code == 200 and H.Ctx.Db.One("SELECT COUNT(*) AS n FROM admin_sessions WHERE revoked_at IS NULL")["n"] == 2
+    assert (await H.Client.post("/api/admin/logout-everywhere")).json()["revoked"] == 2
+    assert (await H.Client.get("/api/admin/session")).status_code == 403
+
+
 async def test_admin_disabled_without_a_key(tmp_path):
     H = Harness(tmp_path)
     try:
