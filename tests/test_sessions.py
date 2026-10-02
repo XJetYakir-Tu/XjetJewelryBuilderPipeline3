@@ -490,6 +490,7 @@ async def test_shared_ring_ids_for_designs_options_refinements_and_3d_files(HS):
     assert T["ring_id"] == "R-1001-B"
     Name = SlugPart(D1["session"]["title"])
     assert Name and "_" not in Name and " " not in Name
+    assert SlugPart("The Éternité Ring") == "The-Eternite-Ring" and SlugPart("Stainless Steel") == "Stainless-Steel"
     R = await H.Client.get(f"/api/admin/3d/{T['id']}/stl/raw", headers=Admin)
     assert f'filename="{Name}_R-1001-B_raw.stl"' in R.headers["content-disposition"]
     E = (await H.Client.post(f"/api/admin/3d/{T['id']}/export", headers=Admin)).json()

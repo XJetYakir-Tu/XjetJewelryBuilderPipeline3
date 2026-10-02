@@ -19,6 +19,7 @@ Rules:
 import json
 import logging
 import re
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -85,8 +86,10 @@ def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None) -> list[di
 
 
 def SlugPart(Text: str, Max: int = 40) -> str:
-    """File-name-safe words joined by '-': 'The Orion Ring' → 'The-Orion-Ring'."""
-    return "-".join(re.findall(r"[A-Za-z0-9]+", Text or ""))[:Max].rstrip("-")
+    """File-name-safe words joined by '-': 'The Orion Ring' → 'The-Orion-Ring', 'Éternité' → 'Eternite'
+    (accents transliterated, never dropped)."""
+    Ascii = unicodedata.normalize("NFKD", Text or "").encode("ascii", "ignore").decode("ascii")
+    return "-".join(re.findall(r"[A-Za-z0-9]+", Ascii))[:Max].rstrip("-")
 
 
 class Production3D:
