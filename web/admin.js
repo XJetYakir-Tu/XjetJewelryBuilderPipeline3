@@ -448,9 +448,15 @@ function adminApp() {
     async setDashDays(d) { this.dashDays = d; await this.loadDashboard(); },
 
     // ── sessions ───────────────────────────────────────────────────────
+    // Three states for every list: loading (skeleton) · loaded (rows, or a real empty message) · failed (retry)
+    sessionsState: 'idle', galleryState: 'idle',
     async loadSessions() {
-      const r = await this.api('GET', '/api/admin/sessions' + (this.sMock ? '?include_mock=true' : ''));
-      this.sessions = r.sessions; this.idleMinutes = r.idle_minutes; this.mockSessions = r.mock_sessions;
+      this.sessionsState = 'loading';
+      try {
+        const r = await this.api('GET', '/api/admin/sessions' + (this.sMock ? '?include_mock=true' : ''));
+        this.sessions = r.sessions; this.idleMinutes = r.idle_minutes; this.mockSessions = r.mock_sessions;
+        this.sessionsState = 'loaded';
+      } catch (e) { this.sessionsState = 'failed'; this.fail(e); }
       if (this.sAttention || !this.attention) this.attention = await this.api('GET', '/api/admin/attention').catch(() => null);
       this.saveFilters();
     },
@@ -887,8 +893,9 @@ function adminApp() {
     },
     // ── Inspiration Gallery: the XJet designs shown on the customer site ──
     async loadGallery() {
-      this.galleryMsg = '';
-      try { this.galleryItems = (await this.api('GET', '/api/admin/gallery')).items; } catch (e) { this.galleryMsg = e.message; }
+      this.galleryMsg = ''; this.galleryState = 'loading';
+      try { this.galleryItems = (await this.api('GET', '/api/admin/gallery')).items; this.galleryState = 'loaded'; }
+      catch (e) { this.galleryMsg = e.message; this.galleryState = 'failed'; }
     },
     gallerySorted() {
       const k = this.gallerySort, items = [...this.galleryItems];
