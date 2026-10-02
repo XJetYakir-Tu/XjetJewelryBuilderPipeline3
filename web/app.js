@@ -128,7 +128,8 @@ function p3App() {
     // ── preview overlay (P2 fullscreen zoom) ─────────────────────────
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
     gallery: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
-    heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the gallery rings
+    homeGallery: [],                                                           // the 8 gallery designs this visit features (random per page load)
+    heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the featured rings
     zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
     previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null, _swipeX: null,
     menuOpen: false,                   // mobile navigation
@@ -322,6 +323,14 @@ function p3App() {
       this.galleryState = 'loading';
       try { this.gallery = (await this.api('GET', '/api/gallery', null, { noAuth: true })).items || []; this.galleryState = 'loaded'; }
       catch (_) { this.galleryState = 'failed'; }
+      this.homeGallery = this._pickHome(this.gallery);
+    },
+    // The homepage features at most 8 gallery designs, chosen at random on every page load (a quiet shuffle,
+    // so returning visitors see different rings); with 8 or fewer, all of them. "View all designs" opens the rest.
+    _pickHome(list) {
+      const a = [...list];
+      for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+      return a.slice(0, 8);
     },
     // A My Designs thumbnail enlarges on hover: a floating preview beside the list, on whichever side has room
     showZoom(ev, src, label) {
@@ -332,14 +341,14 @@ function p3App() {
       const y = Math.max(16, Math.min(r.top + r.height / 2 - size / 2, window.innerHeight - size - 56));
       this.zoom = { src, label, x, y, size };
     },
-    get heroRing() { return this.gallery[Math.min(this.heroIndex, Math.max(this.gallery.length - 1, 0))] || null; },
+    get heroRing() { return this.homeGallery[Math.min(this.heroIndex, Math.max(this.homeGallery.length - 1, 0))] || null; },
     // The hero shows every gallery ring in turn: random order (each ring once per round), a smooth
     // crossfade every few seconds, paused while the visitor hovers or looks at a design; a tap on a
     // thumbnail shows that ring at once. Nothing moves for visitors who prefer reduced motion.
     startHeroRotation() {
       if (this._heroTimer) clearInterval(this._heroTimer);
       this.heroIndex = 0; this._heroQueue = [];
-      if (this.gallery.length < 2 || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+      if (this.homeGallery.length < 2 || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
       this._heroTimer = setInterval(() => {
         if (this.heroPaused || this.galleryItem || this.view !== 'home' || document.hidden) return;
         this.heroGo(this._nextHero(), true);
@@ -347,14 +356,14 @@ function p3App() {
     },
     _nextHero() {
       if (!this._heroQueue.length) {                       // a fresh shuffled round, never the ring that is showing
-        const rest = this.gallery.map((_, i) => i).filter(i => i !== this.heroIndex);
+        const rest = this.homeGallery.map((_, i) => i).filter(i => i !== this.heroIndex);
         for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
         this._heroQueue = rest;
       }
       return this._heroQueue.shift();
     },
     heroGo(i, auto = false) {
-      if (i == null || i < 0 || i >= this.gallery.length) return;
+      if (i == null || i < 0 || i >= this.homeGallery.length) return;
       this.heroIndex = i;
       this._heroQueue = this._heroQueue.filter(x => x !== i);
       if (!auto && this._heroTimer) this.startHeroRotationFrom(i);    // a tap restarts the clock from this ring
