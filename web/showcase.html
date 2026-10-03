@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="p3-base" content="{{BASE}}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Hero Showcase · prototype · XJET Atelier</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{BASE}}/static/images/favicon-32.png">
+    <link rel="preload" href="{{BASE}}/static/vendor/fonts/inter-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
+    <!-- The same live metal filters as the site (Customize, Materials, gallery preview) -->
+    <script src="{{BASE}}/static/metal.js"></script>
+    <!-- Hero showcase — PROTOTYPE for review. Not linked from the site; the homepage hero is unchanged.
+         Six beats (~9.8 s, muted, loops) built live from one real gallery design: its prompt, its first four
+         options, a refinement, its 360° movie, three metals, then "made in real metal" and the call to action. -->
+    <style>
+        :root {
+            --ivory: #FBF9F4; --sand: #F3EFE6; --page: #F4F1EA; --ink: #1A1A1A; --muted: #6F6F6F;
+            --gold: #C9A96E; --gold-deep: #B8873A; --gold-text: #8A6420; --line: #E8DDD0; --card: #FFFFFF;
+            --ease: cubic-bezier(.2, .8, .2, 1);
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: var(--page); color: var(--ink); -webkit-font-smoothing: antialiased; }
+        button, select { font: inherit; }
+        .brand-font { font-family: 'Cinzel', serif; }
+
+        /* ── page chrome ── */
+        .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 14px 24px; background: #fff; border-bottom: 1px solid var(--line); }
+        .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); }
+        .brand .x { font-family: 'Cinzel', serif; font-size: 20px; letter-spacing: .2em; font-weight: 600; }
+        .brand .sep { width: 1px; height: 18px; background: #D8D0C2; }
+        .brand .a { font-size: 12px; letter-spacing: .3em; color: var(--muted); }
+        .pill { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; padding: 5px 10px; border-radius: 6px;
+                background: #FFF4DB; color: #7A4D00; border: 1px solid #F0D9A8; }
+        .bar-tools { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+        .field { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+        .field select { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink); padding: 7px 30px 7px 10px; border-radius: 8px;
+                        border: 1px solid #DCDCDC; background: #fff; min-height: 36px; }
+        .seg { display: inline-flex; border: 1px solid #DCDCDC; border-radius: 9px; overflow: hidden; background: #fff; }
+        .seg button { border: 0; background: transparent; padding: 8px 14px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); cursor: pointer; min-height: 36px; }
+        .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+        main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 56px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+        /* ── the stage ── */
+        .stage { position: relative; width: min(100%, 1120px); aspect-ratio: 16 / 9; border-radius: 24px; overflow: hidden; isolation: isolate;
+                 background: radial-gradient(120% 90% at 70% 20%, #FFFDF8 0%, var(--ivory) 45%, var(--sand) 100%);
+                 box-shadow: 0 40px 90px -40px rgba(70, 48, 12, .35), 0 0 0 1px #EDE5D8; user-select: none; -webkit-user-select: none; }
+        .stage.is-phone { width: min(100%, 390px); aspect-ratio: 4 / 5; border-radius: 22px; }
+        .eyebrow { position: absolute; z-index: 6; top: 22px; left: 26px; display: flex; align-items: center; gap: 10px; margin: 0;
+                   font-size: 12px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: var(--gold-text);
+                   transition: opacity .25s ease, transform .35s var(--ease); }
+        .eyebrow.swap { opacity: 0; transform: translateY(-4px); }
+        .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 4px rgba(201, 169, 110, .18); }
+        .stage.is-phone .eyebrow { top: 16px; left: 18px; letter-spacing: .22em; }
+        .wordmark { position: absolute; z-index: 6; right: 24px; bottom: 18px; font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: .32em; color: var(--gold-text); opacity: .75; }
+        .stage.is-phone .wordmark { right: 16px; bottom: 12px; }
+        .layer { position: absolute; inset: 0; opacity: 0; visibility: hidden; transition: opacity .5s ease, visibility 0s linear .5s; }
+        .layer.on { opacity: 1; visibility: visible; transition: opacity .5s ease, visibility 0s; }
+        .card { background: var(--card); border-radius: 18px; overflow: hidden; box-shadow: 0 18px 40px -22px rgba(60, 40, 10, .35), 0 0 0 1px rgba(0, 0, 0, .04); }
+        .card img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+        /* beat 1–2: the composer types the prompt, then rises above the four options */
+        .composer { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(76%, 660px);
+                    display: flex; align-items: center; gap: 14px; padding: 16px 16px 16px 22px; border-radius: 20px; background: #fff;
+                    box-shadow: 0 24px 60px -28px rgba(60, 40, 10, .45), 0 0 0 1px #EFE6D8; transition: top .7s var(--ease), transform .7s var(--ease); }
+        .stage[data-beat="options"] .composer { top: 9%; transform: translate(-50%, 0) scale(.84); }
+        .stage.is-phone .composer { width: 88%; padding: 12px 12px 12px 16px; gap: 10px; border-radius: 16px; }
+        .stage.is-phone[data-beat="options"] .composer { top: 11%; transform: translate(-50%, 0) scale(.9); }
+        .spark { color: var(--gold); font-size: 18px; line-height: 1; }
+        .typed { flex: 1; min-height: 1.45em; font-size: 19px; line-height: 1.45; color: var(--ink); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .stage.is-phone .typed { font-size: 15px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .caret { width: 2px; height: 1.25em; background: var(--gold); animation: blink 1s steps(1) infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        .go { flex: none; border: 0; border-radius: 12px; padding: 11px 18px; font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #fff;
+              background: linear-gradient(135deg, #D9BC85 0%, var(--gold) 45%, var(--gold-deep) 100%); box-shadow: 0 8px 20px -10px rgba(138, 100, 32, .7);
+              transition: transform .18s ease, box-shadow .18s ease; }
+        .composer.press .go { transform: scale(.94); box-shadow: 0 0 0 6px rgba(201, 169, 110, .22); }
+        .stage.is-phone .go { padding: 9px 12px; letter-spacing: .14em; }
+
+        .options { position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%); width: 82%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2.4%; }
+        .stage.is-phone .options { width: 74%; top: 60%; grid-template-columns: repeat(2, 1fr); gap: 4%; }
+        .opt { aspect-ratio: 1; opacity: 0; transform: translateY(16px) scale(.92); transition: opacity .35s ease, transform .55s var(--ease), box-shadow .35s ease, filter .35s ease; }
+        .opt.in { opacity: 1; transform: none; }
+        .options.chosen .opt:not(.picked) { opacity: .34; filter: saturate(.5); transform: scale(.97); }
+        .options.chosen .opt.picked { transform: translateY(-6px) scale(1.05); box-shadow: 0 0 0 2px var(--gold), 0 22px 44px -16px rgba(138, 100, 32, .45); }
+
+        /* beat 3: the chosen option, large, crossfades into its refinement */
+        .hero { position: absolute; left: 50%; top: 47%; height: 70%; aspect-ratio: 1; transform: translate(-50%, -50%) scale(.84); transition: transform .7s var(--ease); }
+        .layer.on .hero { transform: translate(-50%, -50%); }
+        .stage.is-phone .hero { height: auto; width: 74%; top: 46%; }
+        .hero img { position: absolute; inset: 0; padding: 5%; }
+        .hero .to { opacity: 0; transition: opacity .7s ease; }
+        .l-refine.done .hero .to { opacity: 1; }
+        .hero::after { content: ''; position: absolute; inset: -20%; pointer-events: none; opacity: 0;
+                       background: linear-gradient(105deg, transparent 38%, rgba(255, 246, 225, .85) 50%, transparent 62%); transform: translateX(-60%); }
+        .l-refine.done .hero::after { animation: sweep .9s ease-out; }
+        @keyframes sweep { 0% { opacity: 0; transform: translateX(-60%); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateX(60%); } }
+        .chip { position: absolute; left: 50%; top: 89%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 10px; white-space: nowrap;
+                padding: 10px 16px; border-radius: 999px; background: #fff; box-shadow: 0 14px 30px -16px rgba(60, 40, 10, .45), 0 0 0 1px #EFE6D8; font-size: 15px; color: var(--ink); }
+        .stage.is-phone .chip { top: 90%; font-size: 13px; padding: 8px 13px; }
+        .chip .caret { height: 1.1em; }
+
+        /* beats 4–5: the real 360° movie; then the live metal filters */
+        .movie-card { position: absolute; left: 50%; top: 46%; height: 72%; aspect-ratio: var(--movie-ratio, 1); max-width: 88%; transform: translate(-50%, -50%) scale(.9); transition: transform .7s var(--ease); background: #EDEDED; }
+        .layer.on .movie-card { transform: translate(-50%, -50%); }
+        .stage.is-phone .movie-card { height: auto; width: 84%; top: 44%; }
+        .movie-card video { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .badge { position: absolute; top: 12px; left: 12px; font-size: 12px; font-weight: 600; letter-spacing: .16em; padding: 5px 9px; border-radius: 999px; background: rgba(255, 255, 255, .9); color: var(--gold-text); }
+        .metals { position: absolute; left: 50%; top: 91%; transform: translate(-50%, -50%); display: flex; gap: 8px; opacity: 0; transition: opacity .4s ease; }
+        .stage[data-beat="metal"] .metals { opacity: 1; }
+        .metal { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 13px; border-radius: 999px; background: #fff; border: 1px solid #DCDCDC;
+                 font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; transition: border-color .25s, color .25s, box-shadow .25s; }
+        .metal.on { border-color: var(--gold); color: var(--ink); box-shadow: 0 0 0 2px #F1E6D2; }
+        .metal i { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08), inset 2px 2px 4px rgba(255, 255, 255, .6); }
+        .stage.is-phone .metals { top: 90%; gap: 6px; }
+        .stage.is-phone .metal { height: 30px; padding: 0 9px; letter-spacing: .06em; }
+        .stage.is-phone .metal:not(.on) { padding: 0 7px; }                 /* phones: the active metal is named, the others are dots */
+        .stage.is-phone .metal:not(.on) .t { display: none; }
+        .stage.is-phone .wordmark { display: none; }
+
+        /* beat 6: made in real metal, and the call to action */
+        .made { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6%; padding: 0 8%; }
+        .made figure { margin: 0; flex: none; height: 70%; aspect-ratio: 4 / 5; display: flex; align-items: center; justify-content: center; border-radius: 22px; background: #fff;
+                       box-shadow: 0 30px 70px -36px rgba(60, 40, 10, .45); transform: scale(.94); transition: transform .8s var(--ease); }
+        .layer.on .made figure { transform: none; }
+        .made figure img { max-height: 86%; max-width: 86%; width: auto; height: auto; mix-blend-mode: multiply; }
+        .made .copy { flex: 0 1 44%; text-align: left; transform: translateY(10px); opacity: 0; transition: transform .7s var(--ease) .15s, opacity .6s ease .15s; }
+        .stage[data-beat="made"] .eyebrow { opacity: 0; }
+        .layer.on .made .copy { transform: none; opacity: 1; }
+        .made .kicker { font-size: 12px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: var(--gold-text); }
+        .made h2 { font-family: 'Cinzel', serif; font-weight: 400; font-size: clamp(26px, 3.6vw, 44px); line-height: 1.12; margin: 14px 0 12px; color: var(--ink); }
+        .made p { margin: 0 0 22px; font-size: 15px; line-height: 1.6; color: #555; max-width: 30ch; }
+        .cta { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 15px 26px; border-radius: 12px; text-decoration: none;
+               font-size: 12px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: #fff;
+               background: linear-gradient(135deg, #D9BC85 0%, var(--gold) 45%, var(--gold-deep) 100%); box-shadow: 0 14px 30px -14px rgba(138, 100, 32, .8); }
+        .stage.is-phone .made { flex-direction: column; padding: 10% 9% 12%; gap: 4%; text-align: center; }
+        .stage.is-phone .made figure { height: 44%; }
+        .stage.is-phone .made .copy { flex: none; text-align: center; }
+        .stage.is-phone .made h2 { font-size: 24px; margin: 8px 0 8px; }
+        .stage.is-phone .made p { margin: 0 auto 14px; font-size: 13px; }
+        .stage.is-phone .cta { padding: 12px 20px; }
+
+        .loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; letter-spacing: .2em; text-transform: uppercase; color: var(--gold-text); }
+        .loading.gone { display: none; }
+
+        /* ── timeline, controls, notes ── */
+        .timeline { width: min(100%, 1120px); display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+        .timeline.is-phone { width: min(100%, 390px); }
+        .seg-t { border: 0; background: none; padding: 6px 0 0; cursor: pointer; text-align: left; color: var(--muted); min-height: 36px; }
+        .seg-t .bar-t { display: block; height: 3px; border-radius: 3px; background: #E3DACB; overflow: hidden; }
+        .seg-t .bar-t::after { content: ''; display: block; height: 100%; width: calc(var(--fill, 0) * 100%); background: var(--gold); }
+        .seg-t .lbl { display: block; margin-top: 7px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .seg-t.now .lbl { color: var(--ink); font-weight: 600; }
+        .timeline.is-phone .lbl { display: none; }
+        .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; }
+        .btn { border: 1px solid #CFC6B8; background: #fff; color: var(--ink); border-radius: 10px; padding: 10px 18px; min-height: 40px;
+               font-size: 12px; letter-spacing: .18em; text-transform: uppercase; cursor: pointer; }
+        .btn:hover { border-color: var(--gold); }
+        .link { font-size: 13px; font-weight: 600; letter-spacing: .08em; color: var(--gold-text); text-decoration: none; }
+        .notes { width: min(100%, 1120px); background: #fff; border: 1px solid #EDE5D8; border-radius: 16px; padding: 18px 22px; font-size: 13px; line-height: 1.65; color: #4A4A4A; }
+        .notes h3 { margin: 0 0 6px; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--gold-text); }
+        .notes ul { margin: 0; padding-left: 18px; }
+        .notes b { color: var(--ink); font-weight: 600; }
+        .empty { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 14px; }
+
+        /* reduced motion: a still storyboard of the six beats instead of the sequence */
+        .board { width: min(100%, 1120px); display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+        .board.is-phone { width: min(100%, 390px); grid-template-columns: 1fr 1fr; }
+        .frame { background: linear-gradient(160deg, var(--ivory), var(--sand)); border-radius: 16px; padding: 14px; box-shadow: 0 0 0 1px #EDE5D8; display: flex; flex-direction: column; gap: 10px; }
+        .frame .cap { font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: var(--gold-text); }
+        .frame .pic { aspect-ratio: 1; border-radius: 12px; background: #fff; overflow: hidden; display: grid; place-items: center; position: relative; }
+        .frame .pic img { width: 100%; height: 100%; object-fit: contain; }
+        .frame .quad { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; width: 100%; height: 100%; }
+        .frame .quad img { background: #fff; border-radius: 8px; }
+        .frame .quad .pk { box-shadow: 0 0 0 2px var(--gold); }
+        .frame .txt { font-size: 14px; line-height: 1.5; padding: 14px; text-align: left; align-self: start; }
+
+        @media (max-width: 640px) {
+            .bar { padding: 12px 16px; }
+            .bar-tools { margin-left: 0; width: 100%; }
+            .seg, .pill .long { display: none; }                               /* on a phone the stage already is the phone layout */
+            main { padding-top: 18px; }
+        }
+    </style>
+</head>
+<body>
+    <svg id="metal-defs" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"></svg>
+    <header class="bar">
+        <a class="brand" href="{{BASE}}/" title="XJET Atelier"><span class="x">XJET</span><span class="sep"></span><span class="a">ATELIER</span></a>
+        <span class="pill"><span class="long">Hero showcase · </span>prototype · not live</span>
+        <div class="bar-tools">
+            <label class="field" for="pick">Design <select id="pick" aria-label="Gallery design the story is built from"></select></label>
+            <div class="seg" role="group" aria-label="Preview size">
+                <button type="button" data-frame="fit" aria-pressed="true">Fit</button>
+                <button type="button" data-frame="phone" aria-pressed="false">Phone</button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div id="stage" class="stage" role="img" aria-label="XJet Atelier: describe a ring, choose from four designs, refine it, see it turn in 360°, choose the metal — made in real metal by XJet">
+            <p class="eyebrow" aria-hidden="true"><span class="dot"></span><span id="eyebrow">Describe it</span></p>
+            <span class="wordmark" aria-hidden="true">XJET ATELIER</span>
+
+            <div class="layer" data-beats="describe options">
+                <div class="composer" id="composer"><span class="spark" aria-hidden="true">✦</span><span class="typed" id="typed"></span><span class="caret"></span><span class="go">Design</span></div>
+            </div>
+            <div class="layer" data-beats="options">
+                <div class="options" id="options"></div>
+            </div>
+            <div class="layer l-refine" data-beats="refine" id="refine">
+                <div class="hero card"><img class="from" id="r-from" alt=""><img class="to" id="r-to" alt=""></div>
+                <div class="chip"><span class="spark" aria-hidden="true">✦</span><span id="r-text"></span><span class="caret"></span></div>
+            </div>
+            <div class="layer" data-beats="turn metal">
+                <div class="movie-card card" id="movie-card"><video id="video" muted playsinline loop preload="auto"></video><span class="badge">360°</span></div>
+                <div class="metals" id="metals"></div>
+            </div>
+            <div class="layer" data-beats="made">
+                <div class="made">
+                    <figure><img id="made-img" alt="A part printed in metal by XJet NanoParticle Jetting"></figure>
+                    <div class="copy">
+                        <span class="kicker">XJet NanoParticle Jetting</span>
+                        <h2>Made in real metal by XJet</h2>
+                        <p>Your design, printed to order in real metal — and in your hand.</p>
+                        <a class="cta" id="cta" href="{{BASE}}/">Design yours</a>
+                    </div>
+                </div>
+            </div>
+            <div class="loading" id="loading">Loading the story…</div>
+        </div>
+
+        <div class="board" id="board" hidden></div>
+        <div class="timeline" id="timeline" role="group" aria-label="Beats — tap one to jump there"></div>
+        <div class="controls">
+            <button type="button" class="btn" id="play">Pause</button>
+            <button type="button" class="btn" id="replay">Watch again</button>
+            <button type="button" class="btn" id="still">Storyboard</button>
+            <button type="button" class="btn" id="motion" hidden>Play the sequence</button>
+            <a class="link" id="cta2" href="{{BASE}}/">Start designing →</a>
+        </div>
+
+        <section class="notes" aria-label="Notes for review">
+            <h3>For review</h3>
+            <ul id="notes">
+                <li>A prototype — not linked from the site; the homepage hero is unchanged until this is approved.</li>
+            </ul>
+        </section>
+    </main>
+
+    <script>
+    (() => {
+        const BASE = (document.querySelector('meta[name="p3-base"]')?.content || '').replace(/\/+$/, '');
+        const $ = id => document.getElementById(id);
+        const BEATS = [
+            { id: 'describe', caption: 'Describe it',                  label: 'Prompt',       ms: 1500 },
+            { id: 'options',  caption: 'Four designs to choose from',  label: '4 designs',    ms: 1600 },
+            { id: 'refine',   caption: 'Refine',                       label: 'Refine',       ms: 1400 },
+            { id: 'turn',     caption: 'See it turn',                  label: '360°',         ms: 2200 },
+            { id: 'metal',    caption: 'Choose your metal',            label: 'Metal',        ms: 1800 },
+            { id: 'made',     caption: 'Made in real metal',           label: 'Made by XJet', ms: 1500 },
+        ];
+        const TOTAL = BEATS.reduce((a, b) => a + b.ms, 0);
+        const START = BEATS.map((b, i) => BEATS.slice(0, i).reduce((a, x) => a + x.ms, 0));
+        const thumb = (u, w) => u && u.includes('/assets/') ? u.replace('/assets/', '/thumb/') + '?w=' + w : u;
+        const clamp = v => Math.max(0, Math.min(1, v));
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const canHover = window.matchMedia('(hover: hover) and (pointer: fine)');
+        const narrow = window.matchMedia('(max-width: 640px)');
+
+        const stage = $('stage'), video = $('video'), layers = [...stage.querySelectorAll('.layer')];
+        let S = null, T = 0, last = null, playing = true, hovering = false, beat = -1, raf = 0, frameMode = 'fit', motionAnyway = false;
+        let cards = [], chips = [], segs = [];
+        let stillView = new URLSearchParams(location.search).has('still');      // ?still opens the storyboard
+
+        // ── data ──
+        async function load(design) {
+            stage.querySelector('#loading').classList.remove('gone');
+            $('loading').textContent = 'Loading the story…';
+            const R = await fetch(BASE + '/api/showcase' + (design ? '?design=' + encodeURIComponent(design) : ''));
+            const D = await R.json();
+            const pick = $('pick');
+            pick.innerHTML = '';
+            for (const c of D.choices || []) { const o = document.createElement('option'); o.value = c.slug; o.textContent = c.title; pick.appendChild(o); }
+            if (!D.story) { $('loading').textContent = 'No gallery design has a full story yet (four first options and a 360° movie).'; return; }
+            S = D.story;
+            pick.value = S.slug;
+            build();
+            await preload();
+            $('loading').classList.add('gone');
+            T = 0; beat = -1; last = null;
+            if ((reduce.matches || stillView) && !motionAnyway) showBoard(); else start();
+        }
+
+        function build() {
+            $('metal-defs').innerHTML = window.P3MetalFilterDefs ? window.P3MetalFilterDefs(S.metals) : '';
+            const opts = $('options'); opts.innerHTML = '';
+            cards = S.options.map((u, i) => {
+                const f = document.createElement('div'); f.className = 'opt card' + (i === S.picked ? ' picked' : '');
+                const img = document.createElement('img'); img.alt = ''; img.decoding = 'async';
+                img.src = thumb(u, 800); img.srcset = `${thumb(u, 320)} 320w, ${thumb(u, 800)} 800w, ${u} 1024w`; img.sizes = '(max-width: 640px) 40vw, 260px';
+                f.appendChild(img); opts.appendChild(f); return f;
+            });
+            const from = S.options[S.picked], to = S.refine ? S.refine.image_url : from;
+            for (const [el, u] of [[$('r-from'), from], [$('r-to'), to]]) { el.src = thumb(u, 800); el.srcset = `${thumb(u, 800)} 800w, ${u} 1024w`; el.sizes = '(max-width: 640px) 75vw, 560px'; }
+            video.poster = S.poster_url; video.src = S.movie_url;
+            video.onloadedmetadata = () => { if (video.videoWidth && video.videoHeight) $('movie-card').style.setProperty('--movie-ratio', (video.videoWidth / video.videoHeight).toFixed(4)); };
+            const m = $('metals'); m.innerHTML = '';
+            chips = S.metals.map(x => {
+                const c = document.createElement('span'); c.className = 'metal'; c.title = x.label;
+                c.innerHTML = `<i style="background:${x.swatch}"></i><span class="t"></span>`; c.querySelector('.t').textContent = x.label;
+                m.appendChild(c); return c;
+            });
+            $('made-img').src = S.made.image_url;
+            for (const a of [$('cta'), $('cta2')]) a.href = S.cta_url;
+            const tl = $('timeline'); tl.innerHTML = '';
+            segs = BEATS.map((b, i) => {
+                const s = document.createElement('button'); s.type = 'button'; s.className = 'seg-t'; s.title = b.caption;
+                s.innerHTML = '<span class="bar-t"></span><span class="lbl"></span>'; s.querySelector('.lbl').textContent = b.label;
+                s.addEventListener('click', () => { T = START[i] + 1; render(T); if (reduce.matches && !motionAnyway) return; });
+                tl.appendChild(s); return s;
+            });
+            const notes = $('notes');
+            notes.innerHTML = '';
+            const li = html => { const l = document.createElement('li'); l.innerHTML = html; notes.appendChild(l); };
+            const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            li('A prototype — not linked from the site; the homepage hero is unchanged until this is approved.');
+            li(`Everything on screen is real and comes from <b>${esc(S.title)}</b> in the Inspiration Gallery: its own prompt, its first four options, `
+               + (S.refine ? `the refinement “${esc(S.refine.text)}”, ` : '') + `its 360° movie and the site's live metal filters (${S.metals.map(x => esc(x.label)).join(' → ')}). Nothing is generated or charged.`);
+            li('Beat 6 uses a placeholder picture — the figurine printed by XJet that the site already shows — until there is a photograph of a printed ring.');
+            li(`About ${(TOTAL / 1000).toFixed(1)} s, muted, loops; pauses while the pointer is over it; visitors who prefer reduced motion get the still storyboard instead.`);
+            li('Choose another gallery design above, switch the preview to <b>Phone</b>, or open this page on a phone. The beats under the stage jump straight to a moment; <b>Storyboard</b> shows all six at once.');
+        }
+
+        function preload() {
+            const urls = [...cards.map(c => c.querySelector('img')), $('r-from'), $('r-to'), $('made-img')];
+            const wait = el => (el.complete && el.naturalWidth ? Promise.resolve() : (el.decode ? el.decode() : Promise.resolve())).catch(() => {});
+            const movie = new Promise(res => { if (video.readyState >= 3) return res(); video.addEventListener('canplay', res, { once: true }); video.addEventListener('error', res, { once: true }); video.load(); });
+            return Promise.race([Promise.all([...urls.map(wait), movie]), new Promise(r => setTimeout(r, 3500))]);
+        }
+
+        // ── playback ──
+        function at(t) {
+            for (let i = BEATS.length - 1; i >= 0; i--) if (t >= START[i]) return { i, lt: t - START[i] };
+            return { i: 0, lt: 0 };
+        }
+        function setMetal(k) {
+            video.style.filter = k >= 0 && S.metals[k] ? `url(#p3-metal-${S.metals[k].id})` : '';
+            chips.forEach((c, i) => c.classList.toggle('on', i === k));
+        }
+        function playVideo(fromStart) {
+            if (fromStart) { try { video.currentTime = 0; } catch (_) {} }
+            if (playing && !hovering) video.play().catch(() => {});
+        }
+        function enter(i) {
+            const prev = beat; beat = i;
+            const b = BEATS[i];
+            stage.dataset.beat = b.id;
+            layers.forEach(l => l.classList.toggle('on', l.dataset.beats.split(' ').includes(b.id)));
+            const eb = $('eyebrow').parentElement;
+            eb.classList.add('swap');
+            setTimeout(() => { $('eyebrow').textContent = b.caption; eb.classList.remove('swap'); }, prev === -1 ? 0 : 180);
+            segs.forEach((s, k) => s.classList.toggle('now', k === i));
+            if (b.id === 'describe') {
+                $('typed').textContent = ''; $('composer').classList.remove('press');
+                cards.forEach(c => c.classList.remove('in')); $('options').classList.remove('chosen');
+                $('refine').classList.remove('done'); $('r-text').textContent = '';
+                setMetal(-1); video.pause();
+            }
+            if (b.id === 'options') { $('typed').textContent = S.prompt; }
+            if (b.id === 'refine') { $('options').classList.add('chosen'); }
+            if (b.id === 'turn') { setMetal(-1); playVideo(prev !== 4); }
+            if (b.id === 'metal') { playVideo(prev !== 3); }
+            if (b.id === 'made') { setMetal(S.metals.length - 1); setTimeout(() => { if (beat === 5) video.pause(); }, 520); }
+        }
+        function render(t) {
+            const { i, lt } = at(t), b = BEATS[i], p = lt / b.ms;
+            if (i !== beat) enter(i);
+            segs.forEach((s, k) => s.style.setProperty('--fill', k < i ? 1 : k > i ? 0 : clamp(p).toFixed(3)));
+            if (b.id === 'describe') {
+                const n = Math.round(S.prompt.length * clamp((lt - 120) / (b.ms * 0.68)));
+                if ($('typed').textContent.length !== n) $('typed').textContent = S.prompt.slice(0, n);
+                $('composer').classList.toggle('press', p > 0.86);
+            } else if (b.id === 'options') {
+                cards.forEach((c, k) => c.classList.toggle('in', lt > 60 + k * 150));
+                $('options').classList.toggle('chosen', p > 0.68);
+            } else if (b.id === 'refine') {
+                const txt = S.refine ? S.refine.text : 'Make it yours';
+                const n = Math.round(txt.length * clamp((lt - 60) / (b.ms * 0.38)));
+                if ($('r-text').textContent.length !== n) $('r-text').textContent = txt.slice(0, n);
+                $('refine').classList.toggle('done', p > 0.5);
+            } else if (b.id === 'metal') {
+                setMetal(Math.min(S.metals.length - 1, Math.floor(p * S.metals.length)));
+            }
+        }
+        function frame(now) {
+            raf = requestAnimationFrame(frame);
+            if (last === null) last = now;
+            const dt = Math.min(64, now - last); last = now;
+            if (playing && !hovering) T = (T + dt) % TOTAL;
+            render(T);
+        }
+        function start() {
+            $('board').hidden = true; stage.hidden = false; $('timeline').hidden = false;
+            $('play').hidden = false; $('replay').hidden = false; $('still').hidden = false; $('motion').hidden = true;
+            cancelAnimationFrame(raf); last = null; raf = requestAnimationFrame(frame); render(T);
+        }
+        function setPlaying(v) {
+            playing = v; $('play').textContent = v ? 'Pause' : 'Play';
+            if (!v) video.pause(); else if (beat === 3 || beat === 4) playVideo(false);
+        }
+        $('play').addEventListener('click', () => setPlaying(!playing));
+        $('replay').addEventListener('click', () => { T = 0; beat = -1; setPlaying(true); render(T); });
+        stage.addEventListener('pointerenter', () => { if (canHover.matches) { hovering = true; video.pause(); } });
+        stage.addEventListener('pointerleave', () => { if (hovering) { hovering = false; if (beat === 3 || beat === 4) playVideo(false); } });
+        document.addEventListener('visibilitychange', () => { if (document.hidden) video.pause(); else if (playing && (beat === 3 || beat === 4)) playVideo(false); });
+
+        // ── reduced motion: the six beats as a still storyboard ──
+        function showBoard() {
+            cancelAnimationFrame(raf); video.pause();
+            stage.hidden = true; $('timeline').hidden = true; $('play').hidden = true; $('replay').hidden = true; $('still').hidden = true; $('motion').hidden = false;
+            const b = $('board'); b.hidden = false; b.innerHTML = '';
+            const frameEl = (cap, inner) => { const f = document.createElement('div'); f.className = 'frame'; f.innerHTML = `<span class="cap"></span><div class="pic">${inner}</div>`; f.querySelector('.cap').textContent = cap; b.appendChild(f); return f; };
+            const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            frameEl(BEATS[0].caption, `<p class="txt">✦ ${esc(S.prompt)}</p>`);
+            frameEl(BEATS[1].caption, `<div class="quad">${S.options.map((u, i) => `<img src="${thumb(u, 320)}" alt="" class="${i === S.picked ? 'pk' : ''}">`).join('')}</div>`);
+            frameEl(BEATS[2].caption + (S.refine ? ' — “' + S.refine.text + '”' : ''), `<img src="${thumb(S.refine ? S.refine.image_url : S.options[S.picked], 800)}" alt="">`);
+            frameEl(BEATS[3].caption, `<img src="${S.poster_url}" alt="" style="object-fit:cover">`);
+            frameEl(BEATS[4].caption, `<div class="quad">${S.metals.map(m => `<img src="${S.poster_url}" alt="" style="object-fit:cover;filter:url(#p3-metal-${m.id})">`).join('')}</div>`);
+            frameEl(BEATS[5].caption, `<img src="${S.made.image_url}" alt="" style="mix-blend-mode:multiply">`);
+        }
+        $('motion').addEventListener('click', () => { motionAnyway = true; stillView = false; T = 0; beat = -1; start(); });
+        $('still').addEventListener('click', () => { stillView = true; motionAnyway = false; showBoard(); });
+
+        // ── preview size: fit the window, or a phone-sized frame ──
+        function applyFrame() {
+            const phone = frameMode === 'phone' || narrow.matches;
+            for (const el of [stage, $('timeline'), $('board')]) el.classList.toggle('is-phone', phone);
+            document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.frame === frameMode)));
+        }
+        document.querySelectorAll('.seg button').forEach(x => x.addEventListener('click', () => { frameMode = x.dataset.frame; applyFrame(); }));
+        (narrow.addEventListener ? narrow.addEventListener('change', applyFrame) : narrow.addListener(applyFrame));
+        $('pick').addEventListener('change', e => {
+            const slug = e.target.value;
+            try { history.replaceState(null, '', location.pathname + '?design=' + encodeURIComponent(slug)); } catch (_) {}
+            cancelAnimationFrame(raf); video.pause(); load(slug);
+        });
+
+        // test hook (review tooling only): jump to a moment and read the state
+        window.__showcase = { seek(ms) { T = Math.max(0, Math.min(TOTAL - 1, ms)); render(T); return this.state(); }, pause() { setPlaying(false); },
+                              state() { return { beat: BEATS[beat]?.id, t: Math.round(T), playing, total: TOTAL, story: S && S.title }; } };
+
+        applyFrame();
+        load(new URLSearchParams(location.search).get('design')).catch(e => { $('loading').textContent = 'The story could not be loaded.'; console.error(e); });
+    })();
+    </script>
+</body>
+</html>

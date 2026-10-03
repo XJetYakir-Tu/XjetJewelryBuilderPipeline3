@@ -21,6 +21,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from p3 import assets
 from p3 import media as Media
+from p3 import showcase as Showcase
 
 # Font files: some platforms' mimetypes tables lack WOFF2, and browsers want the right type for preloaded fonts
 mimetypes.add_type("font/woff2", ".woff2")
@@ -103,7 +104,7 @@ def _VersionedPage(Name: str, BasePath: str) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, and local scripts/styles get
     ?v=<mtime> so a browser can never pair a new page with a cached older app.js."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
-    for Asset in ("app.js", "admin.js", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
+    for Asset in ("app.js", "admin.js", "metal.js", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
                   "vendor/three.min.js", "vendor/STLLoader.js", "vendor/OrbitControls.js"):
         Path_ = WebDir / Asset
         if Path_.is_file():
@@ -249,6 +250,17 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Html = re.sub(r'<meta name="description" content="[^"]*">',
                       lambda _M: f'<meta name="description" content="{Description}">\n    {Tags}', Html, count=1)
         return HTMLResponse(Html)
+
+    @App_.get("/showcase", include_in_schema=False)
+    async def ShowcasePage():
+        """Hero showcase — a prototype for review (p3/showcase.py). Not linked from the site and not indexed; the
+        homepage hero stays as it is until the showcase is approved."""
+        return HTMLResponse(_VersionedPage("showcase.html", Base), headers={"X-Robots-Tag": "noindex, nofollow"})
+
+    @App_.get("/api/showcase")
+    async def ShowcaseRoute(design: str | None = None):
+        """The story of one real gallery design for the showcase (read-only; nothing is generated or charged)."""
+        return Showcase.Story(Ctx, design)
 
     RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db), Svc.Gallery,
                   Svc.Orders, Svc.Promos)
