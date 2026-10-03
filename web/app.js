@@ -1082,28 +1082,36 @@ function p3App() {
         }
         return { body: out.join(''), result: prev };
       };
+      // Where the metal colour goes: the ring, not the backdrop. Two masks, multiplied:
+      //  - near-white pixels are left alone (the white background of the stills and the brightest sparkle);
+      //  - a soft centred window keeps the frame edges exactly as generated, so the grey studio backdrop of a
+      //    360 movie stays the same grey for every metal and only the ring and its immediate surroundings
+      //    carry the colour (a faint warm or cool bounce around a gold or steel ring, as in real photographs).
+      const masks = `<feColorMatrix in="SourceGraphic" type="matrix" result="lum" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4 -4 -4 0 11.7"/>
+          <feFlood x="0.13" y="0.07" width="0.74" height="0.86" flood-color="#000" flood-opacity="1" result="box"/>
+          <feGaussianBlur in="box" stdDeviation="0.065" result="centre"/>
+          <feComposite in="metal" in2="lum" operator="in" result="m1"/>
+          <feComposite in="m1" in2="centre" operator="in" result="ring"/>
+          <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="ring"/></feMerge>`;
+      const open = id => `<filter id="p3-metal-${id}" x="0" y="0" width="1" height="1" primitiveUnits="objectBoundingBox" color-interpolation-filters="sRGB">`;
       return this.allMaterials.map(m => {
         const s = hex(m.swatch || '#C8C8C5');
-        const mask = `<feColorMatrix in="SourceGraphic" type="matrix" result="mask" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4 -4 -4 0 11.7"/>
-          <feComposite in="metal" in2="mask" operator="in" result="ring"/>
-          <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="ring"/></feMerge>`;
         if (m.recolor === 'tint' && m.tint) {
           const c = cssChain(m.tint);
-          return `<filter id="p3-metal-${m.id}" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
-            ${c.body}<feColorMatrix in="${c.result}" type="identity" result="metal"/>${mask}</filter>`;
+          return `${open(m.id)}${c.body}<feColorMatrix in="${c.result}" type="identity" result="metal"/>${masks}</filter>`;
         }
         // ramp stops at luminance 0, .25, .5, .75, 1 — most of the ring lands on the swatch itself
         // An explicit 5-colour ramp (config/materials.json "ramp") gives real metal hue shifts:
         // warm brown shadows, the alloy colour in the mid-tones, pale highlights. Otherwise derive one.
-        const ramp = (m.ramp && m.ramp.length === 5) ? m.ramp.map(hex)
-          : [s.map(v => v * 0.18), s.map(v => v * 0.48), s.map(v => v * 0.82), s, mix(s, [1, 1, 1], 0.55)];
+        // A ramp may have any number of evenly spaced stops (5 or 9 in config/materials.json); the derived
+        // one keeps the metal's own colour in the mid-tones and lets the brightest highlights reach white.
+        const ramp = (m.ramp && m.ramp.length >= 3) ? m.ramp.map(hex)
+          : [s.map(v => v * 0.12), s.map(v => v * 0.45), s.map(v => v * 0.8), s, mix(s, [1, 1, 1], 0.55), [1, 1, 1]];
         const table = c => ramp.map(p => f(p[c])).join(' ');
-        return `<filter id="p3-metal-${m.id}" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
+        return `${open(m.id)}
           <feColorMatrix in="SourceGraphic" type="matrix" result="gray" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0"/>
           <feComponentTransfer in="gray" result="metal"><feFuncR type="table" tableValues="${table(0)}"/><feFuncG type="table" tableValues="${table(1)}"/><feFuncB type="table" tableValues="${table(2)}"/></feComponentTransfer>
-          <feColorMatrix in="SourceGraphic" type="matrix" result="mask" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4 -4 -4 0 11.7"/>
-          <feComposite in="metal" in2="mask" operator="in" result="ring"/>
-          <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="ring"/></feMerge>
+          ${masks}
         </filter>`;
       }).join('');
     },
