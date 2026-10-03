@@ -1063,7 +1063,10 @@
                                 <p class="text-[12px]" style="color:#6F6F6F;" x-text="designsError"></p>
                                 <button @click="loadDesigns()" class="mt-2 text-[12px] underline" style="color:#8A6420;">Retry</button>
                             </div>
-                            <p x-show="!designsLoading && !designsError && filteredDesigns.length === 0" class="text-[12px] text-center py-10 px-4 leading-relaxed" style="color:#6F6F6F;">No designs yet.<br>Create your first ring.</p>
+                            <div x-show="!designsLoading && !designsError && filteredDesigns.length === 0" class="text-center py-10 px-4">
+                                <p class="text-[12px] leading-relaxed" style="color:#6F6F6F;" x-text="projectSearch ? 'No designs match your search.' : 'No designs yet'"></p>
+                                <button x-show="!projectSearch" @click="galleryGridOpen = true" class="mt-4 inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] font-semibold px-4 py-2.5 rounded-lg transition border border-[#E8DCC4] hover:border-[#C9A96E]" style="color:#8A6420; background:#FBF7EF;">Browse Inspiration</button>
+                            </div>
                             <template x-for="p in filteredDesigns" :key="p.id">
                                 <div class="flex items-center gap-3 px-3 py-2.5 mx-1.5 rounded-xl transition cursor-pointer hover:bg-[#F8F8F8]"
                                      :class="design?.id === p.id ? 'bg-[#F8F4EE]' : ''" @click="zoom = null; openDesign(p.id); track('design_opened', p.id)">
