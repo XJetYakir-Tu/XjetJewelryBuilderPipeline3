@@ -17,6 +17,7 @@ const STORE_KEY = 'p3_state' + (BASE ? ':' + BASE : '');
 const SESSION_KEY = 'p3_session' + (BASE ? ':' + BASE : '');
 const PROFILE_KEY = 'p3_profile' + (BASE ? ':' + BASE : '');
 const GALLERY_KEY = 'p3_gallery_pending' + (BASE ? ':' + BASE : '');   // the gallery design chosen before signing in
+const FAV_KEY = 'p3_fav_pending' + (BASE ? ':' + BASE : '');           // the gallery design ♥-ed before signing in
 // Studio screens: Design · Customize · Bag ('checkout', historical name) · Checkout steps ('order') · Confirmation
 const STUDIO_VIEWS = ['ai-studio', 'review', 'checkout', 'order', 'confirmation'];
 const CUSTOMER_FIELDS = ['first_name', 'last_name', 'email', 'phone'];
@@ -147,6 +148,7 @@ function p3App() {
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
     gallery: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
     shareBusy: false, shareUrl: '', shareCopied: false, shareInfo: null, _restoreTitle: '',   // lightbox: Share
+    favorites: [], favBusy: '', sidebarTab: 'designs',                       // ♥ Favorites: saved references to gallery masters
     homeGallery: [],                                                           // the 8 gallery designs this visit features (random per page load)
     heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the featured rings
     zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
@@ -213,7 +215,7 @@ function p3App() {
           }
         } catch (_) { try { localStorage.removeItem(SESSION_KEY); } catch (__) {} }
       }
-      if (this.userSession) await this._refreshQuota();
+      if (this.userSession) { await this._refreshQuota(); this.loadFavorites(); }
       try { this.devKey = sessionStorage.getItem('p3_dev_key') || ''; } catch { this.devKey = ''; }
       if (this.devKey) this.loadDevMode();
       const hashView = (location.hash || '').replace('#', '');
@@ -431,6 +433,35 @@ function p3App() {
       } catch (e) { this.showToast(e.message || 'The link could not be prepared.'); }
       finally { this.shareBusy = false; }
     },
+    // ♥ Favorites — a saved reference to the gallery master (never a copy, never a My Design), per account.
+    isFav(g) { return !!g && this.favorites.some(f => f.design_id === g.design_id); },
+    get filteredFavorites() {
+      const q = (this.projectSearch || '').trim().toLowerCase();
+      return q ? this.favorites.filter(f => f.title.toLowerCase().includes(q)) : this.favorites;
+    },
+    async loadFavorites() {
+      if (!this.userSession) { this.favorites = []; return; }
+      try { this.favorites = (await this.api('GET', '/api/favorites')).items || []; } catch (_) {}
+    },
+    async toggleFav(g) {
+      if (!g || this.favBusy) return;
+      if (!this.userSession) {                 // sign in first; the ♥ is saved right after and the design shown again
+        this._setPendingFav(g.id);
+        this.closeGallery();
+        this.openRegModal();
+        return;
+      }
+      const was = this.isFav(g);
+      this.favBusy = g.design_id;
+      try {
+        const r = await this.api(was ? 'DELETE' : 'PUT', `/api/favorites/${encodeURIComponent(g.design_id)}`);
+        this.favorites = r.items || [];
+        this.showToast(was ? 'Removed from Favorites' : 'Saved to Favorites');
+      } catch (e) { this.showToast(e.message); }
+      finally { this.favBusy = ''; }
+    },
+    _pendingFav() { try { return localStorage.getItem(FAV_KEY) || ''; } catch { return ''; } },
+    _setPendingFav(id) { try { id ? localStorage.setItem(FAV_KEY, id) : localStorage.removeItem(FAV_KEY); } catch {} },
     closeGallery() {
       this.galleryItem = null; this.galleryBusy = false;
       if (this._restoreTitle) { document.title = this._restoreTitle; this._restoreTitle = ''; }   // after a shared link's preview
@@ -477,7 +508,7 @@ function p3App() {
         this._setPendingGallery('');
         this.closeGallery(); this.galleryGridOpen = false; this.showRegModal = false; this.closePreview(); this.signInNotice = null;
         await this.openDesign(d.id);
-        this.loadDesigns(); this._refreshQuota();
+        this.loadDesigns(); this.loadFavorites(); this._refreshQuota();
       } catch (e) {
         this.galleryBusy = false;
         if (this.galleryItem) { this.galleryError = e.message; return; }
@@ -490,6 +521,14 @@ function p3App() {
     async _afterSignIn(fromVerification) {
       const pending = this._pendingGallery();
       if (pending) { await this.startFromGallery(pending); return; }
+      const fav = this._pendingFav();
+      if (fav) {                               // they tapped ♥ before signing in: save it and show the design again
+        this._setPendingFav('');
+        this.showRegModal = false;
+        await this.loadFavorites();
+        const g = this.gallery.find(x => x.id === fav);
+        if (g) { if (!this.isFav(g)) await this.toggleFav(g); this.openGallery(g); return; }
+      }
       this._enterDesignAfterSignIn(fromVerification);
     },
 
@@ -507,7 +546,7 @@ function p3App() {
     },
     closeRegModal() {
       this.showRegModal = false;
-      this._setPendingGallery('');
+      this._setPendingGallery(''); this._setPendingFav('');
       const el = this._returnFocus; this._returnFocus = null;
       if (el && el.isConnected) setTimeout(() => el.focus(), 0);
     },
@@ -604,7 +643,7 @@ function p3App() {
         title: fromVerification ? 'Your email has been verified successfully.' : "You're signed in.",
         text: 'You can now continue designing your jewelry.',
       };
-      this.loadDesigns();
+      this.loadDesigns(); this.loadFavorites();
     },
     dismissSignInNotice() {
       this.signInNotice = null;
@@ -614,6 +653,7 @@ function p3App() {
       try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
       this.stopPolling();
       this.userSession = null; this.quotaUsed = 0; this.quotaMax = 10;
+      this.favorites = []; this.sidebarTab = 'designs'; this._setPendingFav('');
       this.signInNotice = null;
       this.design = null; this.cust = null; this.bag = null; this.designs = []; this.designsError = '';
       this.order = null; this.orders = []; this.checkout = null; this.coQuote = null;

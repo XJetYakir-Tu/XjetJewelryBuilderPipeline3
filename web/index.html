@@ -29,6 +29,14 @@
         body { font-family: 'Inter', sans-serif; background: #fff; color: #111; margin: 0; -webkit-tap-highlight-color: transparent; }
         h1, h2, h3, .brand-font { font-family: 'Cinzel', serif; }
         [x-cloak] { display: none !important; }
+        /* ♥ Favorites: a small heart on gallery tiles and in the lightbox (gold outline; filled when saved) */
+        .fav-heart { background: rgba(255,255,255,0.88); color: #8A6420; box-shadow: 0 1px 4px rgba(0,0,0,0.08); backdrop-filter: blur(4px); }
+        .fav-heart:hover { background: #fff; transform: scale(1.06); }
+        .fav-heart:disabled { opacity: .6; }
+        .fav-heart.is-fav { color: #B8873A; }
+        .fav-heart svg path { transition: fill .2s ease; }
+        .fav-heart.is-fav svg { animation: favPop .35s ease; }
+        @keyframes favPop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
         /* No fill-mode: a lingering transform would turn the screen into the containing block of its fixed bars */
         .fade-in { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -298,10 +306,16 @@
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
                     <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
                     <template x-for="g in homeGallery" :key="g.id">
-                        <button type="button" @click="openGallery(g)" class="group relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
+                        <div class="relative group">
+                        <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                             <img :src="thumb(g.image_url, 800)" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </button>
+                        <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
+                                class="fav-heart absolute top-2 right-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
+                            <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                        </button>
+                    </div>
                     </template>
                     <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery — start with your own idea below.</div>
                     <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
@@ -429,10 +443,16 @@
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto mb-16">
                 <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
                 <template x-for="g in gallery" :key="g.id">
-                    <button type="button" @click="openGallery(g)" class="group relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
+                    <div class="relative group">
+                        <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                         <img :src="thumb(g.image_url, 800)" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
                         <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                     </button>
+                        <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
+                                class="fav-heart absolute top-2 right-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
+                            <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                        </button>
+                    </div>
                 </template>
                 <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery — start with your own idea below.</div>
                 <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
@@ -990,7 +1010,12 @@
                        x-init="$watch('sidebarOpen', v => v && loadDesigns()); sidebarOpen && loadDesigns()">
                     <div class="w-[308px] flex flex-col h-full overflow-hidden bg-white">
                         <div class="px-4 py-3.5 flex items-center justify-between shrink-0" style="border-bottom:1px solid #DCDCDC;">
-                            <p class="text-[15px] uppercase tracking-[0.18em] font-semibold" style="color:#6F6F6F;">My Designs</p>
+                            <div class="flex items-center gap-3.5 min-w-0" role="tablist" aria-label="My Designs and Favorites">
+                                <button type="button" role="tab" @click="sidebarTab = 'designs'" :aria-selected="sidebarTab === 'designs'" class="text-[13px] uppercase tracking-[0.14em] font-semibold whitespace-nowrap pb-0.5 border-b-2 transition" :class="sidebarTab === 'designs' ? 'border-[#C9A96E] text-[#1A1A1A]' : 'border-transparent text-[#6F6F6F] hover:text-[#1A1A1A]'">My Designs</button>
+                                <button type="button" role="tab" @click="sidebarTab = 'favorites'; loadFavorites()" :aria-selected="sidebarTab === 'favorites'" class="text-[13px] uppercase tracking-[0.14em] font-semibold whitespace-nowrap pb-0.5 border-b-2 transition inline-flex items-center gap-1.5" :class="sidebarTab === 'favorites' ? 'border-[#C9A96E] text-[#1A1A1A]' : 'border-transparent text-[#6F6F6F] hover:text-[#1A1A1A]'">
+                                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" fill="currentColor"/></svg><span>Favorites</span>
+                                </button>
+                            </div>
                             <button @click="sidebarOpen = false" class="tap-lg transition p-1 rounded-lg text-[#6F6F6F] hover:text-[#555]" title="Close" aria-label="Close My Designs">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
@@ -1002,6 +1027,32 @@
                             </div>
                         </div>
                         <div class="flex-1 overflow-y-auto py-2 no-scrollbar" @scroll="zoom = null">
+                          <template x-if="sidebarTab === 'favorites'">
+                            <div>
+                                <!-- ♥ Favorites: references to gallery masters; a tap opens the design's preview, the ♥ removes it -->
+                                <div x-show="!filteredFavorites.length" class="text-center py-10 px-4">
+                                    <p class="text-[12px] leading-relaxed" style="color:#6F6F6F;" x-text="projectSearch ? 'No favorites match your search.' : 'No favorites yet'"></p>
+                                    <p x-show="!projectSearch" class="text-[12px] mt-1" style="color:#9A9A9A;">Tap ♥ on a gallery design to keep it here.</p>
+                                    <button x-show="!projectSearch" @click="galleryGridOpen = true" class="mt-4 inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] font-semibold px-4 py-2.5 rounded-lg transition border border-[#E8DCC4] hover:border-[#C9A96E]" style="color:#8A6420; background:#FBF7EF;">Browse Inspiration</button>
+                                </div>
+                                <template x-for="f in filteredFavorites" :key="f.id">
+                                    <div class="flex items-center gap-3 px-3 py-2.5 mx-1.5 rounded-xl transition cursor-pointer hover:bg-[#F8F8F8]" @click="zoom = null; openGallery(f)" role="button" tabindex="0" @keydown.enter="openGallery(f)" :aria-label="'Open ' + f.title">
+                                        <div class="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-white" style="border:1px solid #DCDCDC;" @mouseenter="showZoom($event, f.image_url, f.title)" @mouseleave="zoom = null">
+                                            <img :src="thumb(f.image_url, 320)" alt="" class="w-full h-full object-contain" loading="lazy" decoding="async">
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-[15px] font-medium truncate" style="color:#1A1A1A;" x-text="f.title"></p>
+                                            <p class="text-[12px] mt-0.5" style="color:#6F6F6F;">Inspiration Gallery</p>
+                                        </div>
+                                        <button type="button" @click.stop="toggleFav(f)" :disabled="favBusy === f.design_id" class="tap-lg shrink-0 p-1.5 rounded-lg transition hover:bg-[#FBF7EF]" style="color:#B8873A;" title="Remove from Favorites" :aria-label="'Remove ' + f.title + ' from Favorites'">
+                                            <svg class="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" fill="currentColor"/></svg>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                          </template>
+                          <template x-if="sidebarTab === 'designs'">
+                            <div>
                             <p x-show="designsLoading" class="text-[12px] text-center py-10 px-4" style="color:#6F6F6F;">Loading your designs…</p>
                             <div x-show="!designsLoading && designsError" class="text-center py-10 px-4">
                                 <p class="text-[12px]" style="color:#6F6F6F;" x-text="designsError"></p>
@@ -1026,6 +1077,8 @@
                                     </button>
                                 </div>
                             </template>
+                            </div>
+                          </template>
                         </div>
                         <div class="p-3 shrink-0 space-y-2" style="border-top:1px solid #DCDCDC;">
                             <button @click="galleryGridOpen = true" class="w-full flex items-center justify-center gap-2 text-[13px] rounded-xl py-2.5 transition border border-[#E8DCC4] hover:border-[#C9A96E]" style="color:#8A6420; background:#FBF7EF;">
@@ -1892,10 +1945,16 @@
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     <template x-if="galleryState === 'loading'"><template x-for="i in 4" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
                     <template x-for="g in gallery" :key="g.id">
-                        <button type="button" @click="openGallery(g)" class="group relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
+                        <div class="relative group">
+                        <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                             <img :src="thumb(g.image_url, 800)" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </button>
+                        <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
+                                class="fav-heart absolute top-2 right-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
+                            <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                        </button>
+                    </div>
                     </template>
                     <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery.</div>
                     <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
@@ -1913,7 +1972,13 @@
                 </div>
                 <div class="md:w-2/5 p-7 md:p-9 flex flex-col justify-center text-center md:text-left gap-4">
                     <span class="text-[12px] uppercase tracking-[0.4em]" style="color:#8A6420">Inspiration Gallery</span>
-                    <h3 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h3>
+                    <div class="flex items-center justify-center md:justify-between gap-3">
+                        <h3 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h3>
+                        <button type="button" @click="toggleFav(galleryItem)" :disabled="favBusy === galleryItem.design_id" :aria-pressed="isFav(galleryItem)" :aria-label="isFav(galleryItem) ? 'Remove from Favorites' : 'Save to Favorites'" :title="isFav(galleryItem) ? 'Remove from Favorites' : 'Save to Favorites'"
+                                class="fav-heart shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(galleryItem) ? 'is-fav' : ''" style="border:1px solid #E8DCC4;">
+                            <svg class="w-[17px] h-[17px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(galleryItem) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                        </button>
+                    </div>
                     <p class="brand-font text-xl leading-snug text-zinc-800">Love this design? Make it yours.</p>
                     <p class="text-sm text-zinc-500 leading-relaxed">Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size and watch it in 360°.</p>
                     <p x-show="galleryError" class="text-sm text-red-600" x-text="galleryError"></p>

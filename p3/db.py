@@ -157,6 +157,15 @@ CREATE TABLE IF NOT EXISTS gallery_uses (
 );
 CREATE INDEX IF NOT EXISTS gallery_uses_owner ON gallery_uses(owner_account_id, last_active_at);
 
+-- ♥ Favorites: a customer's saved reference to a shared XJet master design. Never a copy, never a My Design;
+-- the same master whoever saves it. Removing the design from the gallery hides the favorite, re-adding shows it.
+CREATE TABLE IF NOT EXISTS gallery_favorites (
+    owner_account_id  TEXT NOT NULL,
+    design_id         TEXT NOT NULL REFERENCES designs(id),
+    created_at        TEXT NOT NULL,
+    PRIMARY KEY (owner_account_id, design_id)
+);
+
 -- Real processing stages with start/end times (Hi3D, download, queue, geometry, ready).
 CREATE TABLE IF NOT EXISTS stage_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

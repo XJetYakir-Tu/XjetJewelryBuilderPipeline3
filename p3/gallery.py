@@ -40,8 +40,9 @@ class GalleryService:
             "ORDER BY g.position, g.created_at")
 
     def List(self) -> list[dict]:
-        """Public tiles: only the title and the image — nothing about the design's owner."""
-        return [{"id": R["id"], "title": R["title"], "image_url": self.Ctx.AssetUrl(R["asset_path"])}
+        """Public tiles: the title, the image and the master design's id (what a favorite refers to) — nothing
+        about the design's owner."""
+        return [{"id": R["id"], "design_id": R["design_id"], "title": R["title"], "image_url": self.Ctx.AssetUrl(R["asset_path"])}
                 for R in self._Rows() if R["candidate_status"] == "ready" and R["asset_path"]]
 
     # ── sharing: a clean customer link by design name ────────────────────
@@ -81,6 +82,25 @@ class GalleryService:
         return {"item_id": Hit["id"], "design_id": Hit["design_id"], "slug": Hit["share_slug"] or ShareSlug(Hit["title"]),
                 "title": Hit["title"], "image_url": self.Ctx.AssetUrl(Hit["asset_path"])}
 
+    # ── ♥ favorites: a saved reference to a master design, never a copy ──
+    def Favorites(self, Who: Principal) -> list[dict]:
+        """The customer's favorites that are in the gallery now, newest first (public tile data only)."""
+        Saved = self.Ctx.Db.All("SELECT design_id, created_at FROM gallery_favorites WHERE owner_account_id = ? "
+                                "ORDER BY created_at DESC, rowid DESC", (Who.AccountId,))
+        Order = {F["design_id"]: I for I, F in enumerate(Saved)}
+        return sorted([T for T in self.List() if T["design_id"] in Order], key=lambda T: Order[T["design_id"]])
+
+    def Favorite(self, Who: Principal, DesignId: str) -> list[dict]:
+        if not any(T["design_id"] == DesignId for T in self.List()):
+            raise HttpError(404, "not_in_gallery", "This design is not in the Inspiration Gallery.")
+        self.Ctx.Db.Execute("INSERT OR IGNORE INTO gallery_favorites (owner_account_id, design_id, created_at) VALUES (?,?,?)",
+                            (Who.AccountId, DesignId, Now()))
+        return self.Favorites(Who)
+
+    def Unfavorite(self, Who: Principal, DesignId: str) -> list[dict]:
+        self.Ctx.Db.Execute("DELETE FROM gallery_favorites WHERE owner_account_id = ? AND design_id = ?", (Who.AccountId, DesignId))
+        return self.Favorites(Who)
+
     def Stats(self, DesignIds: list[str]) -> dict[str, dict]:
         """Usage of master designs: who selected them and how far they went (every journey counts — a
         customer choosing a design is real usage whatever mode generated the design's images)."""
@@ -89,7 +109,7 @@ class GalleryService:
         Db = self.Ctx.Db
         Q = ",".join("?" * len(DesignIds))
         Out = {D: {"users": 0, "sessions": 0, "customize": 0, "bag": 0, "checkout": 0, "orders": 0, "three_d": 0, "forks": 0,
-                   "last_used_at": None} for D in DesignIds}
+                   "favorites": 0, "last_used_at": None} for D in DesignIds}
         Users: dict[str, set] = {D: set() for D in DesignIds}
         for U in Db.All(f"SELECT u.* FROM gallery_uses u WHERE u.design_id IN ({Q})", DesignIds):
             S = Out[U["design_id"]]
@@ -110,6 +130,7 @@ class GalleryService:
             Out[D]["users"] = len(Users[D])
             Out[D]["three_d"] = int(Db.One("SELECT COUNT(*) AS n FROM session_3d WHERE design_id = ?", (D,))["n"])
             Out[D]["forks"] = int(Db.One("SELECT COUNT(*) AS n FROM designs WHERE source_design_id = ?", (D,))["n"])
+            Out[D]["favorites"] = int(Db.One("SELECT COUNT(*) AS n FROM gallery_favorites WHERE design_id = ?", (D,))["n"])
         return Out
 
     def AdminList(self) -> list[dict]:

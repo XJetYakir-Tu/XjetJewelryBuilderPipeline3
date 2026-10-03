@@ -404,7 +404,7 @@
         <p class="lbl">Inspiration Gallery · XJet master designs (<span x-text="galleryItems.length"></span>)</p>
         <div class="flex flex-wrap items-center gap-3 text-[12px]">
           <span class="text-zinc-500">Sort</span>
-          <template x-for="o in [['position','Display order'],['sessions','Most chosen'],['users','Most popular'],['bag','Most added to bag'],['orders','Most ordered'],['last_used_at','Last used']]" :key="o[0]">
+          <template x-for="o in [['position','Display order'],['sessions','Most chosen'],['users','Most popular'],['bag','Most added to bag'],['orders','Most ordered'],['favorites','Most saved'],['last_used_at','Last used']]" :key="o[0]">
             <button class="uppercase tracking-widest" :class="gallerySort === o[0] ? 'text-black underline' : 'text-zinc-500 hover:text-black'" @click="gallerySort = o[0]" x-text="o[1]"></button>
           </template>
         </div>
@@ -415,7 +415,7 @@
       <p x-show="galleryState === 'failed'" class="text-sm text-zinc-500">The gallery could not be loaded. <button class="underline" @click="loadGallery()">Try again</button></p>
       <div class="table-wrap" x-show="galleryItems.length">
       <table class="w-full !text-xs sticky-head" aria-label="Gallery designs">
-        <thead><tr><th>#</th><th></th><th>Design</th><th class="text-right" title="Customer journeys started from it (Make it yours)">Journeys</th><th class="text-right" title="Unique customers">Customers</th><th class="text-right" title="Journeys that reached Customize">Customize</th><th class="text-right" title="Journeys that added it to the bag">Bag</th><th class="text-right" title="Journeys that opened the checkout">Checkout</th><th class="text-right" title="Customers who placed an order with it">Orders</th><th class="text-right" title="Admin 3D requests on this design">3D</th><th class="text-right" title="Customers who refined it into a design of their own">Refined</th><th>Last used</th><th class="text-right">Actions</th></tr></thead>
+        <thead><tr><th>#</th><th></th><th>Design</th><th class="text-right" title="Customer journeys started from it (Make it yours)">Journeys</th><th class="text-right" title="Unique customers">Customers</th><th class="text-right" title="Journeys that reached Customize">Customize</th><th class="text-right" title="Journeys that added it to the bag">Bag</th><th class="text-right" title="Journeys that opened the checkout">Checkout</th><th class="text-right" title="Customers who placed an order with it">Orders</th><th class="text-right" title="Admin 3D requests on this design">3D</th><th class="text-right" title="Customers who refined it into a design of their own">Refined</th><th class="text-right" title="Customers who saved it to their Favorites (♥)">♥</th><th>Last used</th><th class="text-right">Actions</th></tr></thead>
         <template x-for="(g, i) in gallerySorted()" :key="g.design_id">
           <tbody>
             <tr class="hover:bg-zinc-50 cursor-pointer" @click="galleryToggle(g)">
@@ -430,6 +430,7 @@
               <td class="text-right tabular-nums font-semibold" x-text="g.orders"></td>
               <td class="text-right tabular-nums" x-text="g.three_d"></td>
               <td class="text-right tabular-nums" x-text="g.forks"></td>
+              <td class="text-right tabular-nums" x-text="g.favorites"></td>
               <td class="text-zinc-500 whitespace-nowrap" x-text="g.last_used_at ? ago(g.last_used_at) : '—'"></td>
               <td class="text-right whitespace-nowrap space-x-2" @click.stop>
                 <a class="text-zinc-500 hover:underline" :href="'#/sessions/' + encodeURIComponent(g.design_id)">Open</a>

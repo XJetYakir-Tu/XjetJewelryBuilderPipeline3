@@ -333,6 +333,19 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return {"slug": Share["slug"], "title": Share["title"], "text": "Designed with XJet Atelier",
                 "url": f"{PublicOrigin(request)}{Base}/design/{Share['slug']}"}
 
+    # ── ♥ favorites: saved references to gallery masters, per account ──
+    @App_.get("/api/favorites")
+    async def FavoritesRoute(x_access_token: str | None = Header(None)):
+        return {"items": Svc.Gallery.Favorites(Tok(x_access_token))}
+
+    @App_.put("/api/favorites/{DesignId}")
+    async def FavoriteRoute(DesignId: str, x_access_token: str | None = Header(None)):
+        return {"items": Svc.Gallery.Favorite(Tok(x_access_token), DesignId)}
+
+    @App_.delete("/api/favorites/{DesignId}")
+    async def UnfavoriteRoute(DesignId: str, x_access_token: str | None = Header(None)):
+        return {"items": Svc.Gallery.Unfavorite(Tok(x_access_token), DesignId)}
+
     @App_.get("/api/catalog")
     async def CatalogRoute():
         return Ctx.Catalog.ToJson()
