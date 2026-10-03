@@ -74,6 +74,21 @@
       </div>
     </template>
   </div>
+  <!-- Full-size view of the image a customer gave (Journey), with Download original -->
+  <template x-if="refBox">
+    <div class="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" @click.self="refBox = null" @keydown.escape.window="refBox = null" role="dialog" aria-modal="true" :aria-label="refBox.label">
+      <div class="bg-white shadow-2xl max-w-[92vw] max-h-[92vh] flex flex-col">
+        <div class="flex items-center justify-between gap-4 px-4 py-3 border-b border-zinc-200">
+          <div class="min-w-0"><p class="text-[13px] font-semibold text-zinc-800" x-text="refBox.label"></p><p class="text-[12px] text-zinc-500 italic truncate" x-text="refBox.text"></p></div>
+          <div class="flex items-center gap-2 shrink-0">
+            <a :href="refBox.url" :download="refBox.name" class="btn !py-1.5">Download original</a>
+            <button class="btn2 !py-1.5" @click="refBox = null" aria-label="Close">Close</button>
+          </div>
+        </div>
+        <img :src="refBox.url" :alt="refBox.label" class="block max-w-[92vw] max-h-[80vh] object-contain bg-zinc-50">
+      </div>
+    </div>
+  </template>
   <!-- Hover preview of any image in the Admin (fixed, so a scrolling table cannot clip it) -->
   <div id="zoom-preview" x-show="zoom" x-cloak class="fixed z-50 pointer-events-none bg-white border border-zinc-200 shadow-xl p-2"
        :style="zoom ? { left: zoom.x + 'px', top: zoom.y + 'px', width: zoom.size + 'px' } : {}">
@@ -1102,7 +1117,21 @@
               <span class="text-[12px] text-zinc-500" x-text="dateTime(e?.at)"></span>
               <span class="text-[12px] text-zinc-500 text-right" x-text="i && sd?.timeline[i - 1] ? '+' + since(sd.timeline[i - 1].at, e?.at) : ''"></span>
               <span><span class="badge" :class="e ? stepClass(e) : ''" x-text="e ? stepLabel(e) : ''"></span></span>
-              <span class="truncate text-zinc-600" x-text="e ? stepText(e) : ''"></span>
+              <span class="min-w-0 flex items-center gap-2.5">
+                <!-- The image the customer gave for this step: hover enlarges (desktop), click opens it full size -->
+                <template x-if="e && e.reference_url">
+                  <span class="shrink-0 inline-flex items-center gap-1">
+                    <button type="button" class="block w-9 h-9 rounded border border-zinc-200 bg-zinc-50 overflow-hidden focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            @click="openRef(e)" :title="(e.reference_label || 'Reference image') + ' — click to view full size'" :aria-label="(e.reference_label || 'Reference image') + ', open full size'">
+                      <img :src="e.reference_url" :alt="e.reference_label || 'Reference image'" :data-label="e.reference_label || 'Reference image'" class="w-full h-full object-cover">
+                    </button>
+                    <a :href="e.reference_url" :download="e.download_name || 'reference.png'" class="p-1 text-zinc-400 hover:text-zinc-800" :title="'Download ' + (e.download_name || 'reference.png')" :aria-label="'Download ' + (e.download_name || 'reference.png')">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+                    </a>
+                  </span>
+                </template>
+                <span class="truncate" :class="isCustomerInput(e) ? 'italic text-zinc-500' : 'text-zinc-600'" x-text="e ? stepText(e) : ''"></span>
+              </span>
             </li>
           </template>
         </ol>

@@ -157,6 +157,7 @@ function adminApp() {
     sect: { gallery: true, pipeline: false, choice: true, designs: false, journey: false },   // session sections (collapsed by default: secondary)
     rename: { open: false, title: '', busy: false, error: '', force: false, suggestions: [], lineage: null },
     retired: [],                                   // Ring IDs of merged legacy copies (never reused): a search for one says where it went
+    refBox: null,                                  // full-size view of a customer's reference image (Journey)
     // In-app dialogs and toasts instead of the browser's alert() / confirm() / prompt()
     dialog: null, toasts: [],
     newModel: { open: false, text: '', candidate: '', error: '', busy: false },
@@ -1191,6 +1192,9 @@ function adminApp() {
       return s < 60 ? Math.round(s) + 's' : s < 3600 ? Math.round(s / 60) + 'm' : s < 86400 ? (s / 3600).toFixed(1) + 'h' : (s / 86400).toFixed(1) + 'd';
     },
     stepLabel(e) { const l = (STEPS[e.kind] || [e.kind])[0]; return e.status && e.status !== 'ready' ? `${l} · ${e.status}` : l; },
+    // Journey rows that are the customer's own words (prompt, refinement) read as input: muted and italic
+    isCustomerInput(e) { return !!e && ['started', 'generate_requested', 'refine_requested'].includes(e.kind); },
+    openRef(e) { if (!e?.reference_url) return; this.zoom = null; this.refBox = { url: e.reference_url, label: e.reference_label || 'Reference image', name: e.download_name || 'reference.png', text: e.text || '' }; },
     stepClass(e) { return e.status === 'failed' ? 'bg-red-100 text-red-700' : (STEPS[e.kind] || [, 'bg-zinc-100'])[1]; },
     stepText(e) {
       const d = e.data || {};

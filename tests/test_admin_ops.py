@@ -110,6 +110,33 @@ async def test_gallery_master_names_are_distinctive(HX):
     assert (await H.Client.patch("/api/admin/designs/dsg_nope", json={"title": "Nope"}, headers=Admin)).status_code == 404
 
 
+async def test_journey_shows_the_image_the_customer_gave_at_each_step(HX):
+    from p3.providers.mock import _RingImage
+    H = HX
+    R = await H.Client.post("/api/designs", data={"prompt": "Take inspiration from the attached ring", "rights_confirmed": "true"},
+                            files={"reference": ("inspiration.png", _RingImage(7, "ref"), "image/png")})
+    assert R.status_code == 200, R.text
+    await H.Idle()
+    Did = R.json()["design_id"]
+    B = (await H.Client.get(f"/api/batches/{R.json()['id']}")).json()
+    await H.Client.post(f"/api/designs/{Did}/batches", json={"parent_candidate_id": B["candidates"][1]["id"], "instruction": "thinner"})
+    await H.Idle()
+    T = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["timeline"]
+    Started = next(E for E in T if E["kind"] == "started")
+    Gen = next(E for E in T if E["kind"] == "generate_requested")
+    Ref = next(E for E in T if E["kind"] == "refine_requested")
+    for E in (Started, Gen):                                     # the uploaded (or pasted) reference, downloadable under a telling name
+        assert E["reference_kind"] == "upload" and E["reference_url"].endswith(".png") and "/references/" in E["reference_url"]
+        assert E["download_name"].endswith("_R-1001_reference.png") and E["reference_label"] == "Customer's reference image"
+    assert (await H.Client.get(Started["reference_url"])).status_code == 200
+    assert Ref["reference_kind"] == "option" and Ref["reference_label"] == "Refined from R-1001-B" and Ref["download_name"].endswith("_R-1001-B.png")
+    assert all("reference_url" not in E for E in T if E["kind"] not in ("started", "generate_requested", "refine_requested"))
+    # a design typed without an image has no reference fields at all (no empty placeholder)
+    Plain = await H.NewDesign("a plain band")
+    T2 = (await H.Client.get(f"/api/admin/sessions/{Plain['design_id']}", headers=Admin)).json()["timeline"]
+    assert all("reference_url" not in E for E in T2)
+
+
 async def test_design_names_are_never_shared_and_variations_follow_their_master(HX):
     from p3.providers import endpoints
     H = HX

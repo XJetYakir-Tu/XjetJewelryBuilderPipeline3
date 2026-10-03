@@ -359,12 +359,15 @@ def Timeline(Ctx: Context, DesignId: str, Owner: str | None = None, Use: dict | 
     Db = Ctx.Db
     D = Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
     Owner = Owner or D["owner_account_id"]
-    Items = [] if Use else [{"at": D["created_at"], "kind": "started", "text": D["prompt"]}]
-    for Bt in ([] if Use else Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))):
+    Batches = [] if Use else Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))
+    Refs = RingIds.CandidateRefs(Db, [DesignId]) if Batches else {}
+    First = next((B for B in Batches if B["kind"] == "initial"), None)
+    Items = [] if Use else [{"at": D["created_at"], "kind": "started", "text": D["prompt"], **_Reference(Ctx, D, First, Refs)}]
+    for Bt in Batches:
         Cs = Db.All("SELECT status, updated_at FROM candidates WHERE batch_id = ?", (Bt["id"],))
         Ready = [X for X in Cs if X["status"] == "ready"]
         Items.append({"at": Bt["created_at"], "kind": "refine_requested" if Bt["kind"] == "refine" else "generate_requested",
-                      "text": Bt["user_text"]})
+                      "text": Bt["user_text"], **_Reference(Ctx, D, Bt, Refs)})
         if Ready or all(X["status"] == "failed" for X in Cs):
             Items.append({"at": _Max(*[X["updated_at"] for X in Cs]),
                           "kind": "refined" if Bt["kind"] == "refine" else "generated",
@@ -385,6 +388,23 @@ def Timeline(Ctx: Context, DesignId: str, Owner: str | None = None, Use: dict | 
                           "data": {"backfilled": True, "candidate_id": Cu["candidate_id"]}})
     Items.sort(key=lambda X: X["at"] or "")
     return Items
+
+
+def _Reference(Ctx: Context, Design: dict, Batch: dict | None, Refs: dict) -> dict:
+    """The image the customer gave for a step: their uploaded or pasted reference (a new design), or the
+    option they refined (a refinement) — with a download name that says what it is. {} when there is none."""
+    if not Batch or not Batch["reference_asset"]:
+        return {}
+    from p3.production3d import SlugPart
+    Ring = RingIds.DesignRef(Design.get("ring_no"))
+    Slug = SlugPart(Design["title"])
+    Url = Ctx.AssetUrl(Batch["reference_asset"])
+    if Batch["kind"] == "initial":
+        return {"reference_url": Url, "reference_kind": "upload", "reference_label": "Customer's reference image",
+                "download_name": f"{Slug}_{Ring}_reference.png"}
+    Option = Refs.get(Batch["parent_candidate_id"])
+    return {"reference_url": Url, "reference_kind": "option", "reference_label": f"Refined from {Option or 'the selected option'}",
+            "download_name": f"{Slug}_{Option or Ring}.png"}
 
 
 def _Seconds(A: str | None, B: str | None) -> float | None:
