@@ -185,8 +185,6 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Resp.headers.setdefault("Cache-Control", Immutable)
         elif Rel.startswith("/static/vendor/fonts/"):
             Resp.headers.setdefault("Cache-Control", "public, max-age=2592000")
-        elif Rel.startswith(("/static/images/", "/static/videos/")) and not Req.query_params.get("v"):
-            Resp.headers.setdefault("Cache-Control", "public, max-age=86400")
         elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/")):
             Resp.headers["Cache-Control"] = Immutable if Req.query_params.get("v") else "no-cache"
         return Resp
