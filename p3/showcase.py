@@ -1,7 +1,9 @@
 """Hero showcase — prototype (/showcase, not linked from the site, not indexed).
 
-The story of one real Inspiration Gallery design, read from the database for a scripted ~10 s sequence:
-its prompt → its first four options → a refinement → its 360° movie → three metals → "made in real metal".
+The story of one real Inspiration Gallery design, read from the database for a scripted ~16 s sequence:
+its prompt → its first four options → the one chosen → its refinement → its 360° movie → Silver and Yellow Gold at
+the same angle → the finished ring in its original look, with the call to action. The same ring is the hero from
+the selection to the end; the final image is the design's own render, shown as a design preview.
 Read-only and free: nothing is generated, charged or saved. Only the design's own history is used (the batches
 of the gallery master itself — never a customer's variation), and no Ring ID is part of what it returns.
 
@@ -14,12 +16,17 @@ variation tells the story from the design it came from. ?design=<link name> pick
 """
 
 import re
+from functools import lru_cache
+from pathlib import Path
 
+from PIL import Image
+
+from p3 import assets
 from p3.context import Context
 from p3.gallery import ShareSlug
 
-Metals = ("silver", "gold_18k_rose", "gold_18k_yellow")    # beat 5: silver → rose gold → 18K gold (live filters)
-MadeImage = "/static/images/Angel.JPG"                    # beat 6 placeholder: a part printed in metal by XJet
+Metals = ("silver", "gold_18k_yellow")      # the metal beat compares Silver and 18K Yellow Gold, then ends in gold
+Fillers = ("kind of", "sort of", "something like", "a bit", "like", "etc")    # trailing filler of a typed instruction
 
 
 def _Cap(Text: str) -> str:
@@ -37,9 +44,41 @@ def ShortPrompt(Text: str, Max: int = 72) -> str:
     return _Cap(T[:Max].rsplit(" ", 1)[0].rstrip(".,;:!? ")) + "…"
 
 
-def ShortInstruction(Text: str, Max: int = 40) -> str:
-    T = " ".join((Text or "").split()).rstrip(".")
+def ShortInstruction(Text: str, Max: int = 64) -> str:
+    """The refinement request as the chip types it: whole, without a trailing filler ("… wave lattice kind of" →
+    "… wave lattice"), so it reads as a finished sentence; very long ones are cut at a word."""
+    T = " ".join((Text or "").split()).rstrip(" .,;:!")
+    while True:
+        Low = T.lower()
+        Hit = next((F for F in Fillers if Low.endswith(" " + F)), None)
+        if not Hit:
+            break
+        T = T[:-len(Hit)].rstrip(" .,;:!")
     return _Cap(T if len(T) <= Max else T[:Max].rsplit(" ", 1)[0] + "…")
+
+
+@lru_cache(maxsize=64)
+def _ToneOf(Path_: str, Mtime: float) -> str:
+    """"gold" when the ring in the image is warm (yellow or rose metal), else "silver" — so the metal beat shows the
+    render untouched for its own metal and filters it only for the other one."""
+    with Image.open(Path_) as Img:
+        Img = Img.convert("RGB")
+        Img.thumbnail((96, 96))
+        Px, Warm, N = Img.tobytes(), 0.0, 0
+        for I in range(0, len(Px), 3):
+            R, G, B = Px[I], Px[I + 1], Px[I + 2]
+            Lum = 0.2126 * R + 0.7152 * G + 0.0722 * B
+            if 30 < Lum < 238:                        # the ring, not the white background or deep shadow
+                Warm += R - B; N += 1
+    return "gold" if N and Warm / N / 255 > 0.10 else "silver"
+
+
+def Tone(Ctx: Context, AssetPath: str) -> str:
+    try:
+        P = assets.Resolve(Ctx.Settings.AssetsDir, AssetPath)
+        return _ToneOf(str(P), P.stat().st_mtime)
+    except Exception:  # noqa: BLE001 — a missing or unreadable image only changes which metal is filtered
+        return "gold"
 
 
 def _Movies(Db, DesignIds: list[str]) -> dict[str, tuple[str, bool]]:
@@ -117,6 +156,7 @@ def Story(Ctx: Context, Design: str | None = None) -> dict:
     Url, Base = Ctx.AssetUrl, Ctx.Settings.BasePath
     Materials = {M["id"]: M for G in Ctx.Catalog.ToJson()["groups"] for M in G["materials"]}
     Movie = Url(Best["movie"])
+    Still = Best["refined"][1]["asset_path"] if Best["refined"] else Best["options"][Best["picked"]]["asset_path"]
     return {
         "story": {
             "title": Best["row"]["title"],
@@ -129,7 +169,8 @@ def Story(Ctx: Context, Design: str | None = None) -> dict:
             "movie_url": Movie,
             "poster_url": Movie.replace("/assets/", "/poster/", 1),
             "metals": [Materials[I] for I in Metals if I in Materials],
-            "made": {"image_url": f"{Base}{MadeImage}", "placeholder": True},
+            "still_url": Url(Still),                  # the hero ring from the metal beat to the end: its own render
+            "tone": Tone(Ctx, Still),                 # "gold" | "silver": the render's own metal, shown unfiltered
             "cta_url": f"{Base}/",
         },
         "choices": Choices,

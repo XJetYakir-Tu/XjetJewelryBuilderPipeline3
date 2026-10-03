@@ -15,6 +15,22 @@ def test_prompt_and_instruction_are_shortened_for_the_composer():
     assert ShortPrompt(Long).endswith("…") and len(ShortPrompt(Long)) <= 73 and not ShortPrompt(Long)[:-1].endswith(" ")
     assert ShortInstruction("change to lattice") == "Change to lattice"
     assert ShortInstruction("make it thinner.") == "Make it thinner"
+    # a trailing filler is dropped so the request reads as a finished sentence (Aurora Mesh on proto)
+    assert ShortInstruction("Change the structure to wave lattice kind of") == "Change the structure to wave lattice"
+    assert ShortInstruction("Make the band a bit thinner and add a twist, sort of") == "Make the band a bit thinner and add a twist"
+    assert ShortInstruction("a " * 40).endswith("…")
+
+
+def test_the_metal_beat_knows_the_renders_own_metal(tmp_path):
+    """A warm (gold) render is shown untouched as gold and filtered to silver; a grey one the other way round."""
+    from PIL import Image
+    from p3.showcase import _ToneOf
+    Gold, Silver = tmp_path / "gold.png", tmp_path / "silver.png"
+    for P, Colour in ((Gold, (212, 175, 55)), (Silver, (168, 169, 173))):
+        Img = Image.new("RGB", (64, 64), (255, 255, 255))
+        Img.paste(Colour, (16, 16, 48, 48))
+        Img.save(P)
+    assert _ToneOf(str(Gold), 1.0) == "gold" and _ToneOf(str(Silver), 1.0) == "silver"
 
 
 async def _Story(H, Prompt="A slim band with a heart motif, delicate and light"):
@@ -46,8 +62,9 @@ async def test_showcase_tells_the_story_of_a_real_gallery_design(HG):
     assert S["refine"] == {"text": "Change to lattice", "image_url": Ref["candidates"][1]["image_url"]}
     Movie = H.Ctx.Db.One("SELECT asset_path FROM movies WHERE candidate_id = ? AND status = 'ready'", (Ref["candidates"][1]["id"],))
     assert S["movie_url"] == H.Ctx.AssetUrl(Movie["asset_path"]) and S["poster_url"] == S["movie_url"].replace("/assets/", "/poster/")
-    assert [M["id"] for M in S["metals"]] == ["silver", "gold_18k_rose", "gold_18k_yellow"] and all(M["ramp"] for M in S["metals"])
-    assert S["made"]["placeholder"] and S["made"]["image_url"].endswith("/static/images/Angel.JPG") and S["cta_url"] == H.Base + "/"
+    assert [M["id"] for M in S["metals"]] == ["silver", "gold_18k_yellow"] and all(M["ramp"] for M in S["metals"])   # no rose gold
+    assert S["still_url"] == Ref["candidates"][1]["image_url"]                # the refined ring stays the hero to the end
+    assert S["tone"] in ("gold", "silver") and "made" not in S and S["cta_url"] == H.Base + "/"   # no figurine any more
     assert "R-10" not in str(R.json())                                    # no Ring IDs in the marketing story
     # nothing was written: still one design, one gallery tile, no new batches or movies
     Counts = lambda: tuple(H.Ctx.Db.One(f"SELECT COUNT(*) AS n FROM {T}")["n"] for T in ("designs", "batches", "movies", "gallery_uses"))
