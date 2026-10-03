@@ -139,6 +139,23 @@ const EVENTS = {
   restored: ['Restored', 'bg-emerald-100 text-emerald-800'],
 };
 
+// Copy text to the clipboard. The Clipboard API exists only on https (and localhost); on a plain-http site such
+// as proto the older selection copy still works inside a click. Returns whether the text was copied.
+async function copyText(text) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch (_) {}
+  const active = document.activeElement;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.setAttribute('aria-hidden', 'true');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (_) { return false; }
+  finally { try { active && active.focus && active.focus({ preventScroll: true }); } catch (_) {} }
+}
+
 function adminApp() {
   return {
     BASE,
@@ -1015,10 +1032,13 @@ function adminApp() {
       try { const r = await this.api('GET', `/api/admin/gallery/usage/${encodeURIComponent(g.design_id)}`); this.galleryUsage = { ...this.galleryUsage, [g.design_id]: r.uses }; }
       catch (e) { this.galleryMsg = e.message; }
     },
+    // The customer share link by design name (/design/aurora-twist) — the same link the Share button gives customers
     async galleryLink(g) {
-      const url = location.origin + BASE + '/#gallery=' + encodeURIComponent(g.id);
-      try { await navigator.clipboard.writeText(url); this.galleryLinkCopied = g.id; setTimeout(() => { this.galleryLinkCopied = ''; }, 2000); this.notify('Share link copied'); }
-      catch (e) { await this.ask({ title: 'Share link', text: 'Copy this link:', copy: url, confirmLabel: 'Done', cancelLabel: '' }); }
+      let url;
+      try { url = (await this.api('GET', `/api/gallery/${encodeURIComponent(g.id)}/share`)).url; }
+      catch (e) { this.galleryMsg = e.message; return; }
+      if (await copyText(url)) { this.galleryLinkCopied = g.id; setTimeout(() => { this.galleryLinkCopied = ''; }, 2000); this.notify('Share link copied — ' + url); }
+      else await this.ask({ title: 'Share link', text: 'Copy this link:', copy: url, confirmLabel: 'Done', cancelLabel: '' });
     },
     async galleryAdd(candidateId) {
       try {

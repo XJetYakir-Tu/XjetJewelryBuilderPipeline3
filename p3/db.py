@@ -482,6 +482,9 @@ class Database:
                 UCols = {R[1] for R in Conn.execute("PRAGMA table_info(gallery_uses)")}
                 if UCols and "removed_at" not in UCols:
                     Conn.execute("ALTER TABLE gallery_uses ADD COLUMN removed_at TEXT")
+                if "owner_account_id" in Cols and "share_slug" not in Cols:
+                    # Customer share link by design name (/design/aurora-twist): assigned once, stable through renames
+                    Conn.execute("ALTER TABLE designs ADD COLUMN share_slug TEXT")
                 if "owner_account_id" in Cols:
                     from p3 import ringids
                     ringids.Install(Conn)                 # shared ring IDs (R-1042, R-1042-B …)

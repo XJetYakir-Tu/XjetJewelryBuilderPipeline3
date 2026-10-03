@@ -11,11 +11,21 @@ Every use is its own journey in the Admin (session id = the use id), so a master
 opened to see every customer who used it, and all masters can be compared.
 """
 
+import re
+import unicodedata
+
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import Principal
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
+
+
+def ShareSlug(Title: str) -> str:
+    """Link name from a design name: lower-case ASCII words joined by '-' ("Aurora Twist" → "aurora-twist",
+    "Éternité" → "eternite"); at most 60 characters."""
+    Ascii = unicodedata.normalize("NFKD", Title or "").encode("ascii", "ignore").decode("ascii").lower()
+    return "-".join(re.findall(r"[a-z0-9]+", Ascii))[:60].strip("-")
 
 
 class GalleryService:
@@ -25,7 +35,7 @@ class GalleryService:
     # ── reading ──────────────────────────────────────────────────────────
     def _Rows(self) -> list[dict]:
         return self.Ctx.Db.All(
-            "SELECT g.*, d.title, d.prompt, d.ring_no, d.owner_account_id, c.asset_path, c.status AS candidate_status "
+            "SELECT g.*, d.title, d.prompt, d.ring_no, d.owner_account_id, d.share_slug, c.asset_path, c.status AS candidate_status "
             "FROM gallery_items g JOIN designs d ON d.id = g.design_id JOIN candidates c ON c.id = g.candidate_id "
             "ORDER BY g.position, g.created_at")
 
@@ -33,6 +43,43 @@ class GalleryService:
         """Public tiles: only the title and the image — nothing about the design's owner."""
         return [{"id": R["id"], "title": R["title"], "image_url": self.Ctx.AssetUrl(R["asset_path"])}
                 for R in self._Rows() if R["candidate_status"] == "ready" and R["asset_path"]]
+
+    # ── sharing: a clean customer link by design name ────────────────────
+    def ShareFor(self, ItemId: str) -> dict | None:
+        """The share details of a gallery design. Its link name comes from the design name the first time it is
+        shared ("Aurora Twist" → aurora-twist, unique) and then never changes, so every link that was ever
+        sent keeps working, whatever the design is called later."""
+        R = self.Ctx.Db.One("SELECT g.id, g.design_id, d.title, d.share_slug, c.asset_path, c.status AS candidate_status "
+                            "FROM gallery_items g JOIN designs d ON d.id = g.design_id JOIN candidates c ON c.id = g.candidate_id "
+                            "WHERE g.id = ?", (ItemId,))
+        if R is None or R["candidate_status"] != "ready" or not R["asset_path"]:
+            return None
+        Slug = R["share_slug"] or self._AssignSlug(R["design_id"], R["title"])
+        return {"item_id": R["id"], "design_id": R["design_id"], "slug": Slug, "title": R["title"],
+                "image_url": self.Ctx.AssetUrl(R["asset_path"])}
+
+    def _AssignSlug(self, DesignId: str, Title: str) -> str:
+        Db = self.Ctx.Db
+        Base = ShareSlug(Title) or "design"
+        Taken = {R["share_slug"] for R in Db.All("SELECT share_slug FROM designs WHERE share_slug IS NOT NULL")}
+        Slug, N = Base, 2
+        while Slug in Taken:
+            Slug, N = f"{Base}-{N}", N + 1
+        Db.Execute("UPDATE designs SET share_slug = ? WHERE id = ? AND share_slug IS NULL", (Slug, DesignId))
+        return Db.One("SELECT share_slug FROM designs WHERE id = ?", (DesignId,))["share_slug"]
+
+    def Resolve(self, Slug: str) -> dict | None:
+        """The gallery design behind a share link: by its assigned link name first, else by its current name."""
+        S = (Slug or "").strip().lower()
+        if not S:
+            return None
+        Rows = [R for R in self._Rows() if R["candidate_status"] == "ready" and R["asset_path"]]
+        Hit = next((R for R in Rows if (R["share_slug"] or "").lower() == S), None) \
+            or next((R for R in Rows if ShareSlug(R["title"]) == S), None)
+        if Hit is None:
+            return None
+        return {"item_id": Hit["id"], "design_id": Hit["design_id"], "slug": Hit["share_slug"] or ShareSlug(Hit["title"]),
+                "title": Hit["title"], "image_url": self.Ctx.AssetUrl(Hit["asset_path"])}
 
     def Stats(self, DesignIds: list[str]) -> dict[str, dict]:
         """Usage of master designs: who selected them and how far they went (every journey counts — a

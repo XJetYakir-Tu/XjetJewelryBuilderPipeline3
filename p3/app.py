@@ -5,9 +5,12 @@ With P3_BASE_PATH=/JewelryB2C3 every page, API, static file and asset is served
 under that prefix (the deployment layout behind proto/tron); without it, at "/".
 """
 
+import html
+import json
 import logging
 import mimetypes
 import os
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, Header, Request, UploadFile
@@ -44,7 +47,7 @@ from p3.orders import OrderService
 from p3.promos import PromoService
 from p3.payments import BuildPaymentProvider
 from p3.addressing import BuildValidator
-from p3.registration import RegistrationService
+from p3.registration import PublicOrigin, RegistrationService
 from p3 import sessions as Sessions
 from p3.usage import BackfillUsageAnnotations
 from p3.modes import DefaultFactories, ModeManager, ResolveStartupMode
@@ -89,6 +92,11 @@ class _NoGzipForMedia:
             Scope = dict(Scope)
             Scope["headers"] = [(K, V) for K, V in Scope.get("headers", []) if K.lower() != b"accept-encoding"]
         await self.App(Scope, Receive, Send)
+
+
+def _ScriptJson(Value) -> str:
+    """JSON that is safe inside an inline <script> (no "</script>" or HTML-significant characters can break out)."""
+    return json.dumps(Value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
 def _VersionedPage(Name: str, BasePath: str) -> str:
@@ -206,6 +214,42 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def DevPage():
         return HTMLResponse(_VersionedPage("dev.html", Base))
 
+    @App_.get("/design/{Slug}", include_in_schema=False)
+    async def SharedDesignPage(Slug: str, request: Request):
+        """A shared gallery design by name (/design/aurora-twist): the site opens with that design's preview, and
+        the page carries the social-preview tags — design name, "Designed with XJet Atelier", the ring image —
+        that messaging apps and social networks read before anyone taps. No Ring ID anywhere in it."""
+        Html = _VersionedPage("index.html", Base)
+        SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
+        Found = Svc.Gallery.Resolve(Slug)
+        if Found is None:
+            return HTMLResponse(Html.replace("</head>", '<script>window.__p3Open = {"gallery": null};</script>\n</head>', 1), status_code=404)
+        Origin = PublicOrigin(request)
+        Url = f"{Origin}{Base}/design/{Found['slug']}"
+        Title = html.escape(Found["title"], quote=True)
+        Image = html.escape(f"{Origin}{Media.ThumbUrl(Found['image_url'], 800, 'jpg')}", quote=True)
+        Description = "Designed with XJet Atelier — a ring from the Inspiration Gallery. See it in 360°, choose your metal and make it yours."
+        Tags = "\n".join([
+            f'<meta property="og:type" content="website">',
+            f'<meta property="og:site_name" content="XJet Atelier">',
+            f'<meta property="og:title" content="{Title}">',
+            f'<meta property="og:description" content="{Description}">',
+            f'<meta property="og:image" content="{Image}">',
+            f'<meta property="og:image:alt" content="{Title} — a ring designed with XJet Atelier">',
+            f'<meta property="og:url" content="{html.escape(Url, quote=True)}">',
+            f'<meta name="twitter:card" content="summary_large_image">',
+            f'<meta name="twitter:title" content="{Title}">',
+            f'<meta name="twitter:description" content="{Description}">',
+            f'<meta name="twitter:image" content="{Image}">',
+            f'<link rel="canonical" href="{html.escape(Url, quote=True)}">',
+            f'<script>window.__p3Open = {_ScriptJson({"gallery": Found["item_id"], "site_title": SiteTitle})};</script>',
+        ])
+        # Literal replacements (a function, so nothing in a title or the JSON is read as a regex escape)
+        Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{Title} · XJet Atelier</title>", Html, count=1, flags=re.S)
+        Html = re.sub(r'<meta name="description" content="[^"]*">',
+                      lambda _M: f'<meta name="description" content="{Description}">\n    {Tags}', Html, count=1)
+        return HTMLResponse(Html)
+
     RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db), Svc.Gallery,
                   Svc.Orders, Svc.Promos)
 
@@ -278,6 +322,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def GalleryStart(ItemId: str, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         return Svc.Designs.Get(Who, Svc.Gallery.Start(Who, ItemId, Body_.get("client_request_id") or None))
+
+    @App_.get("/api/gallery/{ItemId}/share")
+    async def GalleryShare(ItemId: str, request: Request):
+        """What the Share button (and Admin's Copy link) uses: the design name, the line under it and the clean
+        customer link by name — no Ring ID in anything a customer passes on."""
+        Share = Svc.Gallery.ShareFor(ItemId)
+        if Share is None:
+            raise HttpError(404, "gallery_item_not_found", "This gallery design is no longer available.")
+        return {"slug": Share["slug"], "title": Share["title"], "text": "Designed with XJet Atelier",
+                "url": f"{PublicOrigin(request)}{Base}/design/{Share['slug']}"}
 
     @App_.get("/api/catalog")
     async def CatalogRoute():

@@ -1919,7 +1919,18 @@
                     <p x-show="galleryError" class="text-sm text-red-600" x-text="galleryError"></p>
                     <div class="flex flex-col gap-3 pt-1">
                         <button @click="makeItYours()" :disabled="galleryBusy" class="btn-gold py-4 text-xs uppercase tracking-[0.2em] stream-glow transition" x-text="galleryBusy ? 'Opening your design…' : 'Make it yours'"></button>
-                        <button @click="closeGallery()" class="btn-outline py-3 text-xs uppercase tracking-[0.2em]">Back to gallery</button>
+                        <div class="flex gap-3">
+                            <button @click="shareGallery(galleryItem)" :disabled="shareBusy" class="btn-outline flex-1 py-3 text-xs uppercase tracking-[0.2em] inline-flex items-center justify-center gap-2" :title="canNativeShare ? 'Share this design' : 'Copy a link to this design'">
+                                <svg x-show="canNativeShare" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0-11-3.5 3.5M12 4l3.5 3.5M6 12v6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-6"/></svg>
+                                <svg x-show="!canNativeShare" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+                                <span x-text="shareBusy ? 'Preparing…' : (canNativeShare ? 'Share' : (shareCopied ? 'Link copied' : 'Copy link'))"></span>
+                            </button>
+                            <button @click="closeGallery()" class="btn-outline flex-1 py-3 text-xs uppercase tracking-[0.2em]">Back to gallery</button>
+                        </div>
+                        <div x-show="shareUrl" x-cloak class="flex items-center gap-2 text-left">
+                            <input type="text" readonly :value="shareUrl" @focus="$event.target.select()" @click="$event.target.select()" class="flex-1 min-w-0 text-[12px] px-2.5 py-2 rounded-lg bg-white" style="border:1px solid #DCDCDC; color:#1A1A1A;" aria-label="Share link">
+                            <span class="text-[12px] text-zinc-500 shrink-0">Copy this link</span>
+                        </div>
                     </div>
                     <p x-show="!userSession" class="text-[12px] text-zinc-400">Sign in or register first — we'll bring you straight back to this design.</p>
                 </div>

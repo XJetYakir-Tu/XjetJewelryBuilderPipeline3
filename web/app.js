@@ -24,6 +24,23 @@ const ADDRESS_FIELDS = ['recipient', 'line1', 'line2', 'city', 'region', 'postal
 const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'designers',
                     'terms', 'privacy', 'shipping-returns', 'contact'];
 
+// Copy text to the clipboard. The Clipboard API exists only on https (and localhost); on a plain-http site such
+// as proto the older selection copy still works inside a click. Returns whether the text was copied.
+async function copyText(text) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch (_) {}
+  const active = document.activeElement;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.setAttribute('aria-hidden', 'true');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (_) { return false; }
+  finally { try { active && active.focus && active.focus({ preventScroll: true }); } catch (_) {} }
+}
+
 // Customer copy per material id (from P2's metals[] descriptions).
 const MATERIAL_COPY = {
   stainless_steel: { sub: 'Durable brushed steel', desc: 'Durable, hypoallergenic stainless steel with a cool brushed finish. Everyday strength at an accessible price.' },
@@ -129,6 +146,7 @@ function p3App() {
     // ── preview overlay (P2 fullscreen zoom) ─────────────────────────
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
     gallery: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
+    shareBusy: false, shareUrl: '', shareCopied: false, shareInfo: null, _restoreTitle: '',   // lightbox: Share
     homeGallery: [],                                                           // the 8 gallery designs this visit features (random per page load)
     heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the featured rings
     zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
@@ -384,8 +402,39 @@ function p3App() {
       }, 5000);
       this.heroIndex = i;
     },
-    openGallery(g) { this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; },
-    closeGallery() { this.galleryItem = null; this.galleryBusy = false; },
+    openGallery(g) {
+      this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; this.shareUrl = ''; this.shareCopied = false;
+      // The share link is fetched as the preview opens, so Share / Copy link act at once inside the tap (browsers
+      // only allow the share sheet and copying during the click itself)
+      this.shareInfo = null;
+      this.api('GET', `/api/gallery/${encodeURIComponent(g.id)}/share`, null, { noAuth: true })
+        .then(s => { if (this.galleryItem === g) this.shareInfo = s; }).catch(() => {});
+    },
+    // Share: on a phone the native share sheet; on a computer "Copy link". The link is by design name
+    // (/design/aurora-twist) with the ring image, the name and "Designed with XJet Atelier" as its preview.
+    get canNativeShare() {
+      try { return !!navigator.share && window.matchMedia('(hover: none) and (pointer: coarse)').matches; } catch { return false; }
+    },
+    async shareGallery(g) {
+      if (!g || this.shareBusy) return;
+      this.shareBusy = true; this.shareUrl = '';
+      try {
+        const s = this.shareInfo || await this.api('GET', `/api/gallery/${encodeURIComponent(g.id)}/share`, null, { noAuth: true });
+        if (this.canNativeShare) {
+          try { await navigator.share({ title: s.title, text: s.text, url: s.url }); return; }
+          catch (e) { if (e && e.name === 'AbortError') return; }      // dismissed — nothing to do
+        }
+        if (await copyText(s.url)) {
+          this.shareCopied = true; setTimeout(() => { this.shareCopied = false; }, 2200);
+          this.showToast(`Link copied — ${s.title}`);
+        } else this.shareUrl = s.url;                                   // no clipboard access: show the link to copy
+      } catch (e) { this.showToast(e.message || 'The link could not be prepared.'); }
+      finally { this.shareBusy = false; }
+    },
+    closeGallery() {
+      this.galleryItem = null; this.galleryBusy = false;
+      if (this._restoreTitle) { document.title = this._restoreTitle; this._restoreTitle = ''; }   // after a shared link's preview
+    },
     _pendingGallery() { try { return localStorage.getItem(GALLERY_KEY) || ''; } catch { return ''; } },
     _setPendingGallery(id) { try { id ? localStorage.setItem(GALLERY_KEY, id) : localStorage.removeItem(GALLERY_KEY); } catch {} },
     async makeItYours() {
@@ -401,10 +450,20 @@ function p3App() {
     // Share link (#gallery=<id>): open that design's preview straight away.
     _openSharedGallery() {
       let id = '';
+      // A link by design name (/design/aurora-twist) arrives with the design to open already resolved by the server;
+      // the address becomes the plain site again so every later link and reload behaves as usual.
+      const shared = window.__p3Open;
+      if (shared && typeof shared === 'object') {
+        window.__p3Open = null;
+        try { if (location.pathname !== (BASE + '/')) history.replaceState(null, '', (BASE || '') + '/' + (location.hash || '')); } catch (_) {}
+        if (shared.gallery === null) { this.showToast('This design is no longer in the Inspiration Gallery.', { ms: 6000 }); return; }
+        id = shared.gallery || '';
+        this._restoreTitle = shared.site_title || '';                  // the page title is the design's until it closes
+      }
       try {
         const P = new URLSearchParams((location.hash || '').replace(/^#/, ''));
-        id = P.get('gallery') || '';
-        if (id) { P.delete('gallery'); const F = P.toString(); history.replaceState(history.state, '', location.pathname + location.search + (F ? '#' + F : '')); }
+        id = P.get('gallery') || id;
+        if (P.get('gallery')) { P.delete('gallery'); const F = P.toString(); history.replaceState(history.state, '', location.pathname + location.search + (F ? '#' + F : '')); }
       } catch (_) {}
       const g = id && this.gallery.find(x => x.id === id);
       if (g) this.openGallery(g);
