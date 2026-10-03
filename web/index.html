@@ -274,7 +274,7 @@
                                     <button type="button" role="tab" @click="heroGo(i)" :aria-selected="i === heroIndex" :aria-label="'Show ' + g.title"
                                             class="w-14 h-14 md:w-16 md:h-16 bg-white rounded-xl overflow-hidden border transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#C9A96E]"
                                             :class="i === heroIndex ? 'border-[#C9A96E] shadow-lg scale-105' : 'border-white/80 shadow opacity-75 hover:opacity-100'">
-                                        <img :src="thumb(g.image_url, 320)" :alt="" class="w-full h-full object-contain p-1.5" loading="lazy" decoding="async">
+                                        <img :src="thumb(g.image_url, 320)" alt="" class="w-full h-full object-contain p-1.5" loading="lazy" decoding="async">
                                     </button>
                                 </template>
                             </div>

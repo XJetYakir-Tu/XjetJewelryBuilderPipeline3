@@ -78,7 +78,8 @@ class Services:
 
 class _NoGzipForMedia:
     """ASGI middleware: strips Accept-Encoding for media paths so GZipMiddleware (inner) passes them through."""
-    Prefixes = ("/assets/", "/thumb/", "/poster/", "/static/videos/", "/static/images/", "/static/vendor/fonts/")
+    Prefixes = ("/assets/", "/thumb/", "/poster/", "/static/videos/", "/static/images/", "/static/vendor/fonts/",
+                "/stl/", "/download")                 # 3D downloads (up to ~250 MB STL) stream as they are
 
     def __init__(self, App):
         self.App = App
@@ -161,7 +162,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Immutable = "public, max-age=31536000, immutable"
     # Compress text (HTML, JSON, JS, CSS) on the way out; media is already compressed and must stay byte-exact
     # for range requests, so those paths never see an Accept-Encoding header.
-    App_.add_middleware(GZipMiddleware, minimum_size=1024)
+    App_.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     App_.add_middleware(_NoGzipForMedia)
 
     @App_.middleware("http")
