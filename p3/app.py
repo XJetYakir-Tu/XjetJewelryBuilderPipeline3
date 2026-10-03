@@ -13,8 +13,11 @@ from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
+from starlette.middleware.gzip import GZipMiddleware
 
 from p3 import assets
+from p3 import media as Media
 
 # Font files: some platforms' mimetypes tables lack WOFF2, and browsers want the right type for preloaded fonts
 mimetypes.add_type("font/woff2", ".woff2")
@@ -71,6 +74,20 @@ class Services:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),
                 "meshes": self.Meshes.Reconcile(), "geometry_jobs": self.Geometry.Reconcile(),
                 "production_3d": self.Production3D.Reconcile()}
+
+
+class _NoGzipForMedia:
+    """ASGI middleware: strips Accept-Encoding for media paths so GZipMiddleware (inner) passes them through."""
+    Prefixes = ("/assets/", "/thumb/", "/poster/", "/static/videos/", "/static/images/", "/static/vendor/fonts/")
+
+    def __init__(self, App):
+        self.App = App
+
+    async def __call__(self, Scope, Receive, Send):
+        if Scope["type"] == "http" and any(P in Scope.get("path", "") for P in self.Prefixes):
+            Scope = dict(Scope)
+            Scope["headers"] = [(K, V) for K, V in Scope.get("headers", []) if K.lower() != b"accept-encoding"]
+        await self.App(Scope, Receive, Send)
 
 
 def _VersionedPage(Name: str, BasePath: str) -> str:
@@ -141,14 +158,27 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     App_.state.Modes = Modes
     App_.state.Mailer = Mailer
 
+    Immutable = "public, max-age=31536000, immutable"
+    # Compress text (HTML, JSON, JS, CSS) on the way out; media is already compressed and must stay byte-exact
+    # for range requests, so those paths never see an Accept-Encoding header.
+    App_.add_middleware(GZipMiddleware, minimum_size=1024)
+    App_.add_middleware(_NoGzipForMedia)
+
     @App_.middleware("http")
     async def _NoStaleUi(Req: Request, CallNext):
         # The page and its scripts change with every release; make browsers revalidate
         # (cheap 304s via ETag) instead of running a cached, outdated app.js.
         Resp = await CallNext(Req)
         Rel = Req.url.path[len(Base):] if Base and Req.url.path.startswith(Base) else Req.url.path
-        if Rel in ("/", "/dev", "/admin", "/admin/") or Rel.startswith("/static/"):
-            Resp.headers["Cache-Control"] = "no-cache"
+        if Rel.startswith(("/assets/", "/thumb/", "/poster/")):
+            # generated files never change under their URL (unique ids); derived media follows its source
+            Resp.headers.setdefault("Cache-Control", Immutable)
+        elif Rel.startswith("/static/vendor/fonts/"):
+            Resp.headers.setdefault("Cache-Control", "public, max-age=2592000")
+        elif Rel.startswith(("/static/images/", "/static/videos/")) and not Req.query_params.get("v"):
+            Resp.headers.setdefault("Cache-Control", "public, max-age=86400")
+        elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/")):
+            Resp.headers["Cache-Control"] = Immutable if Req.query_params.get("v") else "no-cache"
         return Resp
 
     @App_.exception_handler(HttpError)
@@ -177,6 +207,26 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db), Svc.Gallery,
                   Svc.Orders, Svc.Promos)
+
+    # ── derived media: thumbnails and movie posters, made on first request and cached (p3/media.py) ──
+    @App_.get("/thumb/{Rel:path}", include_in_schema=False)
+    async def ThumbRoute(Rel: str, request: Request, w: int = 320, f: str | None = None):
+        Fmt = f if f in Media.Formats else ("webp" if "image/webp" in request.headers.get("accept", "") else "jpg")
+        try:
+            Path_, Ctype = await run_in_threadpool(Media.Thumb, S.AssetsDir, Rel, int(w), Fmt)
+        except (assets.AssetError, ValueError, OSError) as E:
+            raise HttpError(404, "asset_not_found", str(E))
+        return FileResponse(Path_, media_type=Ctype, headers={"Cache-Control": Immutable, "Vary": "Accept"})
+
+    @App_.get("/poster/{Rel:path}", include_in_schema=False)
+    async def PosterRoute(Rel: str):
+        try:
+            Path_ = await run_in_threadpool(Media.Poster, S.AssetsDir, Rel)
+        except (assets.AssetError, OSError) as E:
+            raise HttpError(404, "asset_not_found", str(E))
+        if Path_ is None:
+            raise HttpError(404, "poster_unavailable", "No poster frame for this movie.")
+        return FileResponse(Path_, media_type="image/jpeg", headers={"Cache-Control": Immutable})
 
     App_.mount("/static", StaticFiles(directory=WebDir), name="static")
     App_.mount("/assets", StaticFiles(directory=S.AssetsDir), name="assets")

@@ -669,6 +669,8 @@ function adminApp() {
     prodLabel(s) { return (PROD_STATE[s] || [s || '—'])[0]; },
     prodClass(s) { return (PROD_STATE[s] || [, 'bg-zinc-100 text-zinc-500'])[1]; },
     // Large hover preview next to a thumbnail, kept inside the window.
+    // Lists and cards show a thumbnail (made on first request, cached); data-full keeps the original for the hover preview
+    small(url, w = 320) { return url && /\/assets\//.test(url) ? url.replace(/\/assets\//, '/thumb/') + '?w=' + w : (url || ''); },
     showZoom(ev, src, label, el = null) {
       const r = (el || ev.currentTarget).getBoundingClientRect(), size = Math.min(420, window.innerWidth - 32, window.innerHeight - 80);
       let x = r.right + 12, y = r.top + r.height / 2 - size / 2;
@@ -682,11 +684,11 @@ function adminApp() {
       document.addEventListener('mouseover', (e) => {
         const img = e.target.closest?.('img');
         if (!img || img.closest('#zoom-preview') || !img.src || img.getBoundingClientRect().width > 260) return;
-        if (this.zoom && this.zoom.src === img.src) return;
+        if (this.zoom && this.zoom.src === (img.dataset.full || img.src)) return;
         const row = img.closest('tr, li, article, .card, button');
         const first = row?.querySelector('.font-medium, .font-semibold, .font-mono');
         const label = (img.dataset.label || img.alt || first?.childNodes?.[0]?.textContent || first?.textContent || '').replace(/\s+/g, ' ').trim();
-        this.showZoom(null, img.src, label, img);
+        this.showZoom(null, img.dataset.full || img.src, label, img);
       });
       document.addEventListener('mouseout', (e) => { if (e.target.closest?.('img') && !e.relatedTarget?.closest?.('img')) this.zoom = null; });
     },

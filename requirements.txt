@@ -9,3 +9,5 @@ better-profanity>=0.7
 # Developer-only GLB -> STL conversion
 trimesh>=4.4
 numpy>=1.26
+# Poster frame for each 360° movie (p3/media.py); bundles an ffmpeg binary, so servers need no system ffmpeg
+imageio-ffmpeg>=0.5

@@ -8,6 +8,7 @@
 
 // Base path injected by the server (<meta name="p3-base">), e.g. "/JewelryB2C3" or "" at the root.
 // EVERY request goes through url() so nothing ever escapes to root /api, /static or /assets.
+const ASSET_PATH = /\/assets\//;        // generated files live under BASE/assets/…; their thumbnails under BASE/thumb/…, posters under BASE/poster/…
 const BASE = (document.querySelector('meta[name="p3-base"]')?.content || '').replace(/\/+$/, '');
 const url = (path) => BASE + path;
 const STORE_KEY = 'p3_state' + (BASE ? ':' + BASE : '');
@@ -216,6 +217,11 @@ function p3App() {
 
     persist(patch) { saveStore({ ...loadStore(), ...patch }); },
 
+    // Delivery: small places get a thumbnail (WebP or JPEG at 320 / 800 px, made on first request and cached);
+    // the original full-size image stays behind every large view, the zoom and the download.
+    thumb(url, w = 320) { return url && ASSET_PATH.test(url) ? url.replace(ASSET_PATH, '/thumb/') + '?w=' + w : (url || ''); },
+    srcsetFor(url) { return url && ASSET_PATH.test(url) ? `${this.thumb(url, 320)} 320w, ${this.thumb(url, 800)} 800w, ${url} 1024w` : ''; },
+    poster(url) { return url && ASSET_PATH.test(url) ? url.replace(ASSET_PATH, '/poster/') : ''; },
     async api(method, path, body, opts = {}) {
       const headers = {};
       if (!opts.noAuth && this.token) headers['X-Access-Token'] = this.token;

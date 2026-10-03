@@ -316,7 +316,7 @@
           <tbody>
             <template x-for="x in d.sessions" :key="x.session_id">
               <tr class="hover:bg-zinc-50 cursor-pointer" @click="go('#/sessions/' + encodeURIComponent(x.session_id))">
-                <td class="w-14"><img x-show="x.thumbnail_url" :src="x.thumbnail_url" class="w-10 h-10 object-cover border border-zinc-200" alt=""></td>
+                <td class="w-14"><img x-show="x.thumbnail_url" :src="small(x.thumbnail_url)" :data-full="x.thumbnail_url" class="w-10 h-10 object-cover border border-zinc-200" alt=""></td>
                 <td><p class="font-medium"><span x-text="x.title"></span> <span class="font-mono text-[12px] text-zinc-500" x-text="x.ring_id || ''"></span></p><p class="text-[12px] text-zinc-500" x-text="dateTime(x.started_at)"></p></td>
                 <td class="text-xs text-zinc-600" x-text="x.path"></td>
                 <td class="text-right"><span class="badge" :class="x.state === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'" x-text="x.state === 'active' ? 'Active' : 'Ended'"></span></td>
@@ -333,7 +333,7 @@
           <template x-for="g in d.designs" :key="g.id">
             <button class="card text-left hover:shadow-md transition" :class="openDesign === g.id ? 'ring-2 ring-black' : ''" @click="openDesign = openDesign === g.id ? null : g.id">
               <div class="aspect-square bg-zinc-100 flex items-center justify-center overflow-hidden">
-                <img x-show="g.thumbnail_url" :src="g.thumbnail_url" class="w-full h-full object-cover" loading="lazy" alt="">
+                <img x-show="g.thumbnail_url" :src="small(g.thumbnail_url)" :data-full="g.thumbnail_url" class="w-full h-full object-cover" loading="lazy" alt="">
                 <span x-show="!g.thumbnail_url" class="text-xs text-zinc-500">No image</span>
               </div>
               <div class="p-3 space-y-0.5">
@@ -355,7 +355,7 @@
                   <template x-for="c in b.candidates" :key="c.id">
                     <div class="space-y-1">
                       <a :href="c.image_url" target="_blank" class="block aspect-square bg-zinc-100 border" :class="c.selected ? 'border-black border-2' : 'border-zinc-200'">
-                        <img x-show="c.image_url" :src="c.image_url" class="w-full h-full object-cover" loading="lazy" alt="">
+                        <img x-show="c.image_url" :src="small(c.image_url, 800)" :data-full="c.image_url" class="w-full h-full object-cover" loading="lazy" alt="">
                       </a>
                       <p class="text-[12px]" :class="c.status === 'failed' ? 'text-red-600' : 'text-zinc-500'"><span class="font-mono text-zinc-700" x-text="c.ring_id || ('Option ' + (c.slot + 1))"></span><span x-text="(c.selected ? ' · selected' : '') + (c.status !== 'ready' ? ' · ' + c.status : '')"></span></p>
                       <template x-for="m in c.movies" :key="m.id">
@@ -420,7 +420,7 @@
           <tbody>
             <tr class="hover:bg-zinc-50 cursor-pointer" @click="galleryToggle(g)">
               <td class="tabular-nums text-zinc-500" x-text="g.in_gallery ? g.position : '—'"></td>
-              <td class="w-14"><div class="w-10 h-10 bg-zinc-100 border border-zinc-200 overflow-hidden"><img x-show="g.image_url" :src="g.image_url" class="w-full h-full object-cover" alt=""></div></td>
+              <td class="w-14"><div class="w-10 h-10 bg-zinc-100 border border-zinc-200 overflow-hidden"><img x-show="g.image_url" :src="small(g.image_url)" :data-full="g.image_url" class="w-full h-full object-cover" alt=""></div></td>
               <td><p class="font-medium" x-text="g.title"></p><p class="text-[12px] text-zinc-500"><span class="font-mono" x-text="g.ring_id || g.design_ring_id"></span><span x-show="!g.in_gallery" class="badge bg-zinc-100 text-zinc-500 ml-1">removed from gallery</span><span x-show="g.in_gallery && !g.ready" class="badge bg-red-100 text-red-700 ml-1">image missing</span><span x-show="g.duplicate_name" class="badge bg-amber-100 text-amber-800 ml-1" title="Another master design has the same name — give each a distinctive one (open the design → Rename)">same name as another</span></p></td>
               <td class="text-right tabular-nums font-semibold" x-text="g.sessions"></td>
               <td class="text-right tabular-nums" x-text="g.users"></td>
@@ -552,7 +552,7 @@
               <ol class="space-y-1.5">
                 <template x-for="(g, i) in galleryTopList(c[0], 3)" :key="g.design_id">
                   <li class="flex items-center gap-2 text-sm"><span class="text-zinc-400 w-4 tabular-nums" x-text="i + 1"></span>
-                    <img :src="g.image_url" class="w-8 h-8 object-cover border border-zinc-200" alt=""><a class="font-medium hover:underline truncate" :href="'#/sessions/' + encodeURIComponent(g.design_id)" x-text="g.title"></a>
+                    <img :src="small(g.image_url)" :data-full="g.image_url" class="w-8 h-8 object-cover border border-zinc-200" alt=""><a class="font-medium hover:underline truncate" :href="'#/sessions/' + encodeURIComponent(g.design_id)" x-text="g.title"></a>
                     <span class="ml-auto tabular-nums text-zinc-700" x-text="g[c[0]] + ' ' + c[2]"></span></li>
                 </template>
                 <li x-show="!galleryTopList(c[0], 3).length" class="text-[12px] text-zinc-500">—</li>
@@ -668,7 +668,7 @@
       <ul class="md:hidden divide-y divide-zinc-100" x-show="sessionsFiltered.length">
         <template x-for="x in sessionsFiltered" :key="'m' + x.session_id">
           <li class="p-4 flex gap-3 row-link" @click="openSession(x.session_id)" tabindex="0" @keydown.enter="openSession(x.session_id)" role="link">
-            <div class="w-14 h-14 bg-zinc-100 border border-zinc-200 overflow-hidden shrink-0"><img x-show="x.thumbnail_url" :src="x.thumbnail_url" class="w-full h-full object-cover" alt=""></div>
+            <div class="w-14 h-14 bg-zinc-100 border border-zinc-200 overflow-hidden shrink-0"><img x-show="x.thumbnail_url" :src="small(x.thumbnail_url)" :data-full="x.thumbnail_url" class="w-full h-full object-cover" alt=""></div>
             <div class="min-w-0 flex-1 space-y-1">
               <p class="flex items-center justify-between gap-2"><span class="font-medium truncate" x-text="x.customer_name || x.customer_email || '—'"></span><span class="font-mono text-[12px] text-zinc-500" x-text="x.ring_id"></span></p>
               <p class="text-[13px] text-zinc-800 truncate" x-text="x.title"></p>
@@ -697,7 +697,7 @@
                 <p class="text-[12px] text-zinc-500" x-text="dateTime(x.started_at) + ' · ' + ago(x.last_activity_at) + (x.state === 'active' ? ' · active' : '')"></p></td>
               <td><div class="flex items-start gap-3">
                   <div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden shrink-0" :class="x.thumbnail_url ? 'cursor-zoom-in' : ''"
-                       @mouseenter="x.thumbnail_url && showZoom($event, x.thumbnail_url, (x.ring_id ? x.ring_id + ' · ' : '') + x.title)" @mouseleave="zoom = null"><img x-show="x.thumbnail_url" :src="x.thumbnail_url" class="w-full h-full object-cover" loading="lazy" alt=""></div>
+                       @mouseenter="x.thumbnail_url && showZoom($event, x.thumbnail_url, (x.ring_id ? x.ring_id + ' · ' : '') + x.title)" @mouseleave="zoom = null"><img x-show="x.thumbnail_url" :src="small(x.thumbnail_url)" :data-full="x.thumbnail_url" class="w-full h-full object-cover" loading="lazy" alt=""></div>
                   <div class="min-w-0">
                     <p class="font-medium truncate max-w-[260px]" x-text="x.title"></p>
                     <p class="font-mono text-[12px] text-zinc-600"><span x-text="x.ring_id || ''"></span><span x-show="x.selected_ring_id" class="text-zinc-500" x-text="' · ' + x.selected_ring_id"></span></p>
@@ -760,7 +760,7 @@
               <span class="tabular-nums" x-text="(sessionNeighbours().index + 1) + ' / ' + sessionNeighbours().total"></span>
               <button class="act disabled:opacity-30" :disabled="!sessionNeighbours().next" @click="go('#/sessions/' + encodeURIComponent(sessionNeighbours().next))" aria-label="Next session">Next ›</button></span></template></p>
           <div class="flex items-center gap-2 min-w-0">
-            <img x-show="sd.session.thumbnail_url" :src="sd.session.thumbnail_url" class="w-8 h-8 object-cover border border-zinc-200" alt="">
+            <img x-show="sd.session.thumbnail_url" :src="small(sd.session.thumbnail_url)" :data-full="sd.session.thumbnail_url" class="w-8 h-8 object-cover border border-zinc-200" alt="">
             <span class="font-medium truncate max-w-[180px]" x-text="sd.session.customer_name || sd.session.customer_email || 'Unknown customer'"></span>
             <span class="font-mono text-[12px] px-1.5 py-0.5 border border-zinc-300 text-zinc-700 bg-white" x-text="sd.session.ring_id"></span>
             <span class="text-[12px] text-zinc-600 hidden lg:inline truncate max-w-[260px]" x-text="sd.session.path"></span>
@@ -1095,7 +1095,7 @@
             <div class="grid grid-cols-4 gap-3">
               <template x-for="c in b.candidates" :key="c.id">
                 <div class="space-y-1">
-                  <a :href="c.image_url" target="_blank" class="block aspect-square bg-zinc-100 border" :class="c.selected ? 'border-black border-2' : 'border-zinc-200'"><img x-show="c.image_url" :src="c.image_url" class="w-full h-full object-cover" loading="lazy" alt=""></a>
+                  <a :href="c.image_url" target="_blank" class="block aspect-square bg-zinc-100 border" :class="c.selected ? 'border-black border-2' : 'border-zinc-200'"><img x-show="c.image_url" :src="small(c.image_url, 800)" :data-full="c.image_url" class="w-full h-full object-cover" loading="lazy" alt=""></a>
                   <p class="text-[12px] text-zinc-500"><span class="font-mono text-zinc-700" x-text="c.ring_id || ('Option ' + (c.slot + 1))"></span><span x-text="(c.selected ? ' · selected' : '') + (c.status !== 'ready' ? ' · ' + c.status : '')"></span></p>
                   <button x-show="c.status === 'ready'" class="block text-[11px] uppercase tracking-widest underline" :class="sd.gallery?.candidate_id === c.id ? 'text-amber-700' : 'text-zinc-500 hover:text-zinc-700'" @click="sd.gallery?.candidate_id === c.id ? galleryRemove(sd.gallery) : galleryAdd(c.id)" x-text="sd.gallery?.candidate_id === c.id ? 'In gallery' : 'Use in gallery'"></button>
                   <template x-for="m in c.movies" :key="m.id"><a :href="m.url" target="_blank" class="text-[12px] underline" x-text="m.status === 'ready' ? '▶ 360° movie' : '360° movie · ' + m.status"></a></template>
@@ -1123,7 +1123,7 @@
                   <span class="shrink-0 inline-flex items-center gap-1">
                     <button type="button" class="block w-9 h-9 rounded border border-zinc-200 bg-zinc-50 overflow-hidden focus:outline-none focus:ring-2 focus:ring-amber-400"
                             @click="openRef(e)" :title="(e.reference_label || 'Reference image') + ' — click to view full size'" :aria-label="(e.reference_label || 'Reference image') + ', open full size'">
-                      <img :src="e.reference_url" :alt="e.reference_label || 'Reference image'" :data-label="e.reference_label || 'Reference image'" class="w-full h-full object-cover">
+                      <img :src="small(e.reference_url)" :data-full="e.reference_url" :alt="e.reference_label || 'Reference image'" :data-label="e.reference_label || 'Reference image'" class="w-full h-full object-cover">
                     </button>
                     <a :href="e.reference_url" :download="e.download_name || 'reference.png'" class="p-1 text-zinc-400 hover:text-zinc-800" :title="'Download ' + (e.download_name || 'reference.png')" :aria-label="'Download ' + (e.download_name || 'reference.png')">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
@@ -1291,7 +1291,7 @@
           <tbody>
             <template x-for="l in od.lines" :key="l.id">
               <tr class="align-middle">
-                <td class="w-16"><div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden" :class="l.image_url ? 'cursor-zoom-in' : ''" @mouseenter="l.image_url && showZoom($event, l.image_url, (l.ring_id || '') + ' · ' + l.title)" @mouseleave="zoom = null"><img x-show="l.image_url" :src="l.image_url" class="w-full h-full object-cover" alt=""></div></td>
+                <td class="w-16"><div class="w-12 h-12 bg-zinc-100 border border-zinc-200 overflow-hidden" :class="l.image_url ? 'cursor-zoom-in' : ''" @mouseenter="l.image_url && showZoom($event, l.image_url, (l.ring_id || '') + ' · ' + l.title)" @mouseleave="zoom = null"><img x-show="l.image_url" :src="small(l.image_url)" :data-full="l.image_url" class="w-full h-full object-cover" alt=""></div></td>
                 <td><p class="font-medium" x-text="l.title"></p><p class="font-mono text-[12px] text-zinc-500" x-text="l.ring_id || '—'"></p>
                   <a class="text-[12px] underline text-zinc-500 hover:text-black" :href="'#/sessions/' + encodeURIComponent(l.session_id)">Open session</a></td>
                 <td class="whitespace-nowrap"><span class="inline-block w-3 h-3 rounded-full border border-zinc-300 mr-1.5 align-middle" :style="'background:' + swatch(l.material_id)"></span><span x-text="l.material_label + ' · US ' + l.ring_size"></span></td>
