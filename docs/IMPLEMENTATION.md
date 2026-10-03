@@ -159,6 +159,10 @@ config/                      generation params, prompts, catalog, pricing profil
 | `GET/PATCH /api/customizations/{id}` `{material_id?, ring_size?, quantity?}` | Customize; response carries quote, `can_add_to_bag`, reason, movie |
 | `POST /api/candidates/{id}/movie` | Start/reuse movie; after failure, a new attempt |
 | `GET /api/bag`, `POST /api/bag {customization_id}`, `DELETE /api/bag/{line}` | Server-validated bag of quote snapshots |
+| `GET /api/gallery`, `GET /api/gallery/{item}/share`, `POST /api/gallery/{item}/start` | Gallery tiles (public), the share link by design name, Make it yours |
+| `GET /api/favorites`, `PUT/DELETE /api/favorites/{design_id}` | ♥ Favorites of the signed-in account (references to gallery masters) |
+| `GET /thumb/{asset}?w=&f=`, `GET /poster/{movie}` | Cached thumbnails and movie posters (see 8b) |
+| `GET /api/showcase?design=` | Hero showcase prototype data (read-only) |
 | `/api/dev/*` (Bearer `P3_ADMIN_KEY`) | `status`, `candidates`, `candidates/{id}/meshes`, `meshes`, `meshes/{id}`, `meshes/{id}/convert-stl`, `meshes/{id}/download?kind=stl\|original` |
 
 **Checkout:** there is none. The bag reports `checkout_available: false` and states that no order, payment, or production is created. The P2 coupon/reservation screen was not copied.
@@ -195,7 +199,7 @@ The P2 ring classifier was not copied, because it imports VisualHull. The conseq
 
 At the product owner's request, the customer UI was rebuilt to look like P2. The P3 logic above is unchanged.
 
-- **Visual system:** copied from `index-p2.html` — Tailwind CDN, Inter/Cinzel, the `btn-gold`/`btn-black`/`btn-outline` system, contrast fixes, and tap-target sizing. The nav, footer, and marketing imagery (`Angel.JPG`, `Ink.JPG`, `ISO.png`, `PrintHead.png`, favicons) were copied into `web/images/`.
+- **Visual system:** copied from `index-p2.html` — Tailwind (a CDN then; a self-hosted production build since 2026-10-03, see 8b), Inter/Cinzel, the `btn-gold`/`btn-black`/`btn-outline` system, contrast fixes, and tap-target sizing. The nav, footer, and marketing imagery (`Angel.JPG`, `Ink.JPG`, `ISO.png`, `PrintHead.png`, favicons) were copied into `web/images/`.
 - **Pages ported:** Home, Inspiration, Materials (now grouped Fashion / Luxury and driven by the catalog), Technology, FAQ, About XJet, Shipping & Returns, Terms, Privacy, Contact.
 - **Design screen:** follows P2's studio — "Hello, Designer." landing, gold-bordered composer with reference upload, prompt bubble, typing-dots generating state, the My Designs sidebar with search, and the fullscreen zoom/pan preview. P3 differences:
   - a 3×2 grid of six cards (2 columns on phones);
@@ -234,6 +238,17 @@ At the product owner's request, the customer UI was rebuilt to look like P2. The
 - A fal request that completes with an error string (e.g. `content_policy_violation`) is now classified. It was previously a generic `provider_error`.
 - An HTTP 402 is now recognised as billing.
 - A startup warning appears when `P3_DATA_DIR` is long enough that asset paths could exceed the Windows 260-character limit. This actually happened during verification with a deep temp directory.
+
+## 8b. Delivery, self-hosting, sharing, favorites, showcase (2026-10-03)
+
+- **Self-hosted front-end:** no page loads anything from a third-party host. Tailwind is a production build — `tailwind.config.js` + `web/tailwind.src.css` → `web/vendor/tailwind.css`; rebuild after changing classes in the pages or scripts:
+  `npx -y tailwindcss@3.4.17 -c tailwind.config.js -i web/tailwind.src.css -o web/vendor/tailwind.css --minify`
+  (`tests/test_vendor.py` fails when a class used in a page is missing from the build). Inter and Cinzel are WOFF2 files with `web/vendor/fonts.css`; Alpine 3.13.3 and three.js 0.128 (+ STLLoader, OrbitControls) are in `web/vendor/`. All of them get `?v=<mtime>` like `app.js`.
+- **Image and movie delivery** (`p3/media.py`): `GET /thumb/<asset>?w=320|800[&f=webp|jpg|png]` — a thumbnail made on first request from the original and cached under `var/assets/_derived` (WebP when the browser accepts it, else JPEG; never upscaled). Small views use it (gallery tiles with a `srcset`, hero strip, My Designs, the four options, bag lines, Materials page, Admin lists — the Admin hover preview still enlarges the original); large views, zoom and downloads use the original. `GET /poster/<movie>` — the movie's first frame as a JPEG (ffmpeg from the `imageio-ffmpeg` wheel; without it the movie simply has no poster). `/assets`, `/thumb`, `/poster` and versioned static files are cached for a year (their URLs never change content); pages revalidate. Text responses are gzip-compressed (level 6); media and the 3D downloads are not.
+- **Sharing:** `GET /api/gallery/{item}/share` (public) → `{slug, title, text, url}`; `GET /design/{slug}` serves the site with the Open Graph / Twitter tags of that design and opens its preview. `designs.share_slug` is set once (first share) and never changed.
+- **Favorites:** table `gallery_favorites (owner_account_id, design_id, created_at)`; `GET /api/favorites`, `PUT/DELETE /api/favorites/{design_id}` (only current gallery masters; idempotent). Public gallery tiles carry `design_id` so the heart can refer to the master.
+- **Metal filters** live in `web/metal.js` (`P3MetalFilterDefs(materials)`), shared by the site and the showcase; the output is byte-identical to the former in-component getter.
+- **Hero showcase — prototype:** `GET /showcase` (not linked, `noindex`) and `GET /api/showcase[?design=<link name>]` (`p3/showcase.py`, read-only): the story of one real gallery design — its prompt, its first four options, a refinement of one of them, its 360° movie, three metals (Silver → 18K Rose Gold → 18K Yellow Gold with the live filters), then "Made in real metal by XJet" (placeholder image: the printed figurine) and the call to action. ≈9.8 s, muted, loops, pauses on hover; reduced motion (or **Storyboard** / `?still`) shows the six beats as stills; Fit / Phone preview. The homepage hero is unchanged until the showcase is approved.
 
 ## 9. Verification evidence
 
