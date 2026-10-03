@@ -276,7 +276,7 @@
                             <!-- Every gallery ring is stacked here; the current one is visible and they crossfade (random order, every few seconds) -->
                             <button type="button" @click="openGallery(heroRing)" class="group relative block w-full aspect-square bg-white rounded-3xl shadow-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + heroRing.title + ' from the Inspiration Gallery'" data-testid="hero-ring">
                                 <template x-for="(g, i) in homeGallery" :key="g.id">
-                                    <img :src="g.image_url" :srcset="srcsetFor(g.image_url)" sizes="min(50vw, 700px)" :alt="i === heroIndex ? g.title + ' — a ring from the XJet Inspiration Gallery' : ''" :aria-hidden="i !== heroIndex"
+                                    <img :srcset="srcsetFor(g.image_url)" sizes="min(50vw, 700px)" :src="thumb(g.image_url, 800)" :alt="i === heroIndex ? g.title + ' — a ring from the XJet Inspiration Gallery' : ''" :aria-hidden="i !== heroIndex"
                                          class="absolute inset-0 w-full h-full object-contain p-5 transition-[opacity,transform] duration-[1200ms] ease-in-out group-hover:scale-[1.04]"
                                          :class="i === heroIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.03] pointer-events-none'" :style="i === heroIndex ? 'z-index:2' : 'z-index:1'" decoding="async">
                                 </template>
@@ -316,7 +316,7 @@
                     <template x-for="g in homeGallery" :key="g.id">
                         <div class="relative group">
                         <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                            <img :src="thumb(g.image_url, 800)" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
+                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </button>
                         <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
@@ -453,7 +453,7 @@
                 <template x-for="g in gallery" :key="g.id">
                     <div class="relative group">
                         <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                        <img :src="thumb(g.image_url, 800)" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
+                        <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
                         <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                     </button>
                         <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
@@ -855,7 +855,7 @@
                                                  :class="{'is-ready': c.status === 'ready', 'is-selected': c.id === selectedId, 'shimmer': c.status === 'pending' || c.status === 'generating'}"
                                                  @click="select(c)" role="button" :aria-pressed="c.id === selectedId" :aria-label="'Design option ' + (c.slot + 1) + (c.id === selectedId ? ' (selected)' : '')">
                                                 <template x-if="c.status === 'ready'">
-                                                    <img :src="thumb(c.image_url, 800)" :srcset="srcsetFor(c.image_url)" sizes="(min-width:640px) 320px, 78vw" :alt="'Design option ' + (c.slot + 1)" class="w-full h-full object-contain" style="filter:drop-shadow(0 6px 24px rgba(0,0,0,0.08));" decoding="async">
+                                                    <img :srcset="srcsetFor(c.image_url)" sizes="(min-width:640px) 320px, 78vw" :src="thumb(c.image_url, 800)" :alt="'Design option ' + (c.slot + 1)" class="w-full h-full object-contain" style="filter:drop-shadow(0 6px 24px rgba(0,0,0,0.08));" decoding="async">
                                                 </template>
                                                 <template x-if="c.status === 'pending' || c.status === 'generating'">
                                                     <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[12px]" style="color:#6F6F6F;">
@@ -1958,7 +1958,7 @@
                     <template x-for="g in gallery" :key="g.id">
                         <div class="relative group">
                         <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                            <img :src="thumb(g.image_url, 800)" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
+                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </button>
                         <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
