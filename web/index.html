@@ -19,7 +19,6 @@
          npx -y tailwindcss@3.4.17 -c tailwind.config.js -i web/tailwind.src.css -o web/vendor/tailwind.css --minify -->
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/inter-400-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-400-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="{{BASE}}/static/vendor/tailwind.css">
     <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
     <script src="{{BASE}}/static/metal.js"></script>
     <script src="{{BASE}}/static/app.js"></script>
@@ -109,6 +108,9 @@
         .flbl { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: #6F6F6F; margin-bottom: 6px; font-weight: 600; }
         .ferr { font-size: 12px; color: #A1261D; margin-top: 5px; }
     </style>
+    <!-- Tailwind last in <head>, exactly where the former CDN script injected its styles, so the cascade is unchanged:
+         on equal specificity the utilities win over the page's own rules above -->
+    <link rel="stylesheet" href="{{BASE}}/static/vendor/tailwind.css">
 </head>
 <body x-data="p3App()" x-init="init()" @paste.window="handlePaste($event)" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white">
     <!-- Metal recolour filters (one per material), built from the catalog swatches by app.js. -->

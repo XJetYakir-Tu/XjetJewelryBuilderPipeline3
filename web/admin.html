@@ -11,7 +11,6 @@
   <link rel="icon" type="image/png" sizes="192x192" href="{{BASE}}/static/images/favicon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="{{BASE}}/static/images/apple-touch-icon.png">
   <!-- Self-hosted front-end: Tailwind production build, Inter + Cinzel, three.js 0.128 (STL viewer) and Alpine — no third-party CDN -->
-  <link rel="stylesheet" href="{{BASE}}/static/vendor/tailwind.css">
   <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
   <script src="{{BASE}}/static/vendor/three.min.js"></script>
   <script src="{{BASE}}/static/vendor/STLLoader.js"></script>
@@ -49,6 +48,9 @@
     .row-link { cursor: pointer; }
     .row-link:hover { background: #fafafa; }
   </style>
+  <!-- Tailwind last in <head>, exactly where the former CDN script injected its styles, so the cascade is unchanged:
+       on equal specificity the utilities win over the page's own rules above -->
+  <link rel="stylesheet" href="{{BASE}}/static/vendor/tailwind.css">
 </head>
 <body class="bg-zinc-50 text-zinc-900 min-h-screen" x-data="adminApp()" x-init="init()">
   <!-- In-app dialog (confirmations, dangerous / paid actions, share links) — never the browser's confirm()/prompt() -->
