@@ -168,6 +168,7 @@ def Story(Ctx: Context, Design: str | None = None) -> dict:
                        if Best["refined"] else None),
             "movie_url": Movie,
             "poster_url": Movie.replace("/assets/", "/poster/", 1),
+            "clip_url": Movie.replace("/assets/", "/clip/", 1) + "?tail=2&w=720",   # its last 2 s, small (p3/media.py)
             "metals": [Materials[I] for I in Metals if I in Materials],
             "still_url": Url(Still),                  # the hero ring from the metal beat to the end: its own render
             "tone": Tone(Ctx, Still),                 # "gold" | "silver": the render's own metal, shown unfiltered

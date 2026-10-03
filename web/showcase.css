@@ -1,0 +1,66 @@
+/* XJet Atelier showcase — the animated story of one Inspiration Gallery design, shown in the homepage hero and on
+   /showcase (the standalone reference page). Engine: showcase.js. Every child of the stage is placed by the
+   engine's clock; the class names are prefixed "sc-" so nothing collides with the site's own styles. */
+.sc-stage {
+    --sc-ivory: #FBF9F4; --sc-sand: #F3EFE6; --sc-ink: #1A1A1A; --sc-muted: #6F6F6F;
+    --sc-gold: #C9A96E; --sc-gold-deep: #B8873A; --sc-gold-text: #8A6420;
+    position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 24px; overflow: hidden; isolation: isolate;
+    background: radial-gradient(120% 90% at 70% 20%, #FFFDF8 0%, var(--sc-ivory) 45%, var(--sc-sand) 100%);
+    box-shadow: 0 40px 90px -40px rgba(70, 48, 12, .35), 0 0 0 1px #EDE5D8;
+    user-select: none; -webkit-user-select: none; font-family: 'Inter', system-ui, sans-serif; color: var(--sc-ink);
+}
+@media (max-width: 640px) { .sc-stage { aspect-ratio: 4 / 5; border-radius: 20px; } }
+.sc-stage.sc-phone { aspect-ratio: 4 / 5; border-radius: 20px; }      /* /showcase: the Phone preview */
+.sc-stage > .sc-el { position: absolute; left: 0; top: 0; transform-origin: 0 0; opacity: 0; visibility: hidden; will-change: transform, opacity; }
+
+.sc-eyebrow { display: flex; align-items: center; gap: 10px; margin: 0; white-space: nowrap;
+              font-size: 12px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: var(--sc-gold-text); }
+.sc-eyebrow .sc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sc-gold); box-shadow: 0 0 0 4px rgba(201, 169, 110, .18); }
+.sc-small .sc-eyebrow { letter-spacing: .22em; }
+
+.sc-composer { display: flex; align-items: center; gap: 14px; padding: 16px 16px 16px 22px; border-radius: 20px; background: #fff;
+               box-shadow: 0 24px 60px -28px rgba(60, 40, 10, .45), 0 0 0 1px #EFE6D8; }
+.sc-stage > .sc-composer { transform-origin: 50% 0; }
+.sc-small .sc-composer { gap: 10px; padding: 13px 12px 13px 16px; border-radius: 16px; }
+.sc-spark { color: var(--sc-gold); font-size: 18px; line-height: 1; flex: none; }
+.sc-typed { flex: 1; min-height: 1.45em; font-size: 19px; line-height: 1.45; color: var(--sc-ink); }
+.sc-small .sc-typed { font-size: 16px; line-height: 1.4; }
+/* the caret takes no room in the line (2 px wide, -4 px margin), so it never wraps onto a line of its own */
+.sc-caret { display: inline-block; width: 2px; height: 1.15em; margin-left: 2px; margin-right: -4px; vertical-align: -0.18em; background: var(--sc-gold); animation: sc-blink 1s steps(1) infinite; }
+.sc-caret.sc-off { visibility: hidden; }
+@keyframes sc-blink { 50% { opacity: 0; } }
+.sc-go { flex: none; border-radius: 12px; padding: 11px 18px; font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #fff;
+         background: linear-gradient(135deg, #D9BC85 0%, var(--sc-gold) 45%, var(--sc-gold-deep) 100%); box-shadow: 0 8px 20px -10px rgba(138, 100, 32, .7);
+         transition: transform .18s ease, box-shadow .18s ease; }
+.sc-composer.sc-press .sc-go { transform: scale(.94); box-shadow: 0 0 0 6px rgba(201, 169, 110, .22); }
+.sc-small .sc-go { padding: 10px 12px; letter-spacing: .14em; }
+
+.sc-card { background: #fff; border-radius: 18px; overflow: hidden; box-shadow: 0 18px 40px -22px rgba(60, 40, 10, .35), 0 0 0 1px rgba(0, 0, 0, .04); }
+.sc-card > img, .sc-card > video { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: contain; padding: 5%; display: block; }
+.sc-opt > img { padding: 4%; }
+.sc-focus > video { -webkit-mask-image: radial-gradient(closest-side, #000 80%, transparent 100%); mask-image: radial-gradient(closest-side, #000 80%, transparent 100%); }
+.sc-focus > .sc-sweep { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+.sc-tag { position: absolute; top: 12px; left: 12px; font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+          padding: 6px 10px; border-radius: 999px; background: rgba(26, 26, 26, .86); color: #fff; opacity: 0; white-space: nowrap; }
+
+.sc-chip { display: flex; align-items: flex-start; gap: 10px; padding: 11px 18px; border-radius: 18px; background: #fff;
+           box-shadow: 0 14px 30px -16px rgba(60, 40, 10, .45), 0 0 0 1px #EFE6D8; font-size: 17px; line-height: 1.4; color: var(--sc-ink); }
+.sc-chip .sc-spark { font-size: 16px; line-height: 1.5; }
+.sc-small .sc-chip { font-size: 15px; padding: 10px 14px; border-radius: 16px; }
+
+.sc-metals { display: flex; gap: 10px; white-space: nowrap; }
+.sc-metal { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; background: #fff; border: 1px solid #DCDCDC;
+            font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--sc-muted); transition: border-color .3s, color .3s, box-shadow .3s; }
+.sc-metal.sc-on { border-color: var(--sc-gold); color: var(--sc-ink); box-shadow: 0 0 0 2px #F1E6D2; }
+.sc-metal i { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08), inset 2px 2px 4px rgba(255, 255, 255, .6); }
+
+/* the final frame: the ring, its name, and the line under it — nothing else */
+.sc-name { text-align: center; }
+.sc-name .sc-title { display: block; font-family: 'Cinzel', serif; font-weight: 400; font-size: 30px; line-height: 1.15; color: var(--sc-ink); }
+.sc-name .sc-by { display: block; margin-top: 8px; font-size: 12px; font-weight: 600; letter-spacing: .24em; text-transform: uppercase; color: var(--sc-gold-text); }
+.sc-small .sc-name .sc-title { font-size: 24px; }
+.sc-small .sc-name .sc-by { margin-top: 6px; letter-spacing: .2em; }
+
+.sc-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px;
+              font-size: 12px; letter-spacing: .3em; text-transform: uppercase; color: var(--sc-gold-text); }
+.sc-loading.sc-gone { display: none; }

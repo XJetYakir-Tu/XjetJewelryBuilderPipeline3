@@ -5,130 +5,55 @@
     <meta name="p3-base" content="{{BASE}}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>Hero Showcase · prototype · XJET Atelier</title>
+    <title>Hero Showcase · reference · XJET Atelier</title>
     <link rel="icon" type="image/png" sizes="32x32" href="{{BASE}}/static/images/favicon-32.png">
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/inter-400-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-400-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
-    <!-- The site's own metal filters (used here for Yellow Gold when a design's render is silver) -->
+    <link rel="stylesheet" href="{{BASE}}/static/showcase.css">
     <script src="{{BASE}}/static/metal.js"></script>
-    <!-- Hero showcase — PROTOTYPE for review. Not linked from the site; the homepage hero is unchanged.
-         Seven beats (~16 s, muted, loops) from one real gallery design: its prompt, its first four options, the one
-         chosen, its refinement, its 360° movie, Silver and Yellow Gold at the same angle, and the finished ring.
-         Every position, fade and wipe is computed from one clock (render(t)), so the beats never overlap, pausing
-         freezes everything, and the timeline jumps to an exact moment. -->
+    <script src="{{BASE}}/static/showcase.js"></script>
+    <!-- The homepage hero's showcase on its own, with review tools: the same engine (showcase.js) and the same
+         story, so what is reviewed here is exactly what the hero shows. Not linked from the site, not indexed. -->
     <style>
-        :root {
-            --ivory: #FBF9F4; --sand: #F3EFE6; --page: #F4F1EA; --ink: #1A1A1A; --muted: #6F6F6F;
-            --gold: #C9A96E; --gold-deep: #B8873A; --gold-text: #8A6420; --line: #E8DDD0;
-        }
+        :root { --page: #F4F1EA; --ink: #1A1A1A; --muted: #6F6F6F; --gold: #C9A96E; --gold-deep: #B8873A; --gold-text: #8A6420; --line: #E8DDD0; --ivory: #FBF9F4; --sand: #F3EFE6; }
         * { box-sizing: border-box; }
         html, body { margin: 0; }
         body { font-family: 'Inter', system-ui, sans-serif; background: var(--page); color: var(--ink); -webkit-font-smoothing: antialiased; }
         button, select { font: inherit; }
-
-        /* ── page chrome ── */
         .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 14px 24px; background: #fff; border-bottom: 1px solid var(--line); }
         .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); }
         .brand .x { font-family: 'Cinzel', serif; font-size: 20px; letter-spacing: .2em; font-weight: 600; }
         .brand .sep { width: 1px; height: 18px; background: #D8D0C2; }
         .brand .a { font-size: 12px; letter-spacing: .3em; color: var(--muted); }
-        .pill { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; padding: 5px 10px; border-radius: 6px;
-                background: #FFF4DB; color: #7A4D00; border: 1px solid #F0D9A8; }
+        .pill { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; padding: 5px 10px; border-radius: 6px; background: #F1F7EC; color: #3F6B1F; border: 1px solid #CFE3BF; }
         .bar-tools { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
         .field { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-        .field select { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink); padding: 7px 30px 7px 10px; border-radius: 8px;
-                        border: 1px solid #DCDCDC; background: #fff; min-height: 36px; }
+        .field select { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink); padding: 7px 30px 7px 10px; border-radius: 8px; border: 1px solid #DCDCDC; background: #fff; min-height: 36px; }
         .seg { display: inline-flex; border: 1px solid #DCDCDC; border-radius: 9px; overflow: hidden; background: #fff; }
         .seg button { border: 0; background: transparent; padding: 8px 14px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); cursor: pointer; min-height: 36px; }
         .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
         main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 56px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
-
-        /* ── the stage: every child is absolutely placed by render(t) ── */
-        .stage { position: relative; width: min(100%, 1120px); aspect-ratio: 16 / 9; border-radius: 24px; overflow: hidden; isolation: isolate;
-                 background: radial-gradient(120% 90% at 70% 20%, #FFFDF8 0%, var(--ivory) 45%, var(--sand) 100%);
-                 box-shadow: 0 40px 90px -40px rgba(70, 48, 12, .35), 0 0 0 1px #EDE5D8; user-select: none; -webkit-user-select: none; }
-        .stage.is-phone { width: min(100%, 390px); aspect-ratio: 2 / 3; border-radius: 22px; }
-        .stage > .el { position: absolute; left: 0; top: 0; transform-origin: 0 0; opacity: 0; will-change: transform, opacity; }
-        .eyebrow { display: flex; align-items: center; gap: 10px; margin: 0; white-space: nowrap;
-                   font-size: 12px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: var(--gold-text); }
-        .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 4px rgba(201, 169, 110, .18); }
-        .stage.is-phone .eyebrow { letter-spacing: .22em; }
-
-        .composer { display: flex; align-items: center; gap: 14px; padding: 16px 16px 16px 22px; border-radius: 20px; background: #fff;
-                    box-shadow: 0 24px 60px -28px rgba(60, 40, 10, .45), 0 0 0 1px #EFE6D8; }
-        .stage > .composer { transform-origin: 50% 0; }
-        .stage.is-phone .composer { gap: 10px; padding: 13px 12px 13px 16px; border-radius: 16px; }
-        .spark { color: var(--gold); font-size: 18px; line-height: 1; flex: none; }
-        .typed { flex: 1; min-height: 1.45em; font-size: 19px; line-height: 1.45; color: var(--ink); }
-        .stage.is-phone .typed { font-size: 16px; line-height: 1.4; }
-        /* the caret takes no room in the line (2 px wide, -4 px margin), so it never wraps onto a line of its own */
-        .caret { display: inline-block; width: 2px; height: 1.15em; margin-left: 2px; margin-right: -4px; vertical-align: -0.18em; background: var(--gold); animation: blink 1s steps(1) infinite; }
-        .caret.off { visibility: hidden; }
-        @keyframes blink { 50% { opacity: 0; } }
-        .go { flex: none; border-radius: 12px; padding: 11px 18px; font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #fff;
-              background: linear-gradient(135deg, #D9BC85 0%, var(--gold) 45%, var(--gold-deep) 100%); box-shadow: 0 8px 20px -10px rgba(138, 100, 32, .7);
-              transition: transform .18s ease, box-shadow .18s ease; }
-        .composer.press .go { transform: scale(.94); box-shadow: 0 0 0 6px rgba(201, 169, 110, .22); }
-        .stage.is-phone .go { padding: 10px 12px; letter-spacing: .14em; }
-
-        .card { background: #fff; border-radius: 18px; overflow: hidden; box-shadow: 0 18px 40px -22px rgba(60, 40, 10, .35), 0 0 0 1px rgba(0, 0, 0, .04); }
-        .card > img, .card > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 5%; display: block; }
-        .opt > img { padding: 4%; }
-        .focus > video { -webkit-mask-image: radial-gradient(closest-side, #000 80%, transparent 100%); mask-image: radial-gradient(closest-side, #000 80%, transparent 100%); }
-        .focus > .sweep { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
-        .tag { position: absolute; top: 12px; left: 12px; font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
-               padding: 6px 10px; border-radius: 999px; background: rgba(26, 26, 26, .86); color: #fff; opacity: 0; white-space: nowrap; }
-
-        .chip { display: flex; align-items: flex-start; gap: 10px; padding: 11px 18px; border-radius: 18px; background: #fff;
-                box-shadow: 0 14px 30px -16px rgba(60, 40, 10, .45), 0 0 0 1px #EFE6D8; font-size: 17px; line-height: 1.4; color: var(--ink); }
-        .chip .spark { font-size: 16px; line-height: 1.5; }
-        .stage.is-phone .chip { font-size: 15px; padding: 10px 14px; border-radius: 16px; }
-
-        .metals { display: flex; gap: 10px; white-space: nowrap; }
-        .metal { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; background: #fff; border: 1px solid #DCDCDC;
-                 font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); transition: border-color .3s, color .3s, box-shadow .3s; }
-        .metal.on { border-color: var(--gold); color: var(--ink); box-shadow: 0 0 0 2px #F1E6D2; }
-        .metal i { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08), inset 2px 2px 4px rgba(255, 255, 255, .6); }
-
-        .copy .kicker { display: block; font-size: 12px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: var(--gold-text); }
-        .copy h2 { font-family: 'Cinzel', serif; font-weight: 400; font-size: 40px; line-height: 1.12; margin: 14px 0 12px; color: var(--ink); }
-        .copy p { margin: 0; font-size: 15px; line-height: 1.6; color: #555; }
-        .stage.is-phone .copy { text-align: center; }
-        .stage.is-phone .copy h2 { font-size: 23px; margin: 8px 0 6px; }
-        .stage.is-phone .copy p { font-size: 14px; line-height: 1.5; }
-        .caption { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
-
-        /* the call to action is always on the stage: quiet in the corner during the story, the main button at the end */
-        .cta { display: block; text-decoration: none; }
-        .cta span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; white-space: nowrap; font-size: 12px; font-weight: 600; text-transform: uppercase; border-radius: 12px; }
-        .cta .quiet { letter-spacing: .16em; color: var(--gold-text); background: rgba(255, 255, 255, .9); border: 1px solid #E4D3B0; border-radius: 999px; }
-        .cta .loud { letter-spacing: .22em; color: #fff; background: linear-gradient(135deg, #D9BC85 0%, var(--gold) 45%, var(--gold-deep) 100%);
-                     box-shadow: 0 14px 30px -14px rgba(138, 100, 32, .8); opacity: 0; }
-        .loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; font-size: 13px; letter-spacing: .2em; text-transform: uppercase; color: var(--gold-text); }
-        .loading.gone { display: none; }
-
-        /* ── timeline, controls, notes ── */
-        .timeline { width: min(100%, 1120px); display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-        .timeline.is-phone { width: min(100%, 390px); }
+        .stage-wrap { width: min(100%, 700px); }
+        .stage-wrap.phone { width: min(100%, 390px); }
+        .stage-wrap.off { position: absolute; left: -9999px; top: 0; opacity: 0; pointer-events: none; }   /* storyboard: kept for its filters */
+        .timeline { width: min(100%, 700px); display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+        .timeline.phone { width: min(100%, 390px); }
         .seg-t { border: 0; background: none; padding: 6px 0 0; cursor: pointer; text-align: left; color: var(--muted); min-height: 36px; }
         .seg-t .bar-t { display: block; height: 3px; border-radius: 3px; background: #E3DACB; overflow: hidden; }
         .seg-t .bar-t::after { content: ''; display: block; height: 100%; width: calc(var(--fill, 0) * 100%); background: var(--gold); }
-        .seg-t .lbl { display: block; margin-top: 7px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .seg-t .lbl { display: block; margin-top: 7px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .seg-t.now .lbl { color: var(--ink); font-weight: 600; }
-        .timeline.is-phone .lbl { display: none; }
+        .timeline.phone .lbl { display: none; }
         .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; }
-        .btn { border: 1px solid #CFC6B8; background: #fff; color: var(--ink); border-radius: 10px; padding: 10px 18px; min-height: 40px;
-               font-size: 12px; letter-spacing: .18em; text-transform: uppercase; cursor: pointer; }
+        .btn { border: 1px solid #CFC6B8; background: #fff; color: var(--ink); border-radius: 10px; padding: 10px 18px; min-height: 40px; font-size: 12px; letter-spacing: .18em; text-transform: uppercase; cursor: pointer; }
         .btn:hover { border-color: var(--gold); }
-        .notes { width: min(100%, 1120px); background: #fff; border: 1px solid #EDE5D8; border-radius: 16px; padding: 18px 22px; font-size: 13px; line-height: 1.65; color: #4A4A4A; }
+        .notes { width: min(100%, 700px); background: #fff; border: 1px solid #EDE5D8; border-radius: 16px; padding: 18px 22px; font-size: 13px; line-height: 1.65; color: #4A4A4A; }
         .notes h3 { margin: 0 0 6px; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--gold-text); }
         .notes ul { margin: 0; padding-left: 18px; }
         .notes b { color: var(--ink); font-weight: 600; }
-
-        /* reduced motion (or Storyboard): the seven beats as stills */
         .board { width: min(100%, 1120px); display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-        .board.is-phone { width: min(100%, 390px); grid-template-columns: 1fr 1fr; }
+        .board.phone { width: min(100%, 390px); grid-template-columns: 1fr 1fr; }
         .frame { background: linear-gradient(160deg, var(--ivory), var(--sand)); border-radius: 16px; padding: 14px; box-shadow: 0 0 0 1px #EDE5D8; display: flex; flex-direction: column; gap: 10px; }
         .frame .cap { font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: var(--gold-text); }
         .frame .pic { aspect-ratio: 1; border-radius: 12px; background: #fff; overflow: hidden; display: grid; place-items: center; position: relative; }
@@ -139,22 +64,14 @@
         .frame .quad.sel img:not(.pk) { opacity: .4; }
         .frame .txt { font-size: 14px; line-height: 1.5; padding: 14px; text-align: left; align-self: center; }
         .frame .sub { margin: 0; font-size: 13px; line-height: 1.45; color: #555; }
-        .frame .mini-cta { align-self: flex-start; font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #fff; padding: 9px 14px; border-radius: 10px;
-                           background: linear-gradient(135deg, #D9BC85 0%, var(--gold) 45%, var(--gold-deep) 100%); text-decoration: none; }
-
-        @media (max-width: 640px) {
-            .bar { padding: 12px 16px; }
-            .bar-tools { margin-left: 0; width: 100%; }
-            .seg, .pill .long { display: none; }                               /* on a phone the stage already is the phone layout */
-            main { padding-top: 18px; }
-        }
+        .frame .nm { margin: 0; font-family: 'Cinzel', serif; font-size: 18px; }
+        @media (max-width: 640px) { .bar { padding: 12px 16px; } .bar-tools { margin-left: 0; width: 100%; } .seg { display: none; } main { padding-top: 18px; } }
     </style>
 </head>
 <body>
-    <svg id="metal-defs" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"></svg>
     <header class="bar">
         <a class="brand" href="{{BASE}}/" title="XJET Atelier"><span class="x">XJET</span><span class="sep"></span><span class="a">ATELIER</span></a>
-        <span class="pill"><span class="long">Hero showcase · </span>prototype · not live</span>
+        <span class="pill">Reference · live on the homepage</span>
         <div class="bar-tools">
             <label class="field" for="pick">Design <select id="pick" aria-label="Gallery design the story is built from"></select></label>
             <div class="seg" role="group" aria-label="Preview size">
@@ -163,36 +80,8 @@
             </div>
         </div>
     </header>
-
     <main>
-        <div id="stage" class="stage" role="img" aria-label="XJet Atelier: describe a ring, choose from four designs, refine it, see it turn in 360°, compare Silver and Gold — your ring">
-            <p class="el eyebrow" id="eyebrow-box" aria-hidden="true"><span class="dot"></span><span id="eyebrow"></span></p>
-            <div class="el composer" id="composer"><span class="spark" aria-hidden="true">✦</span><span class="typed"><span id="typed"></span><span class="caret" id="caret"></span></span><span class="go">Design</span></div>
-            <div class="el opt card" data-k="0"><img alt=""></div>
-            <div class="el opt card" data-k="1"><img alt=""></div>
-            <div class="el opt card" data-k="2"><img alt=""></div>
-            <div class="el opt card" data-k="3"><img alt=""></div>
-            <div class="el focus card" id="focus">
-                <img id="f-orig" alt="">
-                <img id="f-ref" alt="">
-                <div class="sweep" id="f-sweep"></div>
-                <video id="video" muted playsinline preload="auto"></video>
-                <img id="f-silver" alt="">
-                <img id="f-gold" alt="">
-                <span class="tag" id="tag"></span>
-            </div>
-            <div class="el chip" id="chip"><span class="spark" aria-hidden="true">✦</span><span><span id="r-text"></span><span class="caret" id="r-caret"></span></span></div>
-            <div class="el metals" id="metals"></div>
-            <div class="el copy" id="copy">
-                <span class="kicker" id="f-kicker"></span>
-                <h2>From your words<br>to your ring</h2>
-                <p>Designed by you. Made to order in real metal by XJet.</p>
-            </div>
-            <span class="el caption" id="f-caption">Design preview</span>
-            <a class="el cta" id="cta" href="{{BASE}}/"><span class="quiet">Design yours →</span><span class="loud">Design yours</span></a>
-            <div class="loading" id="loading">Loading the story…</div>
-        </div>
-
+        <div class="stage-wrap" id="wrap"><div id="stage" role="img"></div></div>
         <div class="board" id="board" hidden></div>
         <div class="timeline" id="timeline" role="group" aria-label="Beats — tap one to jump there"></div>
         <div class="controls">
@@ -201,406 +90,97 @@
             <button type="button" class="btn" id="still">Storyboard</button>
             <button type="button" class="btn" id="motion" hidden>Play the sequence</button>
         </div>
-
         <section class="notes" aria-label="Notes for review">
             <h3>For review</h3>
-            <ul id="notes">
-                <li>A prototype — not linked from the site; the homepage hero is unchanged until this is approved.</li>
-            </ul>
+            <ul id="notes"></ul>
         </section>
     </main>
-
     <script>
     (() => {
-        const BASE = (document.querySelector('meta[name="p3-base"]')?.content || '').replace(/\/+$/, '');
         const $ = id => document.getElementById(id);
-        const RATE = 34;                                   // typed characters per second (the same pace as before)
-        const BEATS = [
-            { id: 'describe', caption: 'Describe it',                 label: 'Prompt' },
-            { id: 'options',  caption: 'Four designs to choose from', label: '4 designs' },
-            { id: 'select',   caption: 'Choose your favourite',       label: 'Select' },
-            { id: 'refine',   caption: 'Refine it',                   label: 'Refine' },
-            { id: 'turn',     caption: 'See it turn',                 label: '360°' },
-            { id: 'metal',    caption: 'Choose your metal',           label: 'Metal' },
-            { id: 'final',    caption: '',                            label: 'Yours' },
-        ];
-        // Silver for a warm (gold) render: a contrast curve that keeps depth and the bright highlights (the site's ramp
-        // is tuned for the movies and reads flat on a gold still); near-white pixels stay untouched.
-        const SILVER_DEFS = `<filter id="sc-silver" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
-            <feColorMatrix in="SourceGraphic" type="matrix" result="gray" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0"/>
-            <feComponentTransfer in="gray" result="metal">
-                <feFuncR type="table" tableValues="0 0.025 0.07 0.15 0.28 0.46 0.66 0.83 0.94 1"/>
-                <feFuncG type="table" tableValues="0 0.027 0.073 0.154 0.285 0.465 0.664 0.833 0.942 1"/>
-                <feFuncB type="table" tableValues="0 0.035 0.085 0.17 0.30 0.48 0.68 0.845 0.95 1"/>
-            </feComponentTransfer>
-            <feColorMatrix in="SourceGraphic" type="matrix" result="lum" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4 -4 -4 0 11.7"/>
-            <feComposite in="metal" in2="lum" operator="in" result="ring"/>
-            <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="ring"/></feMerge>
-        </filter>`;
-
-        const clamp = v => Math.max(0, Math.min(1, v));
-        const ramp = (t, a, b) => (b <= a ? (t >= b ? 1 : 0) : clamp((t - a) / (b - a)));
-        const ease = x => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
-        const E = (t, a, b) => ease(ramp(t, a, b));
-        const lerp = (a, b, k) => a + (b - a) * k;
-        const LR = (p, q, k) => ({ x: lerp(p.x, q.x, k), y: lerp(p.y, q.y, k), w: lerp(p.w, q.w, k), h: lerp(p.h, q.h, k) });
-        const grow = (r, s, dy = 0) => ({ x: r.x - (r.w * (s - 1)) / 2, y: r.y - (r.h * (s - 1)) / 2 + dy, w: r.w * s, h: r.h * s });
-        const thumb = (u, w) => (u && u.includes('/assets/') ? u.replace('/assets/', '/thumb/') + '?w=' + w : u);
-        const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
-        const canHover = window.matchMedia('(hover: hover) and (pointer: fine)');
         const narrow = window.matchMedia('(max-width: 640px)');
+        const params = new URLSearchParams(location.search);
+        let ctl = null, frameMode = 'fit', segs = [], still = params.has('still');
+        const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const thumb = (u, w) => (u && u.includes('/assets/') ? u.replace('/assets/', '/thumb/') + '?w=' + w : u);
 
-        const stage = $('stage'), video = $('video'), opts = [...stage.querySelectorAll('.opt')];
-        let S = null, D = null, T = 0, last = null, playing = true, hovering = false, raf = 0, frameMode = 'fit', motionAnyway = false;
-        let stillView = new URLSearchParams(location.search).has('still'), segs = [], chips = [], VOFF = 0, ctaQ = null;
-        const VCOVER = 1.855;      // seconds of movie the turn beat plays: 1.48 s at normal speed, then 0.6 s easing to a stop
-
-        // ── the plan: beat lengths from the texts (typing keeps one pace; the reading holds are fixed) ──
-        function plan() {
-            const P = S.prompt.length, I = S.refine ? S.refine.text.length : 0;
-            const typeP = 200 + (P / RATE) * 1000, pressAt = typeP + 350;
-            const describe = Math.max(1700, pressAt + 300);
-            const typeI = 1000 + (I / RATE) * 1000, wipeAt = Math.max(2300, typeI + 350);
-            const refine = S.refine ? wipeAt + 800 + 250 : 1900;
-            const dur = [describe, 1250, 1100, refine, 2300, 2500, 3400];
-            const start = dur.map((_, i) => dur.slice(0, i).reduce((a, b) => a + b, 0));
-            return { dur, start, total: start[6] + dur[6], typeP, pressAt, typeI, wipeAt, goldAt: 1250 };
+        function mount(design) {
+            if (ctl) ctl.destroy();
+            ctl = P3Showcase.mount($('stage'), { design, motion: 'always', loadingText: 'Loading the story…', emptyText: 'No gallery design has a full story yet.',
+                                                 onFrame: tick, onReady: ready });
         }
-        const beatAt = t => { for (let i = 6; i >= 0; i--) if (t >= D.start[i]) return i; return 0; };
-
-        // ── layout (stage pixels) for the computer and the phone composition ──
-        function layout() {
-            const W = stage.clientWidth, H = stage.clientHeight, P = stage.classList.contains('is-phone');
-            const L = { W, H, P };
-            if (!P) {
-                const cw = Math.min(0.6 * W, 660);
-                L.composerW = cw; L.composerMid = { x: (W - cw) / 2, cy: 0.5 * H }; L.composerTop = { y: 0.085 * H, s: 0.88 };
-                L.grid = { cols: 4, s: 0.17 * W, g: 0.026 * W, y0: 0.33 * H, gap: 0.05 * H, bottom: 0.12 * H };
-                const hs = 0.6 * H; L.hero = { x: (W - hs) / 2, y: 0.11 * H, w: hs, h: hs };
-                const fs = 0.78 * H; L.final = { x: 0.09 * W, y: (H - fs) / 2 - 0.02 * H, w: fs, h: fs };
-                const cx = L.final.x + fs + 0.065 * W;
-                L.copy = { x: cx, w: Math.min(0.36 * W, W - cx - 0.06 * W) };
-                L.eyebrow = { x: 26, y: 22 }; L.ctaGap = { r: 22, b: 18 }; L.chipMax = 0.62 * W; L.loud = { w: 210, h: 48 };
-            } else {
-                const cw = 0.9 * W;
-                L.composerW = cw; L.composerMid = { x: (W - cw) / 2, cy: 0.42 * H }; L.composerTop = { y: 0.075 * H, s: 0.95 };
-                L.grid = { cols: 2, s: 0.39 * W, g: 0.04 * W, y0: 0.27 * H, gap: 0.03 * H, bottom: 0.13 * H };
-                const hs = 0.8 * W; L.hero = { x: (W - hs) / 2, y: 0.1 * H, w: hs, h: hs };
-                const fs = 0.66 * W; L.final = { x: (W - fs) / 2, y: 0.04 * H, w: fs, h: fs };
-                L.copy = { x: 0.07 * W, w: 0.86 * W };
-                L.eyebrow = { x: 16, y: 14 }; L.ctaGap = { r: 14, b: 12 }; L.chipMax = 0.9 * W; L.loud = { w: 200, h: 46 };
-            }
-            return L;
-        }
-        // the four options sit below the composer as it really is (a long prompt can take more lines) and always end
-        // above the call to action: the cards shrink rather than overlap
-        function placeSlots(L, composerBottom) {
-            const G = L.grid, rows = 4 / G.cols, y0 = Math.max(G.y0, composerBottom + G.gap);
-            const s = Math.min(G.s, (L.H - G.bottom - y0 - (rows - 1) * G.g) / rows);
-            const x0 = (L.W - (G.cols * s + (G.cols - 1) * G.g)) / 2;
-            L.slots = [0, 1, 2, 3].map(k => ({ x: x0 + (k % G.cols) * (s + G.g), y: y0 + Math.floor(k / G.cols) * (s + G.g), w: s, h: s }));
-        }
-        function put(el, r, o, extra = '') {
-            el.style.transform = `translate(${r.x.toFixed(1)}px, ${r.y.toFixed(1)}px)${extra}`;
-            if (r.w != null) el.style.width = r.w.toFixed(1) + 'px';
-            if (r.h != null) el.style.height = r.h.toFixed(1) + 'px';
-            el.style.opacity = o.toFixed(3);
-            el.style.visibility = o > 0.001 ? 'visible' : 'hidden';
-        }
-        // a label that fades in at a and out at b (200 ms each way)
-        const span = (t, a, b) => ramp(t, a, a + 200) * (1 - ramp(t, b - 200, b));
-
-        function render(t) {
-            const L = layout(), st = D.start, s1 = st[1], s2 = st[2], s3 = st[3], s4 = st[4], s5 = st[5], s6 = st[6], END = D.total;
-            const b = beatAt(t), bl = t - st[b];
-
-            // eyebrow: one caption at a time (fades out at the end of a beat, in at the next)
-            if ($('eyebrow').textContent !== BEATS[b].caption) $('eyebrow').textContent = BEATS[b].caption;
-            put($('eyebrow-box'), { x: L.eyebrow.x, y: L.eyebrow.y }, b === 6 ? 0 : ramp(bl, 0, 250) * (1 - ramp(bl, D.dur[b] - 180, D.dur[b])));
-
-            // composer: types the prompt, then rises above the four options; gone before the chosen ring moves
-            const composer = $('composer');
-            composer.style.width = L.composerW + 'px';
-            const n = t < s1 ? Math.max(0, Math.floor(((t - 200) / 1000) * RATE)) : S.prompt.length;
-            const typed = S.prompt.slice(0, Math.min(n, S.prompt.length));
-            if ($('typed').textContent !== typed) $('typed').textContent = typed;
-            $('caret').classList.toggle('off', !(t < D.pressAt));
-            composer.classList.toggle('press', t >= D.pressAt && t < D.pressAt + 260);
-            const ch = composer.offsetHeight, rise = E(t, s1, s1 + 550);
-            placeSlots(L, L.composerTop.y + ch * L.composerTop.s);
-            const cr = { x: L.composerMid.x, y: lerp(L.composerMid.cy - ch / 2, L.composerTop.y, rise) }, cs = lerp(1, L.composerTop.s, rise);
-            const cO = t < s1 ? ramp(t, 0, 300) : t < s3 ? 1 : 1 - ramp(t, s3, s3 + 300);
-            put(composer, cr, cO, ` scale(${cs.toFixed(3)})`);
-
-            // the four options appear one by one; the three not chosen dim, then leave before the chosen one moves
-            const appear = k => E(t, s1 + 380 + k * 140, s1 + 380 + k * 140 + 380);
-            const dim = E(t, s2, s2 + 450);
-            opts.forEach(el => {
-                const k = +el.dataset.k;
-                if (k === S.picked) { put(el, L.slots[k], 0); return; }
-                const a = appear(k);
-                const o = t < s1 ? 0 : t < s3 ? a * lerp(1, 0.34, dim) : 0.34 * (1 - ramp(t, s3, s3 + 300));
-                put(el, grow(L.slots[k], lerp(0.94, 1, a), (1 - a) * 16), o);
-                el.style.filter = `saturate(${lerp(1, 0.5, t >= s2 ? dim : 0).toFixed(2)})`;
-            });
-
-            // the focus card: the chosen option → lifted → centre stage → refined → turning → metals → the final ring
-            const focus = $('focus'), p = S.picked, a = appear(p);
-            const lifted = grow(L.slots[p], 1 + 0.045 * dim, -6 * dim);
-            let fr, fo = 1;
-            if (t < s1) { fr = L.slots[p]; fo = 0; }
-            else if (t < s2) { fr = grow(L.slots[p], lerp(0.94, 1, a), (1 - a) * 16); fo = a; }
-            else if (t < s3) fr = lifted;
-            else if (t < s4) fr = LR(lifted, L.hero, E(t, s3 + 300, s3 + 950));
-            else if (t < s6) fr = L.hero;
-            else { fr = LR(L.hero, L.final, E(t, s6, s6 + 750)); fo = 1 - ramp(t, END - 450, END); }
-            put(focus, fr, fo);
-            focus.style.borderRadius = Math.max(14, fr.w * 0.055).toFixed(1) + 'px';
-            const ring = t < s2 ? 0 : t < s3 ? dim : t < s4 ? 1 - E(t, s3 + 300, s3 + 950) : 0;
-            focus.style.boxShadow = `0 0 0 2px rgba(201,169,110,${ring.toFixed(3)}), 0 ${lerp(18, 26, ring).toFixed(0)}px ${lerp(40, 50, ring).toFixed(0)}px -22px rgba(60,40,10,.38), 0 0 0 1px rgba(0,0,0,.04)`;
-
-            // inside the card: the refined ring is revealed by a soft wipe (no ghosted blend of the two rings)
-            const wipe = S.refine ? ramp(t, s3 + D.wipeAt, s3 + D.wipeAt + 800) : 0;
-            const revealed = !!S.refine && t >= s3 + D.wipeAt + 800;
-            const out = ramp(t, s4, s4 + 220);                      // the turn starts with a short fade through white
-            $('f-orig').style.opacity = (S.refine ? (t >= s3 + D.wipeAt + 800 ? 0 : 1) : 1 - out).toFixed(3);
-            const ref = $('f-ref');
-            if (S.refine) {
-                const X = lerp(-20, 120, ease(wipe));
-                const m = t < s3 + D.wipeAt ? 'linear-gradient(105deg, transparent 0%, transparent 100%)'
-                        : revealed ? 'none' : `linear-gradient(105deg, #000 ${(X - 14).toFixed(1)}%, transparent ${(X + 14).toFixed(1)}%)`;
-                ref.style.webkitMaskImage = m; ref.style.maskImage = m;
-                ref.style.opacity = (t < s3 + D.wipeAt ? 0 : 1 - out).toFixed(3);
-                const sw = $('f-sweep');
-                sw.style.opacity = (wipe > 0 && wipe < 1 ? Math.sin(Math.PI * wipe) * 0.35 : 0).toFixed(3);   // a faint light pass, not a stripe
-                sw.style.background = `linear-gradient(105deg, transparent ${(X - 7).toFixed(1)}%, rgba(255,247,228,.85) ${X.toFixed(1)}%, transparent ${(X + 7).toFixed(1)}%)`;
-            } else ref.style.opacity = '0';
-            const vO = t < s4 ? 0 : t < s5 ? ramp(t, s4 + 220, s4 + 520) : t < s5 + 450 ? 1 : 0;
-            video.style.opacity = vO.toFixed(3);
-            $('f-silver').style.opacity = (t < s5 ? 0 : ramp(t, s5, s5 + 450)).toFixed(3);
-            $('f-gold').style.opacity = (t < s5 ? 0 : ramp(t, s5 + D.goldAt, s5 + D.goldAt + 550)).toFixed(3);
-
-            // one small label on the card at a time
-            const labels = [[s2 + 150, s3 + 220, 'Selected']];
-            if (S.refine) labels.push([s3 + 950, s3 + D.wipeAt + 300, 'Original'], [s3 + D.wipeAt + 500, s4 + 220, 'Refined']);
-            else labels.push([s3 + 950, s4 + 220, 'Selected']);
-            labels.push([s4 + 350, s5 + 220, '360°']);
-            const lab = labels.find(([x, y]) => t >= x && t < y);
-            const tag = $('tag');
-            if (lab && tag.textContent !== lab[2]) tag.textContent = lab[2];
-            tag.style.opacity = lab ? span(t, lab[0], lab[1]).toFixed(3) : '0';
-
-            // the refinement request, typed under the ring at the same pace, held long enough to read
-            const chip = $('chip');
-            if (S.refine) {
-                if (chip.dataset.full !== S.refine.text || chip.dataset.max !== String(L.chipMax)) {
-                    // measure the finished request once (width, then height at that width), so the chip never grows
-                    // while it is typed — on a phone it may take two lines from the first letter
-                    chip.style.width = 'auto'; chip.style.minHeight = '0px'; chip.style.maxWidth = L.chipMax + 'px'; $('r-text').textContent = S.refine.text;
-                    chip.dataset.w = Math.ceil(chip.getBoundingClientRect().width) + 1;
-                    chip.style.width = Math.min(+chip.dataset.w, L.chipMax) + 'px';
-                    chip.style.minHeight = Math.ceil(chip.getBoundingClientRect().height) + 'px';
-                    chip.dataset.full = S.refine.text; chip.dataset.max = String(L.chipMax);
-                }
-                const k = Math.max(0, Math.floor(((t - (s3 + 1000)) / 1000) * RATE));
-                const txt = t < s3 ? '' : S.refine.text.slice(0, Math.min(k, S.refine.text.length));
-                if ($('r-text').textContent !== txt) $('r-text').textContent = txt;
-                const cw = Math.min(+chip.dataset.w, L.chipMax);
-                $('r-caret').classList.toggle('off', t >= s3 + D.typeI + 250);
-                put(chip, { x: (L.W - cw) / 2, y: L.hero.y + L.hero.h + (L.P ? 0.035 : 0.045) * L.H, w: cw }, ramp(t, s3 + 900, s3 + 1100) * (1 - ramp(t, s4, s4 + 220)));
-            } else put(chip, { x: 0, y: 0 }, 0);
-
-            // metals: Silver, then Yellow Gold — the same still, the same angle and scale
-            const mt = $('metals');
-            const goldOn = t >= s5 + D.goldAt + 275;
-            chips.forEach((c, i) => c.classList.toggle('on', i === (goldOn ? 1 : 0)));
-            put(mt, { x: (L.W - mt.offsetWidth) / 2, y: L.hero.y + L.hero.h + (L.P ? 0.035 : 0.05) * L.H }, ramp(t, s5 + 100, s5 + 400) * (1 - ramp(t, s6, s6 + 250)));
-
-            // the final: the gold ring dominates, with a short message and the main call to action
-            const copy = $('copy'), fin = E(t, s6 + 350, s6 + 1000), outro = 1 - ramp(t, END - 450, END);
-            copy.style.width = L.copy.w + 'px';
-            // "From your words" stays on one line at any stage width (Cinzel is about 0.64 em per capital)
-            copy.querySelector('h2').style.fontSize = (L.P ? Math.min(24, L.copy.w / 11) : Math.min(42, Math.max(24, L.copy.w / 10))).toFixed(1) + 'px';
-            const cH = copy.offsetHeight;
-            const copyY = L.P ? L.final.y + L.final.h + 0.07 * L.H : (L.H - cH - L.loud.h - 24) / 2;
-            put(copy, { x: L.copy.x, y: copyY + (1 - fin) * 12 }, t >= s6 ? fin * outro : 0);
-            const cap = $('f-caption');
-            put(cap, { x: L.final.x + (L.final.w - cap.offsetWidth) / 2, y: L.final.y + L.final.h + 8 }, t >= s6 ? E(t, s6 + 600, s6 + 1000) * outro : 0);
-
-            // the call to action never leaves the stage: quiet in the corner, the main button in the final
-            const cta = $('cta');
-            if (!ctaQ) {                       // the quiet pill is as wide as its words (measured off-stage once)
-                const ms = document.createElement('span');
-                ms.textContent = cta.querySelector('.quiet').textContent;
-                ms.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase';
-                stage.appendChild(ms); ctaQ = { w: Math.ceil(ms.getBoundingClientRect().width) + 34, h: L.P ? 32 : 34 }; ms.remove();
-            }
-            const m = t >= s6 ? E(t, s6 + 350, s6 + 1000) * (1 - E(t, END - 450, END)) : 0;
-            const q = { x: L.W - ctaQ.w - L.ctaGap.r, y: L.H - ctaQ.h - L.ctaGap.b, w: ctaQ.w, h: ctaQ.h };
-            const lo = L.P ? { x: (L.W - L.loud.w) / 2, y: copyY + cH + 14, w: L.loud.w, h: L.loud.h }
-                           : { x: L.copy.x, y: copyY + cH + 24, w: L.loud.w, h: L.loud.h };
-            put(cta, LR(q, lo, m), 1);
-            cta.querySelector('.quiet').style.opacity = (1 - m).toFixed(3);
-            cta.querySelector('.loud').style.opacity = m.toFixed(3);
-
-            segs.forEach((sg, k) => { sg.style.setProperty('--fill', k < b ? 1 : k > b ? 0 : clamp(bl / D.dur[b]).toFixed(3)); sg.classList.toggle('now', k === b); });
-            syncVideo(t);
-        }
-
-        // ── the movie: plays its last stretch so it settles on the front view — the same view as the still ──
-        function covered(x) {                 // seconds of movie played x ms into the turn (1× for 1480 ms, then easing to ¼ speed)
-            if (x <= 0) return 0;
-            if (x <= 1480) return x / 1000;
-            const d = Math.min(x, 2080) - 1480;
-            return 1.48 + d / 1000 - (0.75 * d * d) / (2 * 600 * 1000);
-        }
-        function syncVideo(t) {
-            const s4 = D.start[4], s5 = D.start[5];
-            const x = t - (s4 + 220);
-            const want = VOFF + covered(Math.min(x, 2080));
-            const active = t >= s4 + 220 && t < s5;
-            if (active && playing && !hovering) {
-                const rate = x < 1480 ? 1 : lerp(1, 0.25, clamp((x - 1480) / 600));
-                if (Math.abs(video.playbackRate - rate) > 0.02) video.playbackRate = rate;
-                if (video.paused) { try { video.currentTime = want; } catch (_) {} video.play().catch(() => {}); }
-                else if (Math.abs(video.currentTime - want) > 0.25) { try { video.currentTime = want; } catch (_) {} }
-            } else {
-                if (!video.paused) video.pause();
-                const hold = t < s4 ? VOFF : t < s5 ? want : VOFF + VCOVER;    // ready at the start; the last view afterwards
-                if (video.readyState >= 1 && !video.seeking && Math.abs(video.currentTime - hold) > 0.04) { try { video.currentTime = hold; } catch (_) {} }
-            }
-        }
-
-        // ── data, build, preload ──
-        async function load(design) {
-            $('loading').classList.remove('gone'); $('loading').textContent = 'Loading the story…';
-            const R = await fetch(BASE + '/api/showcase' + (design ? '?design=' + encodeURIComponent(design) : ''));
-            const Dd = await R.json();
+        function ready(c) {
             const pick = $('pick'); pick.innerHTML = '';
-            for (const c of Dd.choices || []) { const o = document.createElement('option'); o.value = c.slug; o.textContent = c.title; pick.appendChild(o); }
-            if (!Dd.story) { $('loading').textContent = 'No gallery design has a full story yet (four first options and a 360° movie).'; return; }
-            S = Dd.story; pick.value = S.slug; D = plan(); ctaQ = null;
-            build(); await preload();
-            $('loading').classList.add('gone');
-            T = 0; last = null;
-            if ((reduce.matches || stillView) && !motionAnyway) showBoard(); else start();
-        }
-
-        function build() {
-            const gold = S.metals.find(m => m.id === 'gold_18k_yellow');
-            $('metal-defs').innerHTML = SILVER_DEFS + (window.P3MetalFilterDefs ? window.P3MetalFilterDefs(S.metals) : '');
-            opts.forEach(el => {
-                const k = +el.dataset.k, u = S.options[k], img = el.querySelector('img');
-                img.srcset = `${thumb(u, 320)} 320w, ${thumb(u, 800)} 800w`; img.sizes = '(max-width: 640px) 40vw, 200px'; img.src = thumb(u, 800);
-            });
-            const orig = S.options[S.picked], still = S.still_url;
-            const set = (el, u) => { el.srcset = `${thumb(u, 800)} 800w, ${u} 1024w`; el.sizes = '(max-width: 640px) 75vw, 520px'; el.src = thumb(u, 800); };
-            set($('f-orig'), orig); set($('f-ref'), S.refine ? S.refine.image_url : orig); set($('f-silver'), still); set($('f-gold'), still);
-            // the render's own metal is shown untouched; only the other metal is a filter
-            $('f-silver').style.filter = S.tone === 'gold' ? 'url(#sc-silver)' : '';
-            $('f-gold').style.filter = S.tone === 'gold' || !gold ? '' : 'url(#p3-metal-gold_18k_yellow)';
-            video.loop = false; video.poster = S.poster_url; video.src = S.movie_url;
-            video.onloadedmetadata = () => { VOFF = Math.max(0, (video.duration || VCOVER) - VCOVER - 0.03); try { video.currentTime = VOFF; } catch (_) {} };
-            const shown = [['Silver', S.metals.find(m => m.id === 'silver')], ['18K Yellow Gold', gold]].filter(x => x[1]);
-            const mt = $('metals'); mt.innerHTML = '';
-            chips = shown.map(([label, m]) => { const c = document.createElement('span'); c.className = 'metal'; c.innerHTML = `<i style="background:${m.swatch}"></i>`; c.append(label); mt.appendChild(c); return c; });
-            $('f-kicker').textContent = S.title;
-            $('cta').href = S.cta_url;
-            $('chip').dataset.full = '';
+            for (const x of c.choices) { const o = document.createElement('option'); o.value = x.slug; o.textContent = x.title; pick.appendChild(o); }
+            pick.value = c.story.slug;
             const tl = $('timeline'); tl.innerHTML = '';
-            segs = BEATS.map((bt, i) => {
-                const s = document.createElement('button'); s.type = 'button'; s.className = 'seg-t'; s.title = bt.caption || 'Your ring';
-                s.innerHTML = '<span class="bar-t"></span><span class="lbl"></span>'; s.querySelector('.lbl').textContent = bt.label;
-                s.addEventListener('click', () => { T = D.start[i] + 1; render(T); });
+            segs = P3Showcase.labels.map((label, i) => {
+                const s = document.createElement('button'); s.type = 'button'; s.className = 'seg-t'; s.title = P3Showcase.captions[i] || 'The finished ring';
+                s.innerHTML = '<span class="bar-t"></span><span class="lbl"></span>'; s.querySelector('.lbl').textContent = label;
+                s.addEventListener('click', () => ctl.seek(c.plan.start[i] + 1));
                 tl.appendChild(s); return s;
             });
-            const notes = $('notes'); notes.innerHTML = '';
+            const S = c.story, D = c.plan, notes = $('notes'); notes.innerHTML = '';
             const li = h => { const l = document.createElement('li'); l.innerHTML = h; notes.appendChild(l); };
-            li('A prototype — not linked from the site; the homepage hero is unchanged until this is approved.');
-            li(`The whole story is <b>${esc(S.title)}</b> from the Inspiration Gallery: its own prompt, its first four options, the one chosen, `
-               + (S.refine ? `the refinement “${esc(S.refine.text)}”, ` : '') + 'its real 360° movie, then Silver and 18K Yellow Gold at the same angle and scale, ending in gold. Nothing is generated or charged.');
-            li('The final ring is the design’s own render, labelled “Design preview” — not a photograph of a printed ring.');
-            li(`About ${(D.total / 1000).toFixed(1)} s, muted, loops; pauses while the pointer is over it. “Design yours” stays on the stage the whole time and becomes the main button at the end.`);
+            li('This is the homepage hero’s showcase on its own, with review tools — the same engine and the same story.');
+            li(`<b>${esc(S.title)}</b> from the Inspiration Gallery: its own prompt, its first four options, the one chosen, `
+               + (S.refine ? `the refinement “${esc(S.refine.text)}”, ` : '') + 'its real 360° movie (its last two seconds, as a small clip), then Silver and 18K Yellow Gold at the same angle and scale, and the finished ring in gold with its name. Nothing is generated or charged.');
+            li(`About ${(D.total / 1000).toFixed(1)} s, muted, loops. It stops while it is off screen or the tab is hidden; visitors who prefer reduced motion see the finished ring, still.`);
             li('Choose another gallery design above, switch the preview to <b>Phone</b>, or open this page on a phone. The beats under the stage jump straight to a moment; <b>Storyboard</b> shows all seven at once.');
+            if (still) showBoard();
         }
+        function tick(st) {
+            const D = ctl && ctl.plan; if (!D) return;
+            segs.forEach((s, k) => { s.style.setProperty('--fill', k < st.beat ? 1 : k > st.beat ? 0 : Math.max(0, Math.min(1, (st.t - D.start[k]) / D.dur[k])).toFixed(3)); s.classList.toggle('now', k === st.beat); });
+        }
+        function setPlay(v) { if (v) ctl.play(); else ctl.pause(); $('play').textContent = v ? 'Pause' : 'Play'; }
+        $('play').addEventListener('click', () => setPlay(!ctl.state().playing));
+        $('replay').addEventListener('click', () => { ctl.restart(); $('play').textContent = 'Pause'; });
 
-        function preload() {
-            const imgs = [...opts.map(o => o.querySelector('img')), $('f-orig'), $('f-ref'), $('f-silver')];
-            const wait = el => (el.complete && el.naturalWidth ? Promise.resolve() : (el.decode ? el.decode() : Promise.resolve())).catch(() => {});
-            const movie = new Promise(res => { if (video.readyState >= 3) return res(); video.addEventListener('canplay', res, { once: true }); video.addEventListener('error', res, { once: true }); video.load(); });
-            return Promise.race([Promise.all([...imgs.map(wait), movie]), new Promise(r => setTimeout(r, 4000))]);
-        }
-
-        // ── playback ──
-        function frame(now) {
-            raf = requestAnimationFrame(frame);
-            if (last === null) last = now;
-            const dt = Math.min(64, now - last); last = now;
-            if (playing && !hovering) T = (T + dt) % D.total;
-            render(T);
-        }
-        function start() {
-            $('board').hidden = true; stage.hidden = false; $('timeline').hidden = false;
-            $('play').hidden = false; $('replay').hidden = false; $('still').hidden = false; $('motion').hidden = true;
-            cancelAnimationFrame(raf); last = null; raf = requestAnimationFrame(frame); render(T);
-        }
-        function setPlaying(v) { playing = v; $('play').textContent = v ? 'Pause' : 'Play'; render(T); }
-        $('play').addEventListener('click', () => setPlaying(!playing));
-        $('replay').addEventListener('click', () => { T = 0; setPlaying(true); });
-        stage.addEventListener('pointerenter', () => { if (canHover.matches) { hovering = true; render(T); } });
-        stage.addEventListener('pointerleave', () => { hovering = false; });
-        document.addEventListener('visibilitychange', () => { if (document.hidden) video.pause(); });
-
-        // ── reduced motion / Storyboard: the seven beats as stills ──
         function showBoard() {
-            cancelAnimationFrame(raf); video.pause();
-            stage.hidden = true; $('timeline').hidden = true; $('play').hidden = true; $('replay').hidden = true; $('still').hidden = true; $('motion').hidden = false;
+            const S = ctl.story; if (!S) return;
+            setPlay(false);
+            $('wrap').classList.add('off'); $('timeline').hidden = true;
+            for (const id of ['play', 'replay', 'still']) $(id).hidden = true;
+            $('motion').hidden = false;
             const b = $('board'); b.hidden = false; b.innerHTML = '';
             const fr = (cap, inner, after = '') => { const f = document.createElement('div'); f.className = 'frame'; f.innerHTML = `<span class="cap"></span><div class="pic">${inner}</div>${after}`; f.querySelector('.cap').textContent = cap; b.appendChild(f); };
             const quad = sel => `<div class="quad${sel ? ' sel' : ''}">${S.options.map((u, i) => `<img src="${thumb(u, 320)}" alt="" class="${sel && i === S.picked ? 'pk' : ''}">`).join('')}</div>`;
-            const silver = S.tone === 'gold' ? 'url(#sc-silver)' : 'none', gold = S.tone === 'gold' ? 'none' : 'url(#p3-metal-gold_18k_yellow)';
-            fr('Describe it', `<p class="txt">✦ ${esc(S.prompt)}</p>`);
-            fr('Four designs', quad(false));
-            fr('Choose your favourite', quad(true));
-            fr('Refine it', `<div class="pair"><img src="${thumb(S.options[S.picked], 320)}" alt=""><img src="${thumb(S.refine ? S.refine.image_url : S.options[S.picked], 320)}" alt=""></div>`,
-               S.refine ? `<p class="sub">✦ ${esc(S.refine.text)}</p>` : '');
-            fr('See it turn', `<img src="${S.poster_url}" alt="">`);
-            fr('Choose your metal', `<div class="pair"><img src="${thumb(S.still_url, 320)}" alt="" style="filter:${silver}"><img src="${thumb(S.still_url, 320)}" alt="" style="filter:${gold}"></div>`, '<p class="sub">Silver · 18K Yellow Gold</p>');
-            fr('Yours', `<img src="${thumb(S.still_url, 800)}" alt="" style="filter:${gold}">`,
-               `<p class="sub">From your words to your ring. <span style="color:var(--muted)">Design preview.</span></p><a class="mini-cta" href="${esc(S.cta_url)}">Design yours</a>`);
+            const silver = S.tone === 'gold' ? 'url(#sc-silver)' : 'none', gold = S.tone === 'gold' ? 'none' : 'url(#sc-gold)';
+            const C = P3Showcase.captions;
+            fr(C[0], `<p class="txt">✦ ${esc(S.prompt)}</p>`);
+            fr(C[1], quad(false));
+            fr(C[2], quad(true));
+            fr(C[3], `<div class="pair"><img src="${thumb(S.options[S.picked], 320)}" alt=""><img src="${thumb(S.refine ? S.refine.image_url : S.options[S.picked], 320)}" alt=""></div>`, S.refine ? `<p class="sub">✦ ${esc(S.refine.text)}</p>` : '');
+            fr(C[4], `<img src="${S.poster_url}" alt="">`);
+            fr(C[5], `<div class="pair"><img src="${thumb(S.still_url, 320)}" alt="" style="filter:${silver}"><img src="${thumb(S.still_url, 320)}" alt="" style="filter:${gold}"></div>`, '<p class="sub">Silver · 18K Yellow Gold</p>');
+            fr('The finished ring', `<img src="${thumb(S.still_url, 800)}" alt="" style="filter:${gold}">`, `<p class="nm">${esc(S.title)}</p><p class="sub">Designed with XJet Atelier</p>`);
         }
-        $('motion').addEventListener('click', () => { motionAnyway = true; stillView = false; T = 0; start(); });
-        $('still').addEventListener('click', () => { stillView = true; motionAnyway = false; showBoard(); });
+        $('still').addEventListener('click', () => { still = true; showBoard(); });
+        $('motion').addEventListener('click', () => {
+            still = false; $('board').hidden = true; $('wrap').classList.remove('off'); $('timeline').hidden = false;
+            for (const id of ['play', 'replay', 'still']) $(id).hidden = false;
+            $('motion').hidden = true; ctl.restart(); $('play').textContent = 'Pause';
+        });
 
-        // ── preview size: fit the window, or a phone-sized frame ──
         function applyFrame() {
             const phone = frameMode === 'phone' || narrow.matches;
-            for (const el of [stage, $('timeline'), $('board')]) el.classList.toggle('is-phone', phone);
+            $('wrap').classList.toggle('phone', phone); $('timeline').classList.toggle('phone', phone); $('board').classList.toggle('phone', phone);
+            $('stage').classList.toggle('sc-phone', phone);
             document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.frame === frameMode)));
-            ctaQ = null; if (S && D) render(T);
+            if (ctl && ctl.plan) ctl.seek(ctl.state().t);
         }
         document.querySelectorAll('.seg button').forEach(x => x.addEventListener('click', () => { frameMode = x.dataset.frame; applyFrame(); }));
         (narrow.addEventListener ? narrow.addEventListener('change', applyFrame) : narrow.addListener(applyFrame));
-        window.addEventListener('resize', () => { if (S && D) render(T); });
         $('pick').addEventListener('change', e => {
-            const slug = e.target.value;
-            try { history.replaceState(null, '', location.pathname + '?design=' + encodeURIComponent(slug)); } catch (_) {}
-            cancelAnimationFrame(raf); video.pause(); load(slug);
+            try { history.replaceState(null, '', location.pathname + '?design=' + encodeURIComponent(e.target.value)); } catch (_) {}
+            mount(e.target.value);
         });
-
         // review tooling: jump to a moment and read the state
-        window.__showcase = {
-            seek(ms) { T = Math.max(0, Math.min(D.total - 1, ms)); render(T); return this.state(); },
-            pause() { setPlaying(false); return this.state(); },
-            state() { const b = D ? beatAt(T) : 0; return { beat: BEATS[b].id, t: Math.round(T), playing, total: D && D.total, starts: D && D.start, story: S && S.title }; },
-        };
-
-        // text widths change when the web fonts arrive: measure the request chip and the quiet button again
-        if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { $('chip').dataset.full = ''; ctaQ = null; if (S && D) render(T); });
+        window.__showcase = { seek: ms => ctl.seek(ms), pause: () => { setPlay(false); return ctl.state(); }, state: () => ctl.state(), get ctl() { return ctl; } };
 
         applyFrame();
-        load(new URLSearchParams(location.search).get('design')).catch(e => { $('loading').textContent = 'The story could not be loaded.'; console.error(e); });
+        mount(params.get('design') || 'aurora-mesh');
     })();
     </script>
 </body>

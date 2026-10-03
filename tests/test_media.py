@@ -71,3 +71,24 @@ async def test_movie_poster_comes_from_the_first_frame(H):
     assert (await H.Client.get("/poster/designs/x/movies/nope.mp4")).status_code == 404
     B = await H.NewDesign("A slim band")
     assert (await H.Client.get(f"/poster/{B['candidates'][0]['image_url'].split('/assets/', 1)[1]}")).status_code == 404
+
+
+async def test_a_movie_clip_is_its_last_seconds_small(H):
+    """The homepage showcase plays only a movie's last two seconds: a small web clip instead of the whole movie."""
+    Dst = H.Settings.AssetsDir / "designs" / "d_x" / "movies" / "m_x.mp4"
+    Dst.parent.mkdir(parents=True)
+    shutil.copyfile(MockMovie, Dst)
+    R = await H.Client.get("/clip/designs/d_x/movies/m_x.mp4?tail=2&w=480")
+    if Media.FfmpegExe() is None:
+        assert R.status_code == 404 and R.json()["error"]["code"] == "clip_unavailable"
+        return
+    assert R.status_code == 200 and R.headers["content-type"] == "video/mp4", R.text[:200]
+    assert R.headers["cache-control"] == "public, max-age=31536000, immutable" and "content-encoding" not in R.headers
+    assert R.content[4:8] == b"ftyp" and len(R.content) < Dst.stat().st_size * 2
+    assert (H.Settings.AssetsDir / "_derived" / "designs" / "d_x" / "movies" / "m_x.mp4.tail2_w480.mp4").is_file()
+    R = await H.Client.get("/clip/designs/d_x/movies/m_x.mp4?tail=2&w=480", headers={"Range": "bytes=0-99"})
+    assert R.status_code == 206 and len(R.content) == 100                     # byte ranges for Safari
+    assert (await H.Client.get("/clip/designs/d_x/movies/m_x.mp4?tail=5&w=480")).status_code == 404
+    assert (await H.Client.get("/clip/designs/d_x/movies/m_x.mp4?tail=2&w=999")).status_code == 404
+    assert (await H.Client.get("/clip/designs/x/movies/nope.mp4?tail=2&w=480")).status_code == 404
+    assert (await H.Client.get("/thumb/designs/d_x/movies/m_x.mp4?w=1024")).status_code == 404     # a movie is no image

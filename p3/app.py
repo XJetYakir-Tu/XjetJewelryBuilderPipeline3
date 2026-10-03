@@ -82,7 +82,7 @@ class Services:
 
 class _NoGzipForMedia:
     """ASGI middleware: strips Accept-Encoding for media paths so GZipMiddleware (inner) passes them through."""
-    Prefixes = ("/assets/", "/thumb/", "/poster/", "/static/videos/", "/static/images/", "/static/vendor/fonts/",
+    Prefixes = ("/assets/", "/thumb/", "/poster/", "/clip/", "/static/videos/", "/static/images/", "/static/vendor/fonts/",
                 "/stl/", "/download")                 # 3D downloads (up to ~250 MB STL) stream as they are
 
     def __init__(self, App):
@@ -104,7 +104,7 @@ def _VersionedPage(Name: str, BasePath: str) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, and local scripts/styles get
     ?v=<mtime> so a browser can never pair a new page with a cached older app.js."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
-    for Asset in ("app.js", "admin.js", "metal.js", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
+    for Asset in ("app.js", "admin.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
                   "vendor/three.min.js", "vendor/STLLoader.js", "vendor/OrbitControls.js"):
         Path_ = WebDir / Asset
         if Path_.is_file():
@@ -180,7 +180,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         # (cheap 304s via ETag) instead of running a cached, outdated app.js.
         Resp = await CallNext(Req)
         Rel = Req.url.path[len(Base):] if Base and Req.url.path.startswith(Base) else Req.url.path
-        if Rel.startswith(("/assets/", "/thumb/", "/poster/")):
+        if Rel.startswith(("/assets/", "/thumb/", "/poster/", "/clip/")):
             # generated files never change under their URL (unique ids); derived media follows its source
             Resp.headers.setdefault("Cache-Control", Immutable)
         elif Rel.startswith("/static/vendor/fonts/"):
@@ -272,6 +272,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         except (assets.AssetError, ValueError, OSError) as E:
             raise HttpError(404, "asset_not_found", str(E))
         return FileResponse(Path_, media_type=Ctype, headers={"Cache-Control": Immutable, "Vary": "Accept"})
+
+    @App_.get("/clip/{Rel:path}", include_in_schema=False)
+    async def ClipRoute(Rel: str, tail: float = 2.0, w: int = 720):
+        try:
+            Path_ = await run_in_threadpool(Media.Clip, S.AssetsDir, Rel, float(tail), int(w))
+        except (assets.AssetError, ValueError, OSError) as E:
+            raise HttpError(404, "asset_not_found", str(E))
+        if Path_ is None:
+            raise HttpError(404, "clip_unavailable", "No clip for this movie.")
+        return FileResponse(Path_, media_type="video/mp4", headers={"Cache-Control": Immutable})
 
     @App_.get("/poster/{Rel:path}", include_in_schema=False)
     async def PosterRoute(Rel: str):

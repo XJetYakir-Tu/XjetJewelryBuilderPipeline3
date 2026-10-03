@@ -20,8 +20,10 @@
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/inter-400-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-400-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
+    <link rel="stylesheet" href="{{BASE}}/static/showcase.css">
     <script src="{{BASE}}/static/metal.js"></script>
     <script src="{{BASE}}/static/app.js"></script>
+    <script defer src="{{BASE}}/static/showcase.js"></script>
     <script defer src="{{BASE}}/static/vendor/alpine.min.js"></script>
 
     <!-- Visual system carried over from Pipeline 2 (index-p2.html) -->
@@ -242,65 +244,43 @@
     <template x-if="view === 'home'">
         <main class="flex-1 overflow-y-auto fade-in">
             <section class="flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh-57px)] bg-white">
-                <div class="md:w-[46%] px-8 py-6 md:p-10 lg:p-14 2xl:p-20 flex flex-col justify-center">
-                    <div class="flex flex-col gap-1 mb-5 md:mb-7 md:mt-8">
+                <div class="md:w-[46%] px-6 pt-6 pb-3 sm:px-8 md:p-10 lg:p-14 2xl:p-20 flex flex-col justify-center">
+                    <div class="flex flex-col gap-1 mb-4 md:mb-7 md:mt-8">
                         <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Bespoke Jewellery</span>
                         <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Powered by AI</span>
                     </div>
-                    <h1 class="text-5xl md:text-6xl lg:text-[4rem] 2xl:text-[4.5rem] leading-[1.08] text-zinc-900 mb-6 brand-font" style="text-wrap:balance">
+                    <h1 class="text-5xl md:text-6xl lg:text-[4rem] 2xl:text-[4.5rem] leading-[1.08] text-zinc-900 mb-4 md:mb-6 brand-font" style="text-wrap:balance">
                         Custom Jewelry,<br><span class="italic font-normal" style="color:#B08040">Designed by You</span>
                     </h1>
-                    <p class="text-zinc-700 text-[15px] leading-[1.8] mb-9 max-w-[420px]">Describe your vision or upload a photo. Our AI creates four original ring designs for you to choose from — refine your favourite, then preview it in a 360° movie.</p>
-                    <div class="flex flex-col gap-3 mb-10">
-                        <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Describe your vision</div>
-                        <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Choose from four AI designs</div>
-                        <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Select your metal &amp; size</div>
-                        <div class="flex items-center gap-3 text-[13px] font-medium text-zinc-800"><span class="text-sm" style="color:#B0863C">→</span> Preview it in a 360° movie</div>
-                    </div>
-                    <div class="flex flex-col sm:flex-row gap-4">
+                    <p class="text-zinc-700 text-[17px] md:text-[18px] leading-relaxed mb-6 md:mb-10 max-w-[420px]">Your idea. Your style. A ring that’s uniquely yours.</p>
+                    <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
                         <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-[12px] uppercase tracking-[0.16em] stream-glow transition font-semibold">Start Designing</button>
                         <button @click="scrollToHowItWorks()" class="btn-outline px-10 py-4 transition">How It Works</button>
                     </div>
-                    <p class="mt-5 text-[13px] leading-snug text-zinc-600 max-w-[420px]"><span class="font-semibold text-zinc-800">Rings</span> — the first XJet Atelier collection, made to order in real metal.</p>
-                    <!-- Internal testing mode is always marked; live mode is the normal state and needs no badge -->
-                    <p x-show="isMock" x-cloak class="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
-                       style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8" data-testid="home-ai-mode">
-                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
-                    </p>
+                    <div class="hidden md:block">
+                        <p class="mt-5 text-[13px] leading-snug text-zinc-600 max-w-[420px]"><span class="font-semibold text-zinc-800">Rings</span> — the first XJet Atelier collection, made to order in real metal.</p>
+                        <!-- Internal testing mode is always marked; live mode is the normal state and needs no badge -->
+                        <p x-show="isMock" x-cloak class="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
+                           style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8" data-testid="home-ai-mode">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
+                        </p>
+                    </div>
                 </div>
-                <!-- The first product visual is a real ring from the Inspiration Gallery (the sculpture lives on the Technology page) -->
-                <div class="md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh-57px)] hidden md:flex items-center justify-center px-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
-                    <!-- The card is as large as the gallery images stay sharp (they are 1024 px, so at most 700 CSS px) and never taller than the viewport leaves for it; the column sticks to the viewport so the ring and the thumbnails are always in view -->
-                    <template x-if="heroRing">
-                        <div class="relative py-4" style="width:min(92%, 700px, calc(100vh - 260px));" @mouseenter="heroPaused = true" @mouseleave="heroPaused = false" @focusin="heroPaused = true" @focusout="heroPaused = false">
-                            <!-- Every gallery ring is stacked here; the current one is visible and they crossfade (random order, every few seconds) -->
-                            <button type="button" @click="openGallery(heroRing)" class="group relative block w-full aspect-square bg-white rounded-3xl shadow-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + heroRing.title + ' from the Inspiration Gallery'" data-testid="hero-ring">
-                                <template x-for="(g, i) in homeGallery" :key="g.id">
-                                    <img :srcset="srcsetFor(g.image_url)" sizes="min(50vw, 700px)" :src="thumb(g.image_url, 800)" :alt="i === heroIndex ? g.title + ' — a ring from the XJet Inspiration Gallery' : ''" :aria-hidden="i !== heroIndex"
-                                         class="absolute inset-0 w-full h-full object-contain p-5 transition-[opacity,transform] duration-[1200ms] ease-in-out group-hover:scale-[1.04]"
-                                         :class="i === heroIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.03] pointer-events-none'" :style="i === heroIndex ? 'z-index:2' : 'z-index:1'" decoding="async">
-                                </template>
-                            </button>
-                            <span class="absolute top-8 left-4 inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.18em] font-semibold px-3 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-sm" style="color:#8A6420;z-index:3" aria-live="polite">
-                                <span class="w-1.5 h-1.5 rounded-full" style="background:#C9A96E;"></span><span x-text="heroRing.title"></span>
-                            </span>
-                            <!-- The whole gallery under the main image: tap a ring to show it (the rotation continues from there) -->
-                            <div x-show="homeGallery.length > 1" class="mt-3 flex flex-wrap justify-center gap-2.5" role="tablist" aria-label="Rings from the Inspiration Gallery">
-                                <template x-for="(g, i) in homeGallery" :key="g.id">
-                                    <button type="button" role="tab" @click="heroGo(i)" :aria-selected="i === heroIndex" :aria-label="'Show ' + g.title"
-                                            class="w-14 h-14 md:w-16 md:h-16 bg-white rounded-xl overflow-hidden border transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#C9A96E]"
-                                            :class="i === heroIndex ? 'border-[#C9A96E] shadow-lg scale-105' : 'border-white/80 shadow opacity-75 hover:opacity-100'">
-                                        <img :src="thumb(g.image_url, 320)" alt="" class="w-full h-full object-contain p-1.5" loading="lazy" decoding="async">
-                                    </button>
-                                </template>
-                            </div>
-                            <p class="mt-3 text-center text-[12px] uppercase tracking-[0.2em] text-zinc-500">Real rings from the Inspiration Gallery · tap one to make it yours</p>
-                        </div>
-                    </template>
-                    <div x-show="!heroRing && galleryState === 'loading'" class="aspect-square rounded-3xl shimmer" style="width:min(92%, 700px, calc(100vh - 260px));" aria-hidden="true"></div>
-                    <template x-if="!heroRing && galleryState !== 'loading'">
-                        <img src="{{BASE}}/static/images/Angel.JPG" alt="A figurine printed in metal with XJet NanoParticle Jetting" class="w-[55%] h-auto object-contain" style="mix-blend-mode:multiply; opacity:0.92; max-height:82%;" onerror="this.style.display='none'">
-                    </template>
+                <!-- The first product visual is the showcase: one real gallery design told from the customer's words to the finished ring
+                     (web/showcase.js — the same engine as /showcase). It shows the product; the Inspiration Gallery follows right below.
+                     On phones it comes after the headline and the buttons. -->
+                <div class="md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh-57px)] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
+                    <div class="w-full md:w-[min(100%,700px,calc(100vh-140px))]" data-testid="hero-showcase">
+                        <div role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Silver and Yellow Gold"
+                             x-init="$nextTick(() => window.P3Showcase && P3Showcase.mount($el, { design: 'aurora-mesh' }))"></div>
+                    </div>
+                    <div class="md:hidden w-full px-2">
+                        <p class="mt-5 text-[13px] leading-snug text-zinc-600"><span class="font-semibold text-zinc-800">Rings</span> — the first XJet Atelier collection, made to order in real metal.</p>
+                        <p x-show="isMock" x-cloak class="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
+                           style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
+                        </p>
+                    </div>
                 </div>
             </section>
 

@@ -19,7 +19,9 @@ from PIL import Image
 
 from p3 import assets
 
-Widths = (320, 800)
+Widths = (320, 800, 1024)
+ClipTails = (2.0,)                 # seconds from the end of a movie (the showcase plays its last stretch)
+ClipWidths = (480, 720)
 Formats = {"webp": ("WEBP", "image/webp", {"quality": 82, "method": 4}),
            "jpg": ("JPEG", "image/jpeg", {"quality": 86, "progressive": True, "optimize": True}),
            "png": ("PNG", "image/png", {"optimize": True})}
@@ -99,6 +101,35 @@ def Poster(Root: Path, RelPath: str) -> Path | None:
         return Out
     except Exception as E:  # noqa: BLE001 — a missing poster only costs the instant first frame
         Logger.warning("No poster frame for %s: %s", RelPath, E)
+        Tmp.unlink(missing_ok=True)
+        return None
+
+
+def Clip(Root: Path, RelPath: str, Tail: float, Width: int) -> Path | None:
+    """The last `Tail` seconds of a movie as a small web clip (H.264, `Width` px, no sound, fast start) — what the
+    homepage showcase plays instead of the whole movie (about 0.15 MB instead of 8 MB). None without ffmpeg."""
+    if Tail not in ClipTails or Width not in ClipWidths:
+        raise assets.AssetError("Unsupported clip")
+    Src = assets.Resolve(Root, RelPath)
+    if not RelPath.startswith("designs/") or Src.suffix.lower() != ".mp4" or not Src.is_file():
+        raise assets.AssetError("Not a movie asset")
+    Out = _Derived(Root, RelPath, f".tail{Tail:g}_w{Width}.mp4")
+    if Out.is_file() and Out.stat().st_mtime >= Src.stat().st_mtime:
+        return Out
+    Exe = FfmpegExe()
+    if not Exe:
+        return None
+    Out.parent.mkdir(parents=True, exist_ok=True)
+    Tmp = Out.with_name(f"{Out.name}.{os.getpid()}-{threading.get_ident()}.tmp.mp4")
+    try:
+        subprocess.run([Exe, "-y", "-loglevel", "error", "-sseof", f"-{Tail:g}", "-i", str(Src), "-an",
+                        "-vf", f"scale={Width}:-2:flags=lanczos", "-c:v", "libx264", "-preset", "slow", "-crf", "23",
+                        "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(Tmp)],
+                       check=True, timeout=120, capture_output=True)
+        _Replace(Tmp, Out)
+        return Out
+    except Exception as E:  # noqa: BLE001 — without a clip the showcase plays the full movie
+        Logger.warning("No clip for %s: %s", RelPath, E)
         Tmp.unlink(missing_ok=True)
         return None
 

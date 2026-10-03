@@ -62,6 +62,7 @@ async def test_showcase_tells_the_story_of_a_real_gallery_design(HG):
     assert S["refine"] == {"text": "Change to lattice", "image_url": Ref["candidates"][1]["image_url"]}
     Movie = H.Ctx.Db.One("SELECT asset_path FROM movies WHERE candidate_id = ? AND status = 'ready'", (Ref["candidates"][1]["id"],))
     assert S["movie_url"] == H.Ctx.AssetUrl(Movie["asset_path"]) and S["poster_url"] == S["movie_url"].replace("/assets/", "/poster/")
+    assert S["clip_url"] == S["movie_url"].replace("/assets/", "/clip/") + "?tail=2&w=720"     # its last 2 s, small
     assert [M["id"] for M in S["metals"]] == ["silver", "gold_18k_yellow"] and all(M["ramp"] for M in S["metals"])   # no rose gold
     assert S["still_url"] == Ref["candidates"][1]["image_url"]                # the refined ring stays the hero to the end
     assert S["tone"] in ("gold", "silver") and "made" not in S and S["cta_url"] == H.Base + "/"   # no figurine any more
@@ -137,16 +138,37 @@ async def test_an_owners_variation_tells_its_story_from_the_design_it_came_from(
     assert S["prompt"] == "A slim twisted band with a small leaf motif"
 
 
-async def test_showcase_page_is_a_standalone_noindex_prototype(HG):
+async def test_showcase_page_is_a_standalone_noindex_reference(HG):
     H = HG
     R = await H.Client.get("/showcase")
     assert R.status_code == 200 and R.headers["x-robots-tag"] == "noindex, nofollow" and R.headers["cache-control"] == "no-cache"
     Html = R.text
-    assert '<meta name="robots" content="noindex, nofollow">' in Html and "prototype · not live" in Html
+    assert '<meta name="robots" content="noindex, nofollow">' in Html
     assert re.search(r'src="' + re.escape(H.Base) + r'/static/metal\.js\?v=\d+"', Html)     # the site's own metal filters
+    assert re.search(r'src="' + re.escape(H.Base) + r'/static/showcase\.js\?v=\d+"', Html)  # the hero's engine
+    assert re.search(r'href="' + re.escape(H.Base) + r'/static/showcase\.css\?v=\d+"', Html)
     assert re.search(r'href="' + re.escape(H.Base) + r'/static/vendor/fonts\.css\?v=\d+"', Html)
     for Host in ("cdn.tailwindcss.com", "unpkg.com", "jsdelivr.net", "googleapis.com"):
         assert Host not in Html
     Index = (await H.Client.get("/")).text
-    assert "/showcase" not in Index                                       # not linked from the site
+    assert not re.search(r'href="[^"]*/showcase"', Index)                    # the reference page is not linked from the site
     assert (await H.Client.get("/static/metal.js")).status_code == 200
+
+
+async def test_the_homepage_hero_shows_the_showcase_not_a_gallery(HG):
+    """Left: the short value statement and the buttons; right: the showcase. No thumbnail strip, no copy that was
+    taken out (a second headline, the technology name, a "Design preview" caption) and no call to action inside it."""
+    H = HG
+    Index = (await H.Client.get("/")).text
+    Hero = Index[Index.index('<template x-if="view === \'home\'">'):Index.index('Inspiration Gallery</span>')]
+    assert "Your idea. Your style. A ring that’s uniquely yours." in Hero
+    assert "Describe your vision or upload a photo." not in Hero and "Choose from four AI designs" not in Hero
+    assert "Bespoke Jewellery" in Hero and "Powered by AI" in Hero and "Designed by You" in Hero
+    assert 'resetAIFlow()' in Hero and 'scrollToHowItWorks()' in Hero and "made to order in real metal" in Hero
+    assert 'data-testid="hero-showcase"' in Hero and "P3Showcase.mount($el, { design: 'aurora-mesh' })" in Hero
+    assert 'aria-label="Rings from the Inspiration Gallery"' not in Hero and "heroGo(" not in Hero and "openGallery(heroRing)" not in Hero
+    assert re.search(r'src="' + re.escape(H.Base) + r'/static/showcase\.js\?v=\d+"', Index)
+    Engine = (await H.Client.get("/static/showcase.js")).text
+    assert "Designed with XJet Atelier" in Engine and "'Your idea', 'Four possibilities', 'Make it yours'" in Engine
+    for Gone in ("From your words", "NanoParticle", "Design preview", "Design yours", "gold_18k_rose"):
+        assert Gone not in Engine, Gone
