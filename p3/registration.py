@@ -143,4 +143,4 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
          Please register again from XJet Atelier.</p>
       <a class="btn" href="{E(BasePath)}/">Back to XJET ATELIER →</a>"""
     Page = (WebDir / "verify.html").read_text(encoding="utf-8")
-    return Page.replace("{{CARD_CLASS}}", "" if Ok else "bad").replace("{{BODY}}", Body)
+    return Page.replace("{{CARD_CLASS}}", "" if Ok else "bad").replace("{{BODY}}", Body).replace("{{BASE}}", BasePath)

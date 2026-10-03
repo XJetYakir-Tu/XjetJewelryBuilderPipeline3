@@ -10,14 +10,14 @@
   <link rel="icon" type="image/png" sizes="16x16" href="{{BASE}}/static/images/favicon-16.png">
   <link rel="icon" type="image/png" sizes="192x192" href="{{BASE}}/static/images/favicon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="{{BASE}}/static/images/apple-touch-icon.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- Self-hosted front-end: Tailwind production build, Inter + Cinzel, three.js 0.128 (STL viewer) and Alpine — no third-party CDN -->
+  <link rel="stylesheet" href="{{BASE}}/static/vendor/tailwind.css">
+  <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
+  <script src="{{BASE}}/static/vendor/three.min.js"></script>
+  <script src="{{BASE}}/static/vendor/STLLoader.js"></script>
+  <script src="{{BASE}}/static/vendor/OrbitControls.js"></script>
   <script defer src="{{BASE}}/static/admin.js"></script>
-  <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
+  <script defer src="{{BASE}}/static/vendor/alpine.min.js"></script>
   <!-- Admin area (B2C2 admin_tokens / admin_token_detail look). Customer pages never link here. -->
   <style>
     [x-cloak] { display: none !important; }

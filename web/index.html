@@ -14,11 +14,15 @@
     <link rel="icon" type="image/png" sizes="192x192" href="{{BASE}}/static/images/favicon-192.png">
     <link rel="apple-touch-icon" sizes="180x180" href="{{BASE}}/static/images/apple-touch-icon.png">
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config = { theme: { extend: { screens: { '3xl': '1920px', '4xl': '2560px' } } } }</script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
+    <!-- Everything the page needs is served from this site (no third-party CDN): the Tailwind production build
+         (tailwind.config.js), Inter + Cinzel (web/vendor/fonts) and Alpine. Rebuild the stylesheet after changing classes:
+         npx -y tailwindcss@3.4.17 -c tailwind.config.js -i web/tailwind.src.css -o web/vendor/tailwind.css --minify -->
+    <link rel="preload" href="{{BASE}}/static/vendor/fonts/inter-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{BASE}}/static/vendor/tailwind.css">
+    <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
     <script src="{{BASE}}/static/app.js"></script>
-    <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <script defer src="{{BASE}}/static/vendor/alpine.min.js"></script>
 
     <!-- Visual system carried over from Pipeline 2 (index-p2.html) -->
     <style>

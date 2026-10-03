@@ -6,6 +6,7 @@ under that prefix (the deployment layout behind proto/tron); without it, at "/".
 """
 
 import logging
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from p3 import assets
+
+# Font files: some platforms' mimetypes tables lack WOFF2, and browsers want the right type for preloaded fonts
+mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("font/woff", ".woff")
 from p3.accounts import BuildProvider as BuildAccountProvider, InsufficientCredits
 from p3.auth import RequireDeveloper, RequirePrincipal
 from p3.config import LoadCatalog, LoadGenerationConfig
@@ -72,7 +77,8 @@ def _VersionedPage(Name: str, BasePath: str) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, and local scripts/styles get
     ?v=<mtime> so a browser can never pair a new page with a cached older app.js."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
-    for Asset in ("app.js", "admin.js", "styles.css"):
+    for Asset in ("app.js", "admin.js", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
+                  "vendor/three.min.js", "vendor/STLLoader.js", "vendor/OrbitControls.js"):
         Path_ = WebDir / Asset
         if Path_.is_file():
             Html = Html.replace(f'"{{{{BASE}}}}/static/{Asset}"', f'"{{{{BASE}}}}/static/{Asset}?v={Path_.stat().st_mtime_ns}"')
