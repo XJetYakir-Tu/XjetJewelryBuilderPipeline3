@@ -62,7 +62,8 @@
         .spark { color: var(--gold); font-size: 18px; line-height: 1; flex: none; }
         .typed { flex: 1; min-height: 1.45em; font-size: 19px; line-height: 1.45; color: var(--ink); }
         .stage.is-phone .typed { font-size: 16px; line-height: 1.4; }
-        .caret { display: inline-block; width: 2px; height: 1.15em; margin-left: 2px; vertical-align: -0.18em; background: var(--gold); animation: blink 1s steps(1) infinite; }
+        /* the caret takes no room in the line (2 px wide, -4 px margin), so it never wraps onto a line of its own */
+        .caret { display: inline-block; width: 2px; height: 1.15em; margin-left: 2px; margin-right: -4px; vertical-align: -0.18em; background: var(--gold); animation: blink 1s steps(1) infinite; }
         .caret.off { visibility: hidden; }
         @keyframes blink { 50% { opacity: 0; } }
         .go { flex: none; border-radius: 12px; padding: 11px 18px; font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #fff;
@@ -372,8 +373,8 @@
                 ref.style.webkitMaskImage = m; ref.style.maskImage = m;
                 ref.style.opacity = (t < s3 + D.wipeAt ? 0 : 1 - out).toFixed(3);
                 const sw = $('f-sweep');
-                sw.style.opacity = (wipe > 0 && wipe < 1 ? Math.sin(Math.PI * wipe) * 0.55 : 0).toFixed(3);
-                sw.style.background = `linear-gradient(105deg, transparent ${(X - 10).toFixed(1)}%, rgba(255,247,228,.9) ${X.toFixed(1)}%, transparent ${(X + 10).toFixed(1)}%)`;
+                sw.style.opacity = (wipe > 0 && wipe < 1 ? Math.sin(Math.PI * wipe) * 0.35 : 0).toFixed(3);   // a faint light pass, not a stripe
+                sw.style.background = `linear-gradient(105deg, transparent ${(X - 7).toFixed(1)}%, rgba(255,247,228,.85) ${X.toFixed(1)}%, transparent ${(X + 7).toFixed(1)}%)`;
             } else ref.style.opacity = '0';
             const vO = t < s4 ? 0 : t < s5 ? ramp(t, s4 + 220, s4 + 520) : t < s5 + 450 ? 1 : 0;
             video.style.opacity = vO.toFixed(3);
@@ -594,6 +595,9 @@
             pause() { setPlaying(false); return this.state(); },
             state() { const b = D ? beatAt(T) : 0; return { beat: BEATS[b].id, t: Math.round(T), playing, total: D && D.total, starts: D && D.start, story: S && S.title }; },
         };
+
+        // text widths change when the web fonts arrive: measure the request chip and the quiet button again
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { $('chip').dataset.full = ''; ctaQ = null; if (S && D) render(T); });
 
         applyFrame();
         load(new URLSearchParams(location.search).get('design')).catch(e => { $('loading').textContent = 'The story could not be loaded.'; console.error(e); });
