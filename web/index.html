@@ -37,6 +37,11 @@
         .fav-heart svg path { transition: fill .2s ease; }
         .fav-heart.is-fav svg { animation: favPop .35s ease; }
         @keyframes favPop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
+        /* Metal preview chips in the gallery lightbox (preview only) */
+        .metal-chip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 9999px; border: 1px solid #DCDCDC; background: #fff; color: #6F6F6F; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; transition: border-color .2s, color .2s, box-shadow .2s; }
+        .metal-chip:hover { border-color: #C9A96E; color: #1A1A1A; }
+        .metal-chip.is-on { border-color: #C9A96E; color: #1A1A1A; box-shadow: 0 0 0 2px #F1E6D2; }
+        .metal-dot { width: 14px; height: 14px; border-radius: 9999px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08), inset 2px 2px 4px rgba(255,255,255,.6); }
         /* No fill-mode: a lingering transform would turn the screen into the containing block of its fixed bars */
         .fade-in { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -1967,8 +1972,20 @@
     <template x-if="galleryItem">
         <div class="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" @click.self="closeGallery()" @keydown.escape.window="closeGallery()" role="dialog" aria-modal="true" :aria-label="galleryItem.title">
             <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col md:flex-row fade-in">
-                <div class="md:w-3/5 bg-zinc-50 flex items-center justify-center p-4 md:p-6">
-                    <img :src="galleryItem.image_url" :alt="galleryItem.title" class="max-h-[46vh] md:max-h-[78vh] w-auto object-contain">
+                <div class="md:w-3/5 bg-zinc-50 flex flex-col items-center justify-center p-4 md:p-6 gap-4">
+                    <!-- Always opens with the original image; the swatches apply the movie's metal filter to this preview only -->
+                    <img :src="galleryItem.image_url" :alt="galleryItem.title + (galleryMetal ? ' shown in ' + metalLabel(galleryMetal) : '')" class="max-h-[42vh] md:max-h-[72vh] w-auto object-contain transition-[filter] duration-300" :style="{ filter: galleryMetal ? metalFilter(galleryMetal) : '' }">
+                    <div class="flex flex-col items-center gap-2" x-show="previewMetals.length">
+                        <div class="flex flex-wrap items-center justify-center gap-2" role="radiogroup" aria-label="See it in another metal — preview only">
+                            <button type="button" role="radio" @click="galleryMetal = ''" :aria-checked="!galleryMetal" class="metal-chip" :class="!galleryMetal ? 'is-on' : ''">Original</button>
+                            <template x-for="m in previewMetals" :key="m.id">
+                                <button type="button" role="radio" @click="galleryMetal = m.id" :aria-checked="galleryMetal === m.id" class="metal-chip" :class="galleryMetal === m.id ? 'is-on' : ''" :title="m.label + ' — preview only'">
+                                    <span class="metal-dot" :style="'background:' + m.swatch" aria-hidden="true"></span><span x-text="m.label"></span>
+                                </button>
+                            </template>
+                        </div>
+                        <p class="text-[12px] text-zinc-500 tracking-wide text-center" x-text="galleryMetal ? 'Preview only — the design itself is unchanged' : 'See it in another metal — preview only'"></p>
+                    </div>
                 </div>
                 <div class="md:w-2/5 p-7 md:p-9 flex flex-col justify-center text-center md:text-left gap-4">
                     <span class="text-[12px] uppercase tracking-[0.4em]" style="color:#8A6420">Inspiration Gallery</span>
