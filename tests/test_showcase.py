@@ -81,6 +81,45 @@ async def test_the_fullest_story_wins_and_another_can_be_picked(HG):
     assert len((await H.Client.get("/api/showcase")).json()["choices"]) == 2
 
 
+async def test_real_movies_win_and_the_movie_always_shows_the_ring_on_screen(HG):
+    """A placeholder movie (mock provider, e.g. made while the server ran in mock mode) is never preferred over a real
+    one, and the story never plays a movie of a different ring than the one it just showed."""
+    H = HG
+    Did, Cands, Ref = await _Story(H)                                     # refined ring's movie: a mock placeholder
+    await H.Proceed(Did, Cands[3]["id"])                                   # option D gets a movie too …
+    await H.Idle()
+    Real = lambda Cid: H.Ctx.Db.Execute("UPDATE movies SET provider_request_id = 'a1b2c3d4-real' WHERE candidate_id = ?", (Cid,))
+    Real(Cands[3]["id"])                                                   # … and that one is real
+    S = (await H.Client.get("/api/showcase")).json()["story"]
+    Movie = H.Ctx.Db.One("SELECT asset_path FROM movies WHERE candidate_id = ? AND status = 'ready'", (Cands[3]["id"],))
+    assert S["refine"] is None and S["picked"] == 3 and S["movie_url"] == H.Ctx.AssetUrl(Movie["asset_path"])
+    Real(Ref["candidates"][1]["id"])                                       # once the refined ring has a real movie: the whole story
+    S = (await H.Client.get("/api/showcase")).json()["story"]
+    assert S["refine"]["text"] == "Change to lattice" and S["picked"] == 2
+    Movie = H.Ctx.Db.One("SELECT asset_path FROM movies WHERE candidate_id = ? AND status = 'ready'", (Ref["candidates"][1]["id"],))
+    assert S["movie_url"] == H.Ctx.AssetUrl(Movie["asset_path"])
+
+
+async def test_an_owners_variation_tells_its_story_from_the_design_it_came_from(HG):
+    H = HG
+    B = await H.NewDesign("A slim twisted band with a small leaf motif")
+    Did, Cands = B["design_id"], B["candidates"]
+    await H.Proceed(Did, Cands[0]["id"])                                   # a movie makes it a master …
+    await H.Idle()
+    R = await H.Client.post(f"/api/designs/{Did}/batches", json={"parent_candidate_id": Cands[1]["id"], "instruction": "wave lattice"})
+    await H.Idle()
+    Fork = (await H.Client.get(f"/api/batches/{R.json()['id']}")).json()   # … so the refinement is a design of its own
+    assert Fork["design_id"] != Did
+    await H.Proceed(Fork["design_id"], Fork["candidates"][0]["id"])
+    await H.Idle()
+    assert (await H.Client.post("/api/admin/gallery", json={"design_id": Fork["design_id"]}, headers=Admin)).status_code == 200
+    S = (await H.Client.get("/api/showcase")).json()["story"]
+    assert S["title"] == (await H.Design(Fork["design_id"]))["title"]
+    assert S["options"] == [C["image_url"] for C in Cands] and S["picked"] == 1
+    assert S["refine"] == {"text": "Wave lattice", "image_url": Fork["candidates"][0]["image_url"]}
+    assert S["prompt"] == "A slim twisted band with a small leaf motif"
+
+
 async def test_showcase_page_is_a_standalone_noindex_prototype(HG):
     H = HG
     R = await H.Client.get("/showcase")
